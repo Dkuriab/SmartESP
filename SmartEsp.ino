@@ -1,6 +1,6 @@
 // SmartESP — связка модулей. Здесь нет логики: только создание модулей,
 // вызовы begin()/loop() и передача данных между модулями.
-// Правила — CLAUDE.md, устройство — docs/superpowers/specs/.
+// Правила — CLAUDE.md, устройство — docs/superpowers/specs/2026-11-15-firmware-design.md.
 
 #include "secrets.h"
 #include "src/common/Types.h"
@@ -9,57 +9,84 @@
 #include "src/voice_frontend/VoiceFrontend.h"
 #include "src/wifi_link/WifiLink.h"
 #include "src/server_link/ServerLink.h"
+#include "src/session/Session.h"
 
 constexpr const char* FW_VERSION = "0.1.0";
-constexpr size_t AUDIO_BLOCK = 512;
+constexpr size_t AUDIO_BLOCK = 512;  // 32 мс
 
 AudioOut audioOut;
 AudioIn audioIn;
 VoiceFrontend voiceFrontend;
 WifiLink wifiLink;
 ServerLink serverLink;
+Session session;
 
 int16_t micBlock[AUDIO_BLOCK];
 int16_t refBlock[AUDIO_BLOCK];
+int16_t audioBlock[AUDIO_BLOCK];
 
 void setup() {
   Serial.begin(115200);
   Serial.printf("SmartESP %s\n", FW_VERSION);
 
   audioOut.begin({.bclkPin = 7, .lrcPin = 6, .dinPin = 8});
+  // Образец динамика берёт сам audio_in — сразу после чтения микрофона.
   audioIn.begin({.sckPin = 5, .wsPin = 4, .sdPin = 9},
                 [](int16_t* dst, size_t samples) { return audioOut.readReference(dst, samples); });
   voiceFrontend.begin({.vadSilenceMs = 500});
   wifiLink.begin(WIFI_SSID, WIFI_PASSWORD);
   serverLink.begin(SERVER_HOST, SERVER_PORT, "/device", FW_VERSION);
+  session.begin({});
 }
 
 void loop() {
   wifiLink.loop();
   serverLink.loop();
 
+  session.setConnected(serverLink.isConnected());
+  session.setPlaybackActive(audioOut.isPlaying());
+  session.loop(millis());
+
   size_t n;
+
+  // Микрофон + образец → обработка звука.
   while ((n = audioIn.read(micBlock, refBlock, AUDIO_BLOCK)) > 0) {
     voiceFrontend.feed(micBlock, refBlock, n);
   }
 
-  // Временно (до session): на слово — сигнал.
-  VoiceEvent event;
-  while (voiceFrontend.pollEvent(event)) {
-    if (event.type == VoiceEventType::WakeWord) {
-      Serial.println("wake");
-      audioOut.playTone(Tone::Wake);
-    }
+  // Слово, начало и конец речи → сценарий.
+  VoiceEvent voiceEvent;
+  while (voiceFrontend.pollEvent(voiceEvent)) {
+    session.onVoiceEvent(voiceEvent);
   }
 
-  // Временно (до session): команды сервера — в Serial, громкость и тоны — на динамик.
+  // Очищенный звук вопроса → сервер.
+  while ((n = voiceFrontend.readClean(audioBlock, AUDIO_BLOCK)) > 0) {
+    serverLink.sendAudio(audioBlock, n);
+  }
+
+  // Звук ответа → динамик.
+  while ((n = serverLink.readAudio(audioBlock, AUDIO_BLOCK)) > 0) {
+    audioOut.write(audioBlock, n);
+  }
+
+  // Команды сервера → сценарий.
   ServerCommand command;
   while (serverLink.pollCommand(command)) {
-    Serial.printf("server command %d\n", (int)command.type);
-    if (command.type == ServerCommandType::Volume) {
-      audioOut.setVolume(command.volume);
-    } else if (command.type == ServerCommandType::PlayTone) {
-      audioOut.playTone(command.tone);
+    session.onServerCommand(command);
+  }
+
+  // Действия сценария → модули: каждое действие — один вызов одного модуля.
+  Action action;
+  while (session.pollAction(action)) {
+    switch (action.type) {
+      case ActionType::StartCapture: voiceFrontend.setCapture(true); break;
+      case ActionType::StopCapture: voiceFrontend.setCapture(false); break;
+      case ActionType::SendEvent: serverLink.sendEvent(action.event); break;
+      case ActionType::StopPlayback: audioOut.stop(); break;
+      case ActionType::PlayTone: audioOut.playTone(action.tone); break;
+      case ActionType::SetVolume: audioOut.setVolume(action.volume); break;
+      case ActionType::SetActiveTurn: serverLink.setActiveTurn(action.turn); break;
     }
   }
 }
