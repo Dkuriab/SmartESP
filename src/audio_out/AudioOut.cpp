@@ -1,6 +1,7 @@
 #include "AudioOut.h"
 
 #include <math.h>
+#include <string.h>
 #include "freertos/idf_additions.h"
 
 namespace {
@@ -67,7 +68,7 @@ size_t AudioOut::write(const int16_t* pcm, size_t samples) {
   lastWriteMs_ = millis();
   if (accepted < samples && millis() - lastOverflowLogMs_ >= OVERFLOW_LOG_PERIOD_MS) {
     lastOverflowLogMs_ = millis();
-    log_w("audio_out: очередь полна, отброшено %u отсчётов", (unsigned)(samples - accepted));
+    Serial.printf("audio_out: очередь полна, отброшено %u отсчётов\n", (unsigned)(samples - accepted));
   }
   return accepted;
 }
@@ -77,6 +78,9 @@ void AudioOut::playTone(Tone tone) {
 }
 
 void AudioOut::stop() {
+  // Отменяем тон здесь, а не в задаче: иначе тон, заказанный сразу после
+  // stop() (сигнал при перебивании), задача сбросила бы вместе со стопом.
+  toneRequest_ = -1;
   stopRequest_ = true;
 }
 
@@ -142,13 +146,16 @@ void AudioOut::run() {
   static int16_t mono[CHUNK];
   static int16_t stereo[CHUNK * 2];
 
+  // I2S пишется непрерывно (в паузах — тишиной), поэтому образец сдвигается
+  // на задержку DMA один раз и дальше остаётся выровнен с динамиком.
+  pushRefSilence(config_.refDelayMs);
+
   for (;;) {
     if (stopRequest_) {
       stopRequest_ = false;
       // Задачи не ждут на очереди (все вызовы с таймаутом 0), поэтому reset безопасен.
       xStreamBufferReset(queue_);
       toneActive_ = false;
-      toneRequest_ = -1;
       queueStarted_ = false;
     }
 
@@ -185,15 +192,10 @@ void AudioOut::run() {
     }
 
     if (n == 0) {
-      outputActive_ = false;
-      vTaskDelay(pdMS_TO_TICKS(5));
-      continue;
-    }
-
-    if (!outputActive_) {
-      // Начало звука после тишины: сдвигаем образец на задержку DMA.
-      pushRefSilence(config_.refDelayMs);
-      outputActive_ = true;
+      // Играть нечего: пишем тишину. И в I2S, и в образец — так образец не
+      // «уезжает» при каждой паузе в ответе (ревью №1).
+      memset(mono, 0, sizeof(mono));
+      n = CHUNK;
     }
 
     for (size_t i = 0; i < n; i++) {

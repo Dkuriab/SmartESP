@@ -69,5 +69,4 @@ class AudioOut {
   uint32_t toneSegmentLeft_ = 0;
   float tonePhase_ = 0;
   bool queueStarted_ = false;
-  bool outputActive_ = false;
 };

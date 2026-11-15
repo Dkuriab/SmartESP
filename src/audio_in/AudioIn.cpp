@@ -90,7 +90,7 @@ void AudioIn::run() {
     const uint32_t now = millis();
     if (dropped_ > 0 && now - lastDropLogMs_ >= LOG_PERIOD_MS) {
       lastDropLogMs_ = now;
-      log_w("audio_in: буфер переполнен, потеряно %u отсчётов (loop() не успевает)", (unsigned)dropped_);
+      Serial.printf("audio_in: буфер переполнен, потеряно %u отсчётов (loop() не успевает)\n", (unsigned)dropped_);
       dropped_ = 0;
     }
     if (config_.printLevel && now - lastLevelMs >= LOG_PERIOD_MS) {
