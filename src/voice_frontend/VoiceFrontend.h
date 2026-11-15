@@ -10,6 +10,7 @@
 #include "freertos/queue.h"
 #include "freertos/stream_buffer.h"
 #include "../common/Types.h"
+#include "SpeechTracker.h"
 
 struct VoiceFrontendConfig {
   uint32_t vadSilenceMs = 500;  // сколько тишины считать концом фразы
@@ -56,6 +57,7 @@ class VoiceFrontend {
   StreamBufferHandle_t cleanQueue_ = nullptr;  // очищенный звук → readClean
   QueueHandle_t events_ = nullptr;
 
+  SpeechTracker speech_;  // используется только в задаче выборки
   volatile bool capture_ = false;
   volatile uint32_t captureGeneration_ = 0;  // меняется при каждом setCapture
   uint32_t droppedFrames_ = 0;

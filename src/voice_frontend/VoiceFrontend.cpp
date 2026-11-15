@@ -42,6 +42,8 @@ bool VoiceFrontend::begin(const VoiceFrontendConfig& config) {
     return false;
   }
   afeConfig->vad_min_noise_ms = config.vadSilenceMs;
+  // Пока VAD «дослушивает» само слово (≈ vadSilenceMs), события речи не выдаём.
+  speech_ = SpeechTracker(config.vadSilenceMs + 100);
   const esp_afe_sr_iface_t* afe = esp_afe_handle_from_config(afeConfig);
   afe_ = afe;
   afeData_ = afe ? afe->create_from_config(afeConfig) : nullptr;
@@ -92,7 +94,7 @@ void VoiceFrontend::feed(const int16_t* mic, const int16_t* ref, size_t samples)
   }
   if (droppedFrames_ > 0 && millis() - lastDropLogMs_ >= LOG_PERIOD_MS) {
     lastDropLogMs_ = millis();
-    log_w("voice_frontend: AFE не успевает, отброшено кадров: %u", (unsigned)droppedFrames_);
+    Serial.printf("voice_frontend: AFE не успевает, отброшено кадров: %u\n", (unsigned)droppedFrames_);
     droppedFrames_ = 0;
   }
 }
@@ -124,7 +126,7 @@ void VoiceFrontend::drainClean() {
 void VoiceFrontend::pushEvent(VoiceEventType type) {
   const VoiceEvent event{type};
   if (xQueueSend(events_, &event, 0) != pdTRUE) {
-    log_w("voice_frontend: очередь событий полна");
+    Serial.println("voice_frontend: очередь событий полна");
   }
 }
 
@@ -147,7 +149,6 @@ void VoiceFrontend::feedTask() {
 }
 
 void VoiceFrontend::fetchTask() {
-  bool speaking = false;
   uint32_t generation = captureGeneration_;
   for (;;) {
     afe_fetch_result_t* res = iface(afe_)->fetch(afeData_);
@@ -161,18 +162,17 @@ void VoiceFrontend::fetchTask() {
 
     if (generation != captureGeneration_) {
       generation = captureGeneration_;
-      speaking = false;  // новый захват — переходы VAD считаем заново
+      speech_.reset();  // новый захват — переходы VAD считаем заново, с паузой после слова
     }
     if (!capture_) {
       continue;
     }
 
-    if (res->vad_state == VAD_SPEECH && !speaking) {
-      speaking = true;
-      pushEvent(VoiceEventType::SpeechStart);
-    } else if (res->vad_state == VAD_SILENCE && speaking) {
-      speaking = false;
-      pushEvent(VoiceEventType::SpeechEnd);
+    const uint32_t frameMs = res->data_size / sizeof(int16_t) / 16;  // 16 отсчётов = 1 мс
+    switch (speech_.update(res->vad_state == VAD_SPEECH, frameMs)) {
+      case SpeechChange::Start: pushEvent(VoiceEventType::SpeechStart); break;
+      case SpeechChange::End: pushEvent(VoiceEventType::SpeechEnd); break;
+      case SpeechChange::None: break;
     }
 
     if (res->data && res->data_size > 0) {
