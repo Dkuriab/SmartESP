@@ -8,6 +8,7 @@
 #include "src/audio_in/AudioIn.h"
 #include "src/voice_frontend/VoiceFrontend.h"
 #include "src/wifi_link/WifiLink.h"
+#include "src/server_link/ServerLink.h"
 
 constexpr const char* FW_VERSION = "0.1.0";
 constexpr size_t AUDIO_BLOCK = 512;
@@ -16,6 +17,7 @@ AudioOut audioOut;
 AudioIn audioIn;
 VoiceFrontend voiceFrontend;
 WifiLink wifiLink;
+ServerLink serverLink;
 
 int16_t micBlock[AUDIO_BLOCK];
 int16_t refBlock[AUDIO_BLOCK];
@@ -29,10 +31,12 @@ void setup() {
                 [](int16_t* dst, size_t samples) { return audioOut.readReference(dst, samples); });
   voiceFrontend.begin({.vadSilenceMs = 500});
   wifiLink.begin(WIFI_SSID, WIFI_PASSWORD);
+  serverLink.begin(SERVER_HOST, SERVER_PORT, "/device", FW_VERSION);
 }
 
 void loop() {
   wifiLink.loop();
+  serverLink.loop();
 
   size_t n;
   while ((n = audioIn.read(micBlock, refBlock, AUDIO_BLOCK)) > 0) {
@@ -45,6 +49,17 @@ void loop() {
     if (event.type == VoiceEventType::WakeWord) {
       Serial.println("wake");
       audioOut.playTone(Tone::Wake);
+    }
+  }
+
+  // Временно (до session): команды сервера — в Serial, громкость и тоны — на динамик.
+  ServerCommand command;
+  while (serverLink.pollCommand(command)) {
+    Serial.printf("server command %d\n", (int)command.type);
+    if (command.type == ServerCommandType::Volume) {
+      audioOut.setVolume(command.volume);
+    } else if (command.type == ServerCommandType::PlayTone) {
+      audioOut.playTone(command.tone);
     }
   }
 }
