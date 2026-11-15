@@ -157,7 +157,8 @@ TEST(no_speech_timeout) {
   CHECK(drain(session).empty());
   session.loop(1000 + 5000);
   CHECK(sameActions(drain(session), {simple(ActionType::StopCapture),
-                                     sendEvent(ClientEventType::UtteranceEnd, 1, UtteranceEndReason::NoSpeech)}));
+                                     sendEvent(ClientEventType::UtteranceEnd, 1, UtteranceEndReason::NoSpeech),
+                                     setActiveTurn(0)}));
   CHECK(session.state() == SessionState::Idle);
 }
 
@@ -229,7 +230,7 @@ TEST(reply_timeout) {
   session.loop(1000 + 14999);
   CHECK(drain(session).empty());
   session.loop(1000 + 15000);
-  CHECK(sameActions(drain(session), {playTone(Tone::Error)}));
+  CHECK(sameActions(drain(session), {playTone(Tone::Error), setActiveTurn(0)}));
   CHECK(session.state() == SessionState::Idle);
 }
 
@@ -286,11 +287,23 @@ TEST(volume_and_tone_any_state) {
 TEST(connection_lost_mid_turn) {
   Session listening = listeningSession();
   listening.setConnected(false);
-  CHECK(sameActions(drain(listening), {simple(ActionType::StopCapture), playTone(Tone::Error)}));
+  CHECK(sameActions(drain(listening), {simple(ActionType::StopCapture), playTone(Tone::Error), setActiveTurn(0)}));
   CHECK(listening.state() == SessionState::Idle);
 
   Session speaking = speakingSession();
   speaking.setConnected(false);
-  CHECK(sameActions(drain(speaking), {simple(ActionType::StopPlayback), playTone(Tone::Error)}));
+  CHECK(sameActions(drain(speaking), {simple(ActionType::StopPlayback), playTone(Tone::Error), setActiveTurn(0)}));
   CHECK(speaking.state() == SessionState::Idle);
+}
+
+// Ревью №7: после таймаута ожидания ответ на брошенный ход не должен играть.
+TEST(late_reply_after_timeout_ignored) {
+  Session session = waitingSession(1000);
+  session.loop(1000 + 15000);
+  drain(session);
+  session.onServerCommand(server(ServerCommandType::ReplyStart, 1));
+  session.onServerCommand(server(ServerCommandType::ReplyEnd, 1));
+  session.loop(1000 + 16000);
+  CHECK(drain(session).empty());
+  CHECK(session.state() == SessionState::Idle);
 }

@@ -12,6 +12,7 @@ void Session::loop(uint32_t nowMs) {
     case SessionState::Listening:
       if (!speechStarted_ && elapsed >= config_.noSpeechTimeoutMs) {
         endUtterance(UtteranceEndReason::NoSpeech, SessionState::Idle);
+        abandonTurn();
       } else if (elapsed >= config_.maxUtteranceMs) {
         endUtterance(UtteranceEndReason::Timeout, SessionState::Waiting);
       }
@@ -19,6 +20,7 @@ void Session::loop(uint32_t nowMs) {
     case SessionState::Waiting:
       if (elapsed >= config_.replyTimeoutMs) {
         pushTone(Tone::Error);
+        abandonTurn();
         enter(SessionState::Idle);
       }
       break;
@@ -117,6 +119,7 @@ void Session::setConnected(bool connected) {
     pushSimple(ActionType::StopPlayback);
   }
   pushTone(Tone::Error);
+  abandonTurn();
   enter(SessionState::Idle);
 }
 
@@ -161,6 +164,15 @@ void Session::endUtterance(UtteranceEndReason reason, SessionState next) {
   pushSimple(ActionType::StopCapture);
   pushEvent(ClientEventType::UtteranceEnd, reason);
   enter(next);
+}
+
+void Session::abandonTurn() {
+  // Ход брошен (таймаут, нет речи, потеря связи): закрываем приём звука ответа,
+  // иначе запоздавший ответ на этот ход заиграет в Idle.
+  Action action{};
+  action.type = ActionType::SetActiveTurn;
+  action.turn = 0;
+  push(action);
 }
 
 void Session::enter(SessionState next) {

@@ -43,6 +43,7 @@ class Session {
  private:
   void startTurn();
   void endUtterance(UtteranceEndReason reason, SessionState next);
+  void abandonTurn();
   void enter(SessionState next);
   void checkPlaybackDone();
 
