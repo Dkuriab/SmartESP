@@ -7,6 +7,7 @@
 #include "src/audio_out/AudioOut.h"
 #include "src/audio_in/AudioIn.h"
 #include "src/voice_frontend/VoiceFrontend.h"
+#include "src/wifi_link/WifiLink.h"
 
 constexpr const char* FW_VERSION = "0.1.0";
 constexpr size_t AUDIO_BLOCK = 512;
@@ -14,6 +15,7 @@ constexpr size_t AUDIO_BLOCK = 512;
 AudioOut audioOut;
 AudioIn audioIn;
 VoiceFrontend voiceFrontend;
+WifiLink wifiLink;
 
 int16_t micBlock[AUDIO_BLOCK];
 int16_t refBlock[AUDIO_BLOCK];
@@ -26,9 +28,12 @@ void setup() {
   audioIn.begin({.sckPin = 5, .wsPin = 4, .sdPin = 9},
                 [](int16_t* dst, size_t samples) { return audioOut.readReference(dst, samples); });
   voiceFrontend.begin({.vadSilenceMs = 500});
+  wifiLink.begin(WIFI_SSID, WIFI_PASSWORD);
 }
 
 void loop() {
+  wifiLink.loop();
+
   size_t n;
   while ((n = audioIn.read(micBlock, refBlock, AUDIO_BLOCK)) > 0) {
     voiceFrontend.feed(micBlock, refBlock, n);
