@@ -3,29 +3,32 @@
 // server_link — связь с сервером по WebSocket (протокол — дизайн, раздел 7).
 // Только транспорт и разбор сообщений: о сценарии ничего не знает.
 // Звук ответа принимается только между reply_start и reply_end текущего хода.
+//
+// Сеть обслуживает своя задача FreeRTOS: подключение, отправка и приём могут
+// зависать на секунды (недоступный хост, мёртвое соединение), и это не должно
+// останавливать loop(). Публичные методы только кладут в очереди и забирают из них.
 
 #include <Arduino.h>
 #include <WebSocketsClient.h>
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/stream_buffer.h"
 #include "../common/Types.h"
 #include "ReplyGate.h"
 
 class ServerLink {
  public:
-  // Запоминает адрес сервера ws://host:port/path. Подключение — в loop(),
-  // когда есть Wi-Fi. Пустой host — не подключаться вовсе.
+  // Запускает задачу связи с ws://host:port/path. Подключается, когда есть Wi-Fi.
+  // Пустой host — связи не будет (isConnected() всегда false).
   bool begin(const char* host, uint16_t port, const char* path, const char* fwVersion);
 
-  // Обслуживает соединение; переподключение раз в 2 с. Вызывать из loop().
-  void loop();
+  bool isConnected() const;
 
-  bool isConnected();
-
-  // Отправляет звук (PCM 16 кГц, моно). false — нет соединения.
+  // Ставит звук (PCM 16 кГц, моно) в очередь на отправку. Не блокирует.
+  // false — нет соединения или очередь полна (звук отброшен).
   bool sendAudio(const int16_t* pcm, size_t samples);
 
-  // Отправляет событие JSON. false — нет соединения.
+  // Ставит событие в очередь на отправку (в общем порядке со звуком). Не блокирует.
   bool sendEvent(const ClientEvent& event);
 
   // Принятый звук ответа текущего хода. Не блокирует. Возвращает число отсчётов.
@@ -34,28 +37,48 @@ class ServerLink {
   // Следующая разобранная команда сервера, если есть.
   bool pollCommand(ServerCommand& command);
 
-  // Текущий ход: звук ответа на другие ходы отбрасывается.
+  // Текущий ход: звук ответа на другие ходы отбрасывается. 0 — ни один.
   void setActiveTurn(uint32_t turn);
 
  private:
+  static constexpr size_t OUT_SAMPLES = 512;  // кадр звука на отправку (32 мс)
+
+  // Исходящее сообщение: звук или событие — в одной очереди, чтобы сохранить порядок.
+  struct Outgoing {
+    bool isAudio;
+    ClientEvent event;
+    uint16_t samples;
+    int16_t pcm[OUT_SAMPLES];
+  };
+
+  static void taskEntry(void* self);
+  void run();
+  bool enqueue(const Outgoing& message);
+  void sendQueued();
+  void dropQueued();
   void onSocketEvent(WStype_t type, uint8_t* payload, size_t length);
   void onText(const char* json, size_t length);
   void onBinary(const uint8_t* data, size_t length);
-  void storeAudio(const int16_t* samples, size_t count);
+  void storeAudio(const void* data, size_t bytes);
+  bool gateOpen();
 
   WebSocketsClient socket_;
-  ReplyGate gate_;
   const char* fwVersion_ = "";
-  bool enabled_ = false;
-  bool started_ = false;
+  volatile bool connected_ = false;
 
-  StreamBufferHandle_t audio_ = nullptr;
+  ReplyGate gate_;  // доступ — под gateLock_ (loop() и задача связи)
+  portMUX_TYPE gateLock_ = portMUX_INITIALIZER_UNLOCKED;
+
+  QueueHandle_t outgoing_ = nullptr;    // loop() → задача
+  QueueHandle_t commands_ = nullptr;    // задача → loop()
+  StreamBufferHandle_t audio_ = nullptr;  // задача → loop()
+  Outgoing staging_{};                  // сборка сообщения в sendAudio/sendEvent (только loop())
+
+  // Только в задаче связи.
   uint8_t carryByte_ = 0;  // нечётный байт, ждущий пару из следующего куска
   bool hasCarry_ = false;
-  uint32_t lastOverflowLogMs_ = 0;
-
-  static constexpr size_t COMMAND_QUEUE = 16;
-  ServerCommand commands_[COMMAND_QUEUE];
-  size_t commandHead_ = 0;
-  size_t commandCount_ = 0;
+  Outgoing sending_{};
+  uint32_t lastLogMs_ = 0;
+  uint32_t droppedOut_ = 0;  // меняется в loop()
+  uint32_t lastOutLogMs_ = 0;
 };

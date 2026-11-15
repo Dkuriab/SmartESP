@@ -40,8 +40,7 @@ void setup() {
 }
 
 void loop() {
-  wifiLink.loop();
-  serverLink.loop();
+  wifiLink.loop();  // server_link обслуживает сеть в своей задаче
 
   session.setConnected(serverLink.isConnected());
   session.setPlaybackActive(audioOut.isPlaying());

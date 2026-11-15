@@ -7,7 +7,15 @@
 namespace {
 
 constexpr uint32_t RECONNECT_MS = 2000;
-constexpr size_t AUDIO_BUFFER_SAMPLES = 16000 * 2;  // 2 с
+// Пинг раз в 5 с; нет ответа 3 с два раза подряд — соединение мёртвое (сервер уснул, пропал).
+constexpr uint32_t PING_INTERVAL_MS = 5000;
+constexpr uint32_t PONG_TIMEOUT_MS = 3000;
+constexpr uint8_t MISSED_PONGS = 2;
+
+constexpr UBaseType_t OUTGOING_LENGTH = 64;  // ~2 с звука
+constexpr UBaseType_t COMMAND_LENGTH = 16;
+constexpr size_t AUDIO_BUFFER_SAMPLES = 16000 * 2;  // 2 с принятого звука
+constexpr size_t SEND_PER_PASS = 8;  // сообщений за проход, чтобы приём не простаивал
 constexpr size_t JSON_BUFFER = 192;
 constexpr uint32_t LOG_PERIOD_MS = 1000;
 
@@ -15,9 +23,11 @@ constexpr uint32_t LOG_PERIOD_MS = 1000;
 
 bool ServerLink::begin(const char* host, uint16_t port, const char* path, const char* fwVersion) {
   fwVersion_ = fwVersion;
+  outgoing_ = xQueueCreateWithCaps(OUTGOING_LENGTH, sizeof(Outgoing), MALLOC_CAP_SPIRAM);
+  commands_ = xQueueCreate(COMMAND_LENGTH, sizeof(ServerCommand));
   audio_ = xStreamBufferCreateWithCaps(AUDIO_BUFFER_SAMPLES * sizeof(int16_t), 1, MALLOC_CAP_SPIRAM);
-  if (!audio_) {
-    Serial.println("server_link: нет памяти под буфер звука");
+  if (!outgoing_ || !commands_ || !audio_) {
+    Serial.println("server_link: нет памяти под очереди");
     return false;
   }
   if (!host || host[0] == '\0') {
@@ -26,37 +36,53 @@ bool ServerLink::begin(const char* host, uint16_t port, const char* path, const 
   }
   socket_.begin(host, port, path);
   socket_.setReconnectInterval(RECONNECT_MS);
+  socket_.enableHeartbeat(PING_INTERVAL_MS, PONG_TIMEOUT_MS, MISSED_PONGS);
   socket_.onEvent([this](WStype_t type, uint8_t* payload, size_t length) { onSocketEvent(type, payload, length); });
-  enabled_ = true;
-  return true;
+  return xTaskCreatePinnedToCore(taskEntry, "server_link", 8192, this, 4, nullptr, 1) == pdPASS;
 }
 
-void ServerLink::loop() {
-  // Без Wi-Fi не дёргаем сокет: попытка подключения подвесила бы loop().
-  if (!enabled_ || !WiFi.isConnected()) {
-    return;
-  }
-  socket_.loop();
-}
-
-bool ServerLink::isConnected() {
-  return enabled_ && socket_.isConnected();
+bool ServerLink::isConnected() const {
+  return connected_;
 }
 
 bool ServerLink::sendAudio(const int16_t* pcm, size_t samples) {
-  if (!isConnected()) {
+  if (!connected_) {
     return false;
   }
-  return socket_.sendBIN(reinterpret_cast<const uint8_t*>(pcm), samples * sizeof(int16_t));
+  bool ok = true;
+  while (samples > 0) {
+    const size_t n = samples < OUT_SAMPLES ? samples : OUT_SAMPLES;
+    staging_.isAudio = true;
+    staging_.samples = n;
+    memcpy(staging_.pcm, pcm, n * sizeof(int16_t));
+    ok = enqueue(staging_) && ok;
+    pcm += n;
+    samples -= n;
+  }
+  return ok;
 }
 
 bool ServerLink::sendEvent(const ClientEvent& event) {
-  if (!isConnected()) {
+  if (!connected_) {
     return false;
   }
-  char json[JSON_BUFFER];
-  const size_t length = encodeClientEvent(event, json, sizeof(json));
-  return length > 0 && socket_.sendTXT(json, length);
+  staging_.isAudio = false;
+  staging_.event = event;
+  staging_.samples = 0;
+  return enqueue(staging_);
+}
+
+bool ServerLink::enqueue(const Outgoing& message) {
+  if (xQueueSend(outgoing_, &message, 0) == pdTRUE) {
+    return true;
+  }
+  droppedOut_++;
+  if (millis() - lastOutLogMs_ >= LOG_PERIOD_MS) {
+    lastOutLogMs_ = millis();
+    Serial.printf("server_link: сеть не успевает, отброшено сообщений: %u\n", (unsigned)droppedOut_);
+    droppedOut_ = 0;
+  }
+  return false;
 }
 
 size_t ServerLink::readAudio(int16_t* dst, size_t maxSamples) {
@@ -64,19 +90,66 @@ size_t ServerLink::readAudio(int16_t* dst, size_t maxSamples) {
 }
 
 bool ServerLink::pollCommand(ServerCommand& command) {
-  if (commandCount_ == 0) {
-    return false;
-  }
-  const size_t tail = (commandHead_ + COMMAND_QUEUE - commandCount_) % COMMAND_QUEUE;
-  command = commands_[tail];
-  commandCount_--;
-  return true;
+  return xQueueReceive(commands_, &command, 0) == pdTRUE;
 }
 
 void ServerLink::setActiveTurn(uint32_t turn) {
+  taskENTER_CRITICAL(&gateLock_);
   gate_.setActiveTurn(turn);
-  if (!gate_.isOpen()) {
-    hasCarry_ = false;
+  taskEXIT_CRITICAL(&gateLock_);
+}
+
+bool ServerLink::gateOpen() {
+  taskENTER_CRITICAL(&gateLock_);
+  const bool open = gate_.isOpen();
+  taskEXIT_CRITICAL(&gateLock_);
+  return open;
+}
+
+void ServerLink::taskEntry(void* self) {
+  static_cast<ServerLink*>(self)->run();
+}
+
+void ServerLink::run() {
+  for (;;) {
+    if (!WiFi.isConnected()) {
+      // Без Wi-Fi библиотека сама не заметит обрыв — закрываем соединение явно.
+      if (connected_ || socket_.isConnected()) {
+        socket_.disconnect();
+        connected_ = false;
+        Serial.println("server_link: disconnected (нет Wi-Fi)");
+      }
+      dropQueued();
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
+
+    socket_.loop();  // может зависнуть на подключении — но только эта задача
+    if (connected_) {
+      sendQueued();
+    } else {
+      dropQueued();  // устаревшее не отправляем после переподключения
+    }
+    vTaskDelay(1);
+  }
+}
+
+void ServerLink::sendQueued() {
+  for (size_t i = 0; i < SEND_PER_PASS && xQueueReceive(outgoing_, &sending_, 0) == pdTRUE; i++) {
+    if (sending_.isAudio) {
+      socket_.sendBIN(reinterpret_cast<const uint8_t*>(sending_.pcm), sending_.samples * sizeof(int16_t));
+    } else {
+      char json[JSON_BUFFER];
+      const size_t length = encodeClientEvent(sending_.event, json, sizeof(json));
+      if (length > 0) {
+        socket_.sendTXT(json, length);
+      }
+    }
+  }
+}
+
+void ServerLink::dropQueued() {
+  while (xQueueReceive(outgoing_, &sending_, 0) == pdTRUE) {
   }
 }
 
@@ -84,6 +157,7 @@ void ServerLink::onSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
     case WStype_CONNECTED: {
       Serial.println("server_link: connected");
+      connected_ = true;
       char json[JSON_BUFFER];
       const size_t n = encodeHello(fwVersion_, json, sizeof(json));
       if (n > 0) {
@@ -92,9 +166,10 @@ void ServerLink::onSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       break;
     }
     case WStype_DISCONNECTED:
-      if (started_) {
+      if (connected_) {
         Serial.println("server_link: disconnected");
       }
+      connected_ = false;
       break;
     case WStype_TEXT:
       onText(reinterpret_cast<const char*>(payload), length);
@@ -105,53 +180,50 @@ void ServerLink::onSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
     default:
       break;  // фрагменты, ping/pong — не используем
   }
-  started_ = true;
 }
 
 void ServerLink::onText(const char* json, size_t length) {
   ServerCommand command;
   if (!decodeServerCommand(json, length, command)) {
-    log_w("server_link: непонятное сообщение: %.*s", (int)length, json);
+    Serial.printf("server_link: непонятное сообщение: %.*s\n", (int)length, json);
     return;
   }
+  taskENTER_CRITICAL(&gateLock_);
   gate_.onCommand(command);
-  if (!gate_.isOpen()) {
-    hasCarry_ = false;
+  taskEXIT_CRITICAL(&gateLock_);
+  if (xQueueSend(commands_, &command, 0) != pdTRUE) {
+    Serial.println("server_link: очередь команд полна, команда отброшена");
   }
-  if (commandCount_ == COMMAND_QUEUE) {
-    log_w("server_link: очередь команд полна, команда отброшена");
-    return;
-  }
-  commands_[commandHead_] = command;
-  commandHead_ = (commandHead_ + 1) % COMMAND_QUEUE;
-  commandCount_++;
 }
 
 void ServerLink::onBinary(const uint8_t* data, size_t length) {
-  if (!gate_.isOpen() || length == 0) {
+  if (!gateOpen()) {
+    hasCarry_ = false;  // шлюз закрыт — недоделанный отсчёт больше не нужен
+    return;
+  }
+  if (length == 0) {
     return;
   }
   // Отсчёт может разрезаться между кусками: нечётный байт ждёт пару.
   if (hasCarry_) {
     const int16_t sample = static_cast<int16_t>(carryByte_ | (data[0] << 8));
-    storeAudio(&sample, 1);
+    storeAudio(&sample, sizeof(sample));
     data++;
     length--;
     hasCarry_ = false;
   }
-  const size_t whole = length / sizeof(int16_t);
-  storeAudio(reinterpret_cast<const int16_t*>(data), whole);
-  if (length % sizeof(int16_t)) {
+  const size_t whole = length & ~static_cast<size_t>(1);
+  storeAudio(data, whole);
+  if (length != whole) {
     carryByte_ = data[length - 1];
     hasCarry_ = true;
   }
 }
 
-void ServerLink::storeAudio(const int16_t* samples, size_t count) {
-  const size_t bytes = count * sizeof(int16_t);
-  const size_t sent = xStreamBufferSend(audio_, samples, bytes, 0);
-  if (sent < bytes && millis() - lastOverflowLogMs_ >= LOG_PERIOD_MS) {
-    lastOverflowLogMs_ = millis();
-    log_w("server_link: буфер звука полон, отброшено %u байт", (unsigned)(bytes - sent));
+void ServerLink::storeAudio(const void* data, size_t bytes) {
+  const size_t sent = xStreamBufferSend(audio_, data, bytes, 0);
+  if (sent < bytes && millis() - lastLogMs_ >= LOG_PERIOD_MS) {
+    lastLogMs_ = millis();
+    Serial.printf("server_link: буфер звука полон, отброшено %u байт\n", (unsigned)(bytes - sent));
   }
 }
