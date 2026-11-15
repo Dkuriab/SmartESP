@@ -1,0 +1,8 @@
+# Секреты (шаблон — secrets.example.h)
+secrets.h
+
+# macOS
+.DS_Store
+
+# Сборка
+build/
