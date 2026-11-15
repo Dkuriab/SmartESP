@@ -14,7 +14,7 @@ python3 -m pip install -r requirements.txt
 
 ```bash
 python3 server.py            # эхо
-python3 server.py --long     # ответ — 60 с тона (переполнение очереди ESP)
+python3 server.py --long     # ответ — 60 с тона в 4× темпе (переполнение очереди ESP)
 python3 server.py --odd      # звук кусками по 4095 байт (нечётные куски)
 ```
 

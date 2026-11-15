@@ -214,8 +214,7 @@ bool isConnected();
 ### 6.5 `server_link` — WebSocket
 
 ```cpp
-bool begin(const char* host, uint16_t port, const char* path);
-void loop();                                   // webSocket.loop()
+bool begin(const char* host, uint16_t port, const char* path, const char* fwVersion);
 bool isConnected();
 bool sendAudio(const int16_t* pcm, size_t samples);
 bool sendEvent(const ClientEvent& ev);         // JSON, см. протокол
@@ -223,7 +222,13 @@ size_t readAudio(int16_t* dst, size_t maxSamples);  // принятый звук
 bool pollCommand(ServerCommand& cmd);          // принятые команды
 ```
 
-- Подключается, когда есть Wi-Fi; при обрыве переподключается сам.
+- Сеть обслуживает своя задача FreeRTOS: подключение к недоступному хосту и
+  отправка в мёртвое соединение могут висеть секунды, `loop()` от этого не
+  останавливается. `sendAudio`/`sendEvent` только ставят в общую очередь
+  (порядок звука и событий сохраняется), при переполнении — отбрасывают.
+- Подключается, когда есть Wi-Fi; без Wi-Fi закрывает соединение явно.
+  Пинг каждые 5 с: мёртвое соединение (сервер уснул) обнаруживается за ~11 с.
+  При обрыве переподключается сам.
 - После подключения шлёт `hello`.
 - Ничего не знает о сценарии — только транспорт и разбор JSON.
 
@@ -251,7 +256,7 @@ State state();
 setup(): begin() всех модулей; audio_in получает audioOut.readReference.
 
 loop():
-  wifi.loop(); server.loop(); session.loop();
+  wifi.loop(); session.loop();          (server_link — в своей задаче)
   микрофон → фронтенд:   while (audioIn.read(mic, ref, N)) frontend.feed(mic, ref, n)
   события → сценарий:    while (frontend.pollEvent(e)) session.onVoiceEvent(e)
   вопрос → сервер:       while (frontend.readClean(buf)) server.sendAudio(buf, n)

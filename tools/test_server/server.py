@@ -62,7 +62,9 @@ class Device:
         for start in range(0, len(audio), chunk):
             part = audio[start:start + chunk]
             await self.ws.send(part)
-            await asyncio.sleep(len(part) / BYTES_PER_SECOND)  # реальный темп
+            # Реальный темп; с --long — в 4 раза быстрее, чтобы переполнить очередь ESP (30 с).
+            speedup = 4 if self.args.long else 1
+            await asyncio.sleep(len(part) / BYTES_PER_SECOND / speedup)
         await self.send({"type": "reply_end", "turn": turn})
         print(f"   ответ на ход {turn}: {len(audio) / BYTES_PER_SECOND:.1f} с")
 
@@ -151,7 +153,7 @@ async def main():
     sys.stdout.reconfigure(line_buffering=True)  # лог виден сразу, даже при выводе в файл
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--long", action="store_true", help="ответ — 60 с тона (проверка переполнения очереди)")
+    parser.add_argument("--long", action="store_true", help="ответ — 60 с тона в 4 раза быстрее реального времени (переполнение очереди)")
     parser.add_argument("--odd", action="store_true", help="звук кусками по 4095 байт (проверка нечётных кусков)")
     args = parser.parse_args()
 
