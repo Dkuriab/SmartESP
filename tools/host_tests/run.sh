@@ -12,5 +12,6 @@ cd "$ROOT"
 clang++ -std=c++17 -Wall -Werror -I src -I "$JSON_DIR" \
   tools/host_tests/*.cpp \
   src/server_link/Protocol.cpp src/server_link/ReplyGate.cpp \
+  src/session/Session.cpp \
   -o "$OUT"
 "$OUT"
