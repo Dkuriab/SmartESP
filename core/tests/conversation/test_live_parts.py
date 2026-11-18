@@ -194,3 +194,25 @@ async def test_drain_without_turns_returns_at_once() -> None:
     started = time.monotonic()
     await setup.orchestrator.drain(1.0)
     assert time.monotonic() - started < 0.1
+
+
+async def test_wait_turns_waits_running_turn_without_cancelling() -> None:
+    executor = FakeExecutor(["Ответ."], delay=0.2)
+    setup = Setup(executor)
+    setup.port.feed(make_utterance(1))
+    async with running(setup):
+        await until(lambda: bool(executor.calls))
+        started = time.monotonic()
+        await setup.orchestrator.wait_turns(1.0)
+        assert time.monotonic() - started < 0.9
+        assert [(p.turn, p.finished) for p in setup.port.plays] == [(1, True)]
+
+
+async def test_wait_turns_gives_up_after_timeout_and_keeps_turn() -> None:
+    executor = HangingExecutor()
+    setup = Setup(executor)
+    setup.port.feed(make_utterance(1))
+    async with running(setup):
+        await until(lambda: executor.called)
+        await setup.orchestrator.wait_turns(0.05)
+        assert not executor.cancelled

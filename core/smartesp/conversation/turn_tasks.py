@@ -37,6 +37,12 @@ class TurnTasks:
         _, pending = await asyncio.wait(tasks, timeout=timeout_s)
         await _cancel(pending)
 
+    async def wait(self, timeout_s: float) -> None:
+        """Ждёт ходы, идущие сейчас (новые не ждёт), не дольше timeout_s секунд; ничего не отменяет."""
+        tasks = list(self._tasks)
+        if tasks:
+            await asyncio.wait(tasks, timeout=timeout_s)
+
     async def cancel_all(self) -> None:
         """Отменяет все идущие ходы и ждёт их завершения."""
         await _cancel(self._tasks)

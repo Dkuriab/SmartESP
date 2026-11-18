@@ -103,6 +103,10 @@ class Orchestrator:
         """Ждёт идущие ходы не дольше timeout_s секунд, затем отменяет оставшиеся и дожидается их."""
         await self._tasks.drain(timeout_s)
 
+    async def wait_turns(self, timeout_s: float) -> None:
+        """Ждёт ходы, идущие сейчас (новые не ждёт), не дольше timeout_s секунд; ничего не отменяет."""
+        await self._tasks.wait(timeout_s)
+
     async def run(self) -> None:
         """Бесконечно ждёт реплики и запускает на каждую свою задачу хода.
 
