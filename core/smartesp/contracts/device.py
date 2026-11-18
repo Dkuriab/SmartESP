@@ -3,9 +3,22 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Protocol
 
 from .audio import Utterance
+
+
+@dataclass(frozen=True)
+class DeviceInfo:
+    """Сведения о колонке для интерфейса; remote, fw и last_seen — по последней сессии."""
+
+    device_id: str
+    name: str
+    connected: bool
+    remote: str
+    fw: str
+    last_seen: float | None  # time.time() последнего кадра; None — колонка не подключалась
 
 
 class DevicePort(Protocol):

@@ -1,7 +1,7 @@
 """Договоры ядра: только типы и протоколы, без логики."""
 
 from .audio import SAMPLE_RATE, Utterance
-from .device import DevicePort
+from .device import DeviceInfo, DevicePort
 from .events import CoreEvent, EventFeed, EventSink, Subscription
 from .executor import ChatMessage, Executor, ExecutorError, ReplyPart
 from .stage import Analyzer, Annotation, Stage
@@ -14,6 +14,7 @@ __all__ = [
     "Annotation",
     "ChatMessage",
     "CoreEvent",
+    "DeviceInfo",
     "DevicePort",
     "EventFeed",
     "EventSink",

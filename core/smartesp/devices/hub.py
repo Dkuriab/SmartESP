@@ -9,12 +9,13 @@ import time
 from collections.abc import AsyncIterator, Callable, Coroutine, Iterable
 from typing import Any
 
-from smartesp.contracts import Utterance
+from smartesp.contracts import DeviceInfo, EventSink, Utterance
 
 from .arbiter import Arbiter, Decision
 from .connection import DeviceConnection
 from .messages import BargeIn, Hello, PlaybackDone, UtteranceEnd, Wake, cancel_turn, parse_message, tone
 from .playback import send_reply
+from .registry import DeviceRegistry
 from .session import ActiveTurn, Recording, Session
 
 POLL_S = 0.05  # как часто таймер хаба спрашивает арбитра
@@ -39,10 +40,19 @@ class DeviceHub:
         late_s: float,
         names: dict[str, str],
         clock: Callable[[], float] = time.monotonic,
+        *,
+        events: EventSink | None = None,
+        wall_clock: Callable[[], float] = time.time,
     ) -> None:
-        """window_s, late_s — окна арбитра; names — имена колонок по id; clock — часы (секунды)."""
+        """window_s, late_s — окна арбитра; names — имена колонок по id; clock — часы (секунды).
+
+        events — приёмник событий (None — без событий); wall_clock — настенные часы для last_seen.
+        """
         self._arbiter = Arbiter(window_s, late_s)
-        self._names = dict(names)
+        self._registry = DeviceRegistry(names)
+        self._events = events
+        self._wall_clock = wall_clock
+        self._accepting = True
         self._clock = clock
         self._sessions: dict[str, Session] = {}
         self._utterances: asyncio.Queue[Utterance] = asyncio.Queue()
@@ -55,10 +65,12 @@ class DeviceHub:
         self._ensure_polling()
         session: Session | None = None
         try:
-            session = await self._wait_hello(conn)
-            self._open(session)
+            session, fw = await self._wait_hello(conn)
+            self._open(session, fw)
             while not session.closed:
-                self._on_frame(session, await conn.receive())
+                frame = await conn.receive()
+                self._registry.touch(session.device_id, self._wall_clock())
+                self._on_frame(session, frame)
         except ConnectionError:
             pass
         finally:
@@ -88,7 +100,24 @@ class DeviceHub:
 
     def device_name(self, device_id: str) -> str:
         """Имя колонки из конфигурации или сам id."""
-        return self._names.get(device_id, device_id)
+        return self._registry.name(device_id)
+
+    def set_names(self, names: dict[str, str]) -> None:
+        """Заменяет имена колонок на лету."""
+        self._registry.set_names(names)
+
+    def devices(self) -> list[DeviceInfo]:
+        """Подключённые и известные по настройкам колонки, по имени."""
+        return self._registry.devices(set(self._sessions))
+
+    def stop_accepting(self) -> None:
+        """Новые wake сразу отменяются (cancel_turn), звук не копится."""
+        self._accepting = False
+
+    async def close_all(self) -> None:
+        """Закрывает все текущие соединения и ждёт закрытия."""
+        sessions = list(self._sessions.values())
+        await asyncio.gather(*(_close_quietly(s.conn) for s in sessions))
 
     async def aclose(self) -> None:
         """Останавливает таймер арбитра и фоновые отправки и ждёт их. Повторный вызов безопасен."""
@@ -126,19 +155,28 @@ class DeviceHub:
 
         task.add_done_callback(done)
 
-    async def _wait_hello(self, conn: DeviceConnection) -> Session:
-        """Ждёт hello; всё, что пришло раньше, игнорирует."""
+    async def _wait_hello(self, conn: DeviceConnection) -> tuple[Session, str]:
+        """Ждёт hello; всё, что пришло раньше, игнорирует. Возвращает сессию и версию прошивки."""
         while True:
             frame = await conn.receive()
             message = parse_message(frame) if isinstance(frame, str) else None
             if isinstance(message, Hello):
-                return Session(message.device_id or f"legacy:{conn.remote}", conn)
+                return Session(message.device_id or f"legacy:{conn.remote}", conn), message.fw
 
-    def _open(self, session: Session) -> None:
+    def _publish(self, kind: str, data: dict[str, object]) -> None:
+        """Публикует событие, если есть приёмник."""
+        if self._events is not None:
+            self._events.publish(kind, data)
+
+    def _open(self, session: Session, fw: str) -> None:
         """Регистрирует сессию; прежняя сессия с тем же id закрывается (в фоне)."""
         old = self._sessions.get(session.device_id)
         self._sessions[session.device_id] = session
-        logger.info("device %s connected from %s", session.device_id, session.conn.remote)
+        remote = session.conn.remote
+        self._registry.hello(session.device_id, remote, fw, self._wall_clock())
+        logger.info("device %s connected from %s", session.device_id, remote)
+        info = {"device_id": session.device_id, "name": self.device_name(session.device_id)}
+        self._publish("device_connected", {**info, "remote": remote, "fw": fw})
         if old is not None:
             self._end_session(old)
             self._spawn(_close_quietly(old.conn), f"closing old session of {old.device_id}")
@@ -148,6 +186,7 @@ class DeviceHub:
         if self._sessions.get(session.device_id) is session:
             del self._sessions[session.device_id]
             logger.info("device %s disconnected", session.device_id)
+            self._publish("device_disconnected", {"device_id": session.device_id})
         self._end_session(session)
 
     def _end_session(self, session: Session) -> None:
@@ -181,9 +220,13 @@ class DeviceHub:
             self._end_turn(session, message.turn)
 
     def _on_wake(self, session: Session, wake: Wake) -> None:
-        """Новый ход: прежний заканчивается, звук копится, решает арбитр."""
+        """Новый ход: прежний заканчивается, звук копится, решает арбитр. При остановке — сразу отмена."""
+        if not self._accepting:
+            self._spawn(session.send(cancel_turn(wake.turn)), f"cancel_turn to {session.device_id}")
+            return
         if session.active is not None:
             self._end_turn(session, session.active.esp_turn)
+        self._publish("wake", {"device_id": session.device_id, "level": wake.level})
         now = self._clock()
         session.recording = Recording(esp_turn=wake.turn, started_at=now)
         self._apply(self._arbiter.on_wake(session.device_id, wake.turn, wake.level, now))
@@ -225,6 +268,7 @@ class DeviceHub:
             # колонка ушла или уже начала другой ход — принимать нечего
             self._arbiter.on_turn_finished(decision.device_id, decision.turn)
             return
+        self._publish("arbitration", {"device_id": decision.device_id, "decision": "accept"})
         recording.turn_id = next(self._turn_ids)
         session.active = ActiveTurn(turn_id=recording.turn_id, esp_turn=decision.turn)
         if recording.ended:
@@ -233,6 +277,7 @@ class DeviceHub:
     def _cancel(self, decision: Decision) -> None:
         """Ход отменён: выбросить запись, закончить ход, сказать колонке cancel_turn."""
         self._arbiter.on_turn_finished(decision.device_id, decision.turn)
+        self._publish("arbitration", {"device_id": decision.device_id, "decision": "cancel"})
         session = self._sessions.get(decision.device_id)
         if session is None:
             return
