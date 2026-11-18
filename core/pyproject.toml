@@ -1,0 +1,45 @@
+[project]
+name = "smartesp-core"
+version = "0.1.0"
+description = "Ядро домашнего голосового ассистента SmartESP"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi==0.163.2",
+    "uvicorn==0.54.0",
+    "pydantic==2.14.3",
+    "PyYAML==6.0.3",
+    "ollama==0.6.3",
+    "mlx-whisper==0.4.3",
+    "piper-tts==1.8.0",
+    "soxr==1.1.0",
+    "numpy==2.5.5",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==9.2.0",
+    "pytest-asyncio==1.5.0",
+    "httpx==0.28.1",
+    "ruff==0.17.5",
+    "pyright==1.1.414",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = ["models: нужны настоящие модели"]
+addopts = "-m 'not models'"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.pyright]
+strict = ["smartesp/contracts"]
+include = ["smartesp", "fakes", "tests"]

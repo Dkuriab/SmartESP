@@ -7,3 +7,9 @@ secrets.h
 # Сборка
 build/
 .superpowers/
+
+# Python (ядро)
+core/.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
