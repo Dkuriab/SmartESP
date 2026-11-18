@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
-from collections.abc import Mapping
+from collections.abc import Coroutine, Mapping
 from typing import Any, cast
 
 from smartesp.contracts import ChangeResult, ConfigStore, EventSink, Section, VoicePort
@@ -15,6 +15,7 @@ _log = logging.getLogger(__name__)
 RESTART_SECTIONS = ("server", "stt", "arbitration")
 TTS_SECTION = "tts"
 _NOT_SECTIONS = (*RESTART_SECTIONS, TTS_SECTION)  # их не собирают через Section
+STOPPING = "ядро останавливается"
 
 
 class ChangeQueue:
@@ -29,11 +30,15 @@ class ChangeQueue:
     5. store.save(new) и событие change_applied(ok=True).
 
     Сбой на шагах 1–3 — ничего не подменено, собранные части освобождаются, файл не
-    трогается, change_applied(ok=False, error). Голос при этом может уже смениться
-    сам (его подменяет менеджер голосов), но tts открывается последним, после всех
-    сборок, так что сбой сборки до него не доходит. Сбой swap (договор: не падает)
-    оставляет уже подменённые части подменёнными, файл не трогается. Сбой release
-    только пишется в журнал: изменение уже применено.
+    трогается, change_applied(ok=False, error). tts открывается последним, после
+    всех сборок. Если голос не открылся, в фоне снова открывается прежний голос
+    (retry=True), чтобы менеджер голосов вернулся к записанным настройкам.
+    Сбой swap (договор: не падает) оставляет уже подменённые части подменёнными,
+    файл не трогается. Сбой release только пишется в журнал: изменение уже применено.
+    Сбой save после подмены — части уже новые, а файл старый: громкая запись в
+    журнал и change_applied(ok=False, error="применено, но не сохранено: …").
+
+    release может ждать конца звучащих ходов — тогда следующая правка ждёт тоже.
 
     Разделы из RESTART_SECTIONS не собираются, а только записываются; после записи
     такой правки restart_required = True до перезапуска процесса.
@@ -53,8 +58,9 @@ class ChangeQueue:
         self._events = events
         self._queue: asyncio.Queue[tuple[int, dict[str, Any]]] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
+        self._background: set[asyncio.Task[None]] = set()
         self._busy = False
-        self._closed = False
+        self.closed = False
         self.restart_required = False
 
     @property
@@ -63,11 +69,14 @@ class ChangeQueue:
         return self._busy or not self._queue.empty()
 
     def submit(self, change_id: int, patch: dict[str, Any]) -> ChangeResult:
-        """Проверяет правку и ставит её в очередь; не ждёт применения."""
-        if self._closed:
-            return ChangeResult(change_id, "invalid", "ядро останавливается")
+        """Проверяет правку и ставит её в очередь; не ждёт применения.
+
+        После aclose — status "stopping", правка не принимается.
+        """
+        if self.closed:
+            return ChangeResult(change_id, "stopping", STOPPING)
         try:
-            _, changed = self._diff(patch)
+            _, _, changed = self._diff(patch)
         except ValueError as error:
             return ChangeResult(change_id, "invalid", str(error))
         self._queue.put_nowait((change_id, copy.deepcopy(patch)))
@@ -78,19 +87,23 @@ class ChangeQueue:
         return ChangeResult(change_id, "accepted")
 
     async def aclose(self) -> None:
-        """Останавливает очередь: текущая правка отменяется (без записи и события), ждущие отбрасываются."""
-        self._closed = True
-        worker, self._worker = self._worker, None
-        if worker is not None:
-            worker.cancel()
-            await asyncio.gather(worker, return_exceptions=True)
+        """Останавливает очередь и фоновые задачи.
+
+        Текущая правка отменяется (без записи и события), ждущие отбрасываются.
+        """
+        self.closed = True
+        tasks = [t for t in [self._worker, *self._background] if t is not None]
+        self._worker = None
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         while not self._queue.empty():
             self._queue.get_nowait()
 
     # ---- внутреннее ----
 
-    def _diff(self, patch: dict[str, Any]) -> tuple[Any, list[str]]:
-        """Новые настройки и разделы, которые правка меняет; ValueError — правка неверна."""
+    def _diff(self, patch: dict[str, Any]) -> tuple[Any, Any, list[str]]:
+        """Старые и новые настройки и изменённые разделы; ValueError — правка неверна."""
         old = self._store.merge({})  # пустая правка — текущие записанные настройки
         new = self._store.merge(patch)
         changed = [
@@ -98,7 +111,7 @@ class ChangeQueue:
             for name in self._store.effective()
             if self._store.section(old, name) != self._store.section(new, name)
         ]
-        return new, changed
+        return old, new, changed
 
     async def _run(self) -> None:
         while True:
@@ -106,35 +119,42 @@ class ChangeQueue:
             self._busy = True
             try:
                 await self._apply(change_id, patch)
+            except Exception:  # очередь не должна умирать ни от чего
+                _log.error("Изменение %s: сбой очереди", change_id, exc_info=True)
             finally:
                 self._busy = False
 
     async def _apply(self, change_id: int, patch: dict[str, Any]) -> None:
         changed: list[str] = []
         try:
-            new, changed = self._diff(patch)
-            await self._apply_live(new, changed)
-            self._store.save(new)
+            old, new, changed = self._diff(patch)
+            await self._apply_live(old, new, changed)
         except Exception as error:
             _log.warning("Изменение %s не применено: %s", change_id, error, exc_info=True)
-            self._announce(change_id, changed, str(error) or type(error).__name__)
+            self._announce(change_id, changed, _text(error))
+            return
+        try:
+            self._store.save(new)
+        except Exception as error:
+            _log.error("Изменение %s применено, но НЕ сохранено в файл", change_id, exc_info=True)
+            self._announce(change_id, changed, f"применено, но не сохранено: {_text(error)}")
             return
         if any(name in RESTART_SECTIONS for name in changed):
             self.restart_required = True
         _log.info("Изменение %s применено: %s", change_id, ", ".join(changed) or "без изменений")
         self._announce(change_id, changed, None)
 
-    async def _apply_live(self, new: Any, changed: list[str]) -> None:
+    async def _apply_live(self, old: Any, new: Any, changed: list[str]) -> None:
         live = [name for name in changed if name in self._sections and name not in _NOT_SECTIONS]
         built = await self._build_all(new, live)
         try:
             if TTS_SECTION in changed:
-                await self._open_voice(new)
+                await self._open_voice(old, new)
         except BaseException:
             await self._release_all(built)
             raise
-        old = {name: self._sections[name].swap(part) for name, part in built.items()}
-        await self._release_all(old)
+        previous = {name: self._sections[name].swap(part) for name, part in built.items()}
+        await self._release_all(previous)
 
     async def _build_all(self, new: Any, names: list[str]) -> dict[str, object]:
         """Собирает части по очереди; сбой — освобождает уже собранные и пробрасывает."""
@@ -147,12 +167,30 @@ class ChangeQueue:
             raise
         return built
 
-    async def _open_voice(self, new: Any) -> None:
-        tts = cast(dict[str, object], self._store.section(new, TTS_SECTION))
-        kind, voice = str(tts["kind"]), str(tts["voice"])
-        if not await self._voices.open(kind, voice, retry=False):
-            error = self._voices.state().get("error")
-            raise RuntimeError(str(error) if error else f"Голос {kind}/{voice} не включился")
+    async def _open_voice(self, old: Any, new: Any) -> None:
+        kind, voice = self._voice(new)
+        if await self._voices.open(kind, voice, retry=False):
+            return
+        error = self._voices.state().get("error")
+        self._spawn(self._restore_voice(*self._voice(old)))
+        raise RuntimeError(str(error) if error else f"Голос {kind}/{voice} не включился")
+
+    def _voice(self, config: Any) -> tuple[str, str]:
+        tts = cast(dict[str, object], self._store.section(config, TTS_SECTION))
+        return str(tts["kind"]), str(tts["voice"])
+
+    async def _restore_voice(self, kind: str, voice: str) -> None:
+        """Возвращает менеджер голосов к записанному голосу (с повторами, как при старте)."""
+        try:
+            if not await self._voices.open(kind, voice, retry=True):
+                _log.warning("Прежний голос %s/%s не вернулся", kind, voice)
+        except Exception:
+            _log.warning("Прежний голос %s/%s не вернулся", kind, voice, exc_info=True)
+
+    def _spawn(self, work: Coroutine[Any, Any, None]) -> None:
+        task = asyncio.create_task(work)
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
 
     async def _release_all(self, parts: Mapping[str, object | None]) -> None:
         """Освобождает части разделов; сбой одной только пишется в журнал."""
@@ -172,4 +210,11 @@ class ChangeQueue:
             "error": error,
             "sections": sections,
         }
-        self._events.publish("change_applied", data)
+        try:
+            self._events.publish("change_applied", data)
+        except Exception:
+            _log.error("Изменение %s: событие change_applied не отправлено", change_id, exc_info=True)
+
+
+def _text(error: Exception) -> str:
+    return str(error) or type(error).__name__

@@ -54,7 +54,7 @@ class SharedFetcher:
         """
         target = voice_path(kind, voice, self._home)
         shared = self._fetches.get(target)
-        if shared is None:
+        if shared is None or shared.task.done():  # законченное ещё не убрано колбэком
             shared = _Shared(asyncio.create_task(self._run(kind, voice, target)))
             self._fetches[target] = shared
             self._tasks.add(shared.task)
@@ -90,6 +90,8 @@ class SharedFetcher:
         previous = self._threads.get(target)
         if previous is not None:
             await asyncio.wait([previous])  # прежний поток ещё может писать .part
+            if target.exists():  # брошенный поток успел докачать
+                return
 
         def emit(done: int, total: int | None) -> None:
             self._publish("voice_download", {"kind": kind, "voice": voice, "done": done, "total": total})

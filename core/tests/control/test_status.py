@@ -44,6 +44,13 @@ async def test_status_marks_ollama_unreachable_on_error() -> None:
     await h.core.aclose()
 
 
+async def test_status_survives_unexpected_ollama_error() -> None:
+    h = Harness()
+    h.loaded_models = OSError("соединение сброшено")
+    assert (await h.core.status())["ollama"] == {"reachable": False, "loaded": []}
+    await h.core.aclose()
+
+
 async def test_status_does_not_wait_for_hung_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(core_module, "OLLAMA_TIMEOUT_S", 0.01)
     h = Harness()

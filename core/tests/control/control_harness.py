@@ -32,10 +32,14 @@ class LogSink(RecordingSink):
     def __init__(self, log: list[str]) -> None:
         super().__init__()
         self._log = log
+        self.failures = 0  # столько ближайших публикаций бросят ошибку
 
     def publish(self, kind: str, data: dict[str, object]) -> None:
         self._log.append(f"event {kind}")
         super().publish(kind, data)
+        if self.failures:
+            self.failures -= 1
+            raise RuntimeError("подписчик упал")
 
 
 class FakeSection:
@@ -46,6 +50,7 @@ class FakeSection:
         self.log = log
         self.current: object = f"{name}:initial"
         self.gate: asyncio.Event | None = None
+        self.release_gate: asyncio.Event | None = None
         self.error: Exception | None = None
 
     async def build(self, config: Any) -> object:
@@ -63,6 +68,8 @@ class FakeSection:
 
     async def release(self, old: object) -> None:
         self.log.append(f"release {old}")
+        if self.release_gate is not None:
+            await self.release_gate.wait()  # как ожидание конца звучащего хода
 
     def section(self) -> Section:
         return Section(build=self.build, swap=self.swap, release=self.release)

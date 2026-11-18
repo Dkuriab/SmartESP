@@ -18,6 +18,7 @@ class FakeConfigStore:
         self.current: dict[str, Any] = copy.deepcopy(initial)
         self.saved: list[dict[str, Any]] = []
         self.on_save: list[str] | None = None  # общий журнал вызовов, если задан
+        self.save_error: Exception | None = None
 
     def effective(self) -> dict[str, Any]:
         return copy.deepcopy(self.current)
@@ -41,6 +42,8 @@ class FakeConfigStore:
     def save(self, config: dict[str, Any]) -> None:
         if self.on_save is not None:
             self.on_save.append("save")
+        if self.save_error is not None:
+            raise self.save_error
         self.saved.append(config)
         self.current = config
 

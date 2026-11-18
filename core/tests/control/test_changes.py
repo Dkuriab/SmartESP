@@ -144,7 +144,8 @@ async def test_failed_voice_keeps_file_and_releases_built_parts() -> None:
     h.voices.voice_state = {"kind": "vosk", "voice": "female_1", "state": "failed", "error": "нет сети"}
     await h.core.patch_config({"tts": {"voice": "female_1", "kind": "vosk"}, "history": {"turns": 1}})
     await h.settle(1)
-    assert h.log == [
+    await h.spin()
+    assert [line for line in h.log if line != "open silero/xenia"] == [
         "build history",
         "open vosk/female_1",
         "release history:{'turns': 1}",
@@ -153,6 +154,8 @@ async def test_failed_voice_keeps_file_and_releases_built_parts() -> None:
     assert h.sections["history"].current == "history:initial"
     assert h.store.saved == []
     assert h.applied() == [{"change_id": 1, "ok": False, "error": "нет сети", "sections": ["tts", "history"]}]
+    # менеджер голосов возвращают к записанному голосу, с повторами
+    assert h.voices.opened == [("vosk", "female_1", False), ("silero", "xenia", True)]
     await h.core.aclose()
 
 
@@ -175,5 +178,73 @@ async def test_aclose_cancels_running_change_and_refuses_new() -> None:
     assert h.applied() == []
     assert (await h.core.status())["applying"] is False
     late = await h.core.patch_config({"history": {"turns": 30}})
-    assert late.status == "invalid"
+    assert late.status == "stopping"
     assert late.error == "ядро останавливается"
+    download = await h.core.download_voice("vosk", "female_1")
+    assert download.status == "stopping"
+    await h.spin()
+    assert h.voices.downloaded == []
+
+
+async def test_waiting_release_holds_next_change() -> None:
+    h = Harness()
+    h.sections["history"].release_gate = asyncio.Event()
+    await h.core.patch_config({"history": {"turns": 20}})
+    await h.core.patch_config({"devices": {"a": "Кухня"}})
+    await h.spin()
+    # release ждёт (например, конца звучащего хода) — следующая правка ждёт тоже
+    assert h.log == ["build history", "swap history", "release history:initial"]
+    assert (await h.core.status())["applying"] is True
+    h.sections["history"].release_gate.set()
+    await h.settle(2)
+    assert h.log[3:6] == ["save", "event change_applied", "build devices"]
+    await h.core.aclose()
+
+
+async def test_good_failed_good_changes_keep_only_good_ones() -> None:
+    h = Harness()
+    await h.core.patch_config({"history": {"turns": 20}})
+    await h.settle(1)
+    h.sections["executors"].error = RuntimeError("модель не влезла")
+    await h.core.patch_config({"executors": [{"id": "main", "model": "big"}]})
+    await h.settle(2)
+    h.sections["executors"].error = None
+    await h.core.patch_config({"devices": {"a": "Кухня"}})
+    await h.settle(3)
+    assert [e["ok"] for e in h.applied()] == [True, False, True]
+    assert len(h.store.saved) == 2
+    final = h.store.saved[-1]
+    assert final["history"] == {"turns": 20}
+    assert final["devices"] == {"a": "Кухня"}
+    assert final["executors"] == [{"id": "main", "model": "qwen"}]  # сбойное не просочилось
+    assert h.sections["executors"].current == "executors:initial"
+    await h.core.aclose()
+
+
+async def test_failed_save_after_swap_is_reported() -> None:
+    h = Harness()
+    h.store.save_error = OSError("диск полон")
+    await h.core.patch_config({"server": {"port": 1}, "history": {"turns": 20}})
+    await h.settle(1)
+    assert h.sections["history"].current == "history:{'turns': 20}"  # уже подменено
+    assert h.applied() == [
+        {
+            "change_id": 1,
+            "ok": False,
+            "error": "применено, но не сохранено: диск полон",
+            "sections": ["server", "history"],
+        }
+    ]
+    assert (await h.core.status())["restart_required"] is False
+    await h.core.aclose()
+
+
+async def test_failing_event_sink_does_not_stop_queue() -> None:
+    h = Harness()
+    h.events.failures = 1
+    await h.core.patch_config({"history": {"turns": 20}})
+    await h.core.patch_config({"devices": {"a": "Кухня"}})
+    await h.settle(2)
+    assert len(h.store.saved) == 2
+    assert (await h.core.status())["applying"] is False
+    await h.core.aclose()

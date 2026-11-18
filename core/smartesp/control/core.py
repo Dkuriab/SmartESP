@@ -21,7 +21,7 @@ from smartesp.contracts import (
     VoicePort,
 )
 
-from .changes import RESTART_SECTIONS, ChangeQueue
+from .changes import RESTART_SECTIONS, STOPPING, ChangeQueue
 
 _log = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ class Core:
     async def patch_config(self, patch: dict[str, Any]) -> ChangeResult:
         """Проверяет правку и ставит в очередь: accepted, restart_required или invalid.
 
-        После остановки (aclose) — invalid с текстом «ядро останавливается».
+        После остановки (aclose) — stopping с текстом «ядро останавливается».
         """
         return self._changes.submit(next(self._ids), patch)
 
@@ -144,9 +144,11 @@ class Core:
         """Запускает скачивание в фоне и сразу отвечает accepted.
 
         Ход и итог публикует менеджер голосов (voice_download, voice_ready);
-        ошибка скачивания здесь только пишется в журнал.
+        ошибка скачивания здесь только пишется в журнал. После aclose — "stopping".
         """
         change_id = next(self._ids)
+        if self._changes.closed:
+            return ChangeResult(change_id, "stopping", STOPPING)
         task = asyncio.create_task(self._download(kind, voice), name=f"voice-download-{change_id}")
         self._downloads.add(task)
         task.add_done_callback(self._downloads.discard)
@@ -167,6 +169,9 @@ class Core:
             async with asyncio.timeout(OLLAMA_TIMEOUT_S):
                 loaded = await self._loaded()
         except (ExecutorError, TimeoutError):
+            return {"reachable": False, "loaded": []}
+        except Exception:  # status не должен падать из-за Ollama
+            _log.warning("Ollama: список загруженных моделей не получен", exc_info=True)
             return {"reachable": False, "loaded": []}
         return {"reachable": True, "loaded": loaded}
 

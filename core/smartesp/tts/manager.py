@@ -110,10 +110,13 @@ class VoiceManager:
         key = (kind, voice)
         job = self._job
         if job is None or job.done() or self._wanted != key:
-            return await _result(self._start(key, retry))
-        if retry:
+            job = self._start(key, retry)
+        elif retry:
             self._job_retry = True
+        if retry:
             return await _result(job)
+        # одна попытка ждёт только итог ближайшей попытки, а не всё открытие:
+        # присоединившийся retry=True не держит её на повторах
         assert self._outcome is not None
         return await _result(self._outcome)
 
