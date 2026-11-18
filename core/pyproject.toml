@@ -14,13 +14,14 @@ dependencies = [
     "soxr==1.1.0",
     "numpy==2.5.5",
     "websockets==17.4",
+    "starlette==1.10.0",
+    "httpx==0.28.1",
 ]
 
 [dependency-groups]
 dev = [
     "pytest==9.2.0",
     "pytest-asyncio==1.5.0",
-    "httpx==0.28.1",
     "ruff==0.17.5",
     "pyright==1.1.414",
 ]

@@ -978,6 +978,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "mlx-whisper" },
     { name = "numpy" },
     { name = "ollama" },
@@ -985,13 +986,13 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "soxr" },
+    { name = "starlette" },
     { name = "uvicorn" },
     { name = "websockets" },
 ]
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1001,6 +1002,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = "==0.163.2" },
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "mlx-whisper", specifier = "==0.4.3" },
     { name = "numpy", specifier = "==2.5.5" },
     { name = "ollama", specifier = "==0.6.3" },
@@ -1008,13 +1010,13 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.14.3" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "soxr", specifier = "==1.1.0" },
+    { name = "starlette", specifier = "==1.10.0" },
     { name = "uvicorn", specifier = "==0.54.0" },
     { name = "websockets", specifier = "==17.4" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = "==0.28.1" },
     { name = "pyright", specifier = "==1.1.414" },
     { name = "pytest", specifier = "==9.2.0" },
     { name = "pytest-asyncio", specifier = "==1.5.0" },

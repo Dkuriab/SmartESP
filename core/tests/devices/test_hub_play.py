@@ -204,3 +204,22 @@ async def test_early_stop_closes_audio_source() -> None:
     await asyncio.wait_for(hub.play("A", 1, audio()), 1)
     assert closed.is_set()
     assert len(conn.sent_audio()) == 100
+
+
+async def test_inactive_turn_closes_audio_source() -> None:
+    clock = FakeClock()
+    hub = make_hub(clock)
+    conn, _ = await accepted_turn(hub, clock, "A")
+    closed = asyncio.Event()
+
+    async def audio() -> AsyncIterator[bytes]:
+        try:
+            yield bytes(100)
+        finally:
+            closed.set()
+
+    source = audio()
+    await anext(source)  # генератор начат: aclose() выполнит его finally
+    await hub.play("A", 2, source)  # ход хаба 2 не активен — ничего не шлём, но источник закрываем
+    assert closed.is_set()
+    assert conn.sent == []

@@ -72,15 +72,15 @@ async def send_reply(
     """Шлёт ответ хода turn_id. Ход закончился или связь оборвалась — тихо выходит без reply_end.
 
     Ошибки самого источника звука (audio) не глотаются — они уходят вызывающему.
-    При досрочном выходе у audio вызывается aclose(), если он есть.
+    При любом выходе (и когда ход уже неактивен) у audio вызывается aclose(), если он есть.
     """
-    active = session.active
-    if active is None or not session.is_live(turn_id):
-        return
-    if not await session.send(reply_start(active.esp_turn), turn_id):
-        return
-    pacer = _Pacer(clock)
     try:
+        active = session.active
+        if active is None or not session.is_live(turn_id):
+            return
+        if not await session.send(reply_start(active.esp_turn), turn_id):
+            return
+        pacer = _Pacer(clock)
         async for chunk in audio:
             for piece in _pieces(chunk):
                 if not await _send_piece(session, turn_id, piece, pacer):

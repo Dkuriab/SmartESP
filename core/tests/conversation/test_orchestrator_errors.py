@@ -41,14 +41,14 @@ class MidStreamFailingExecutor:
         raise ExecutorError("связь с ollama пропала")
 
 
-async def test_executor_error_mid_reply_ends_reply_and_plays_tone() -> None:
+async def test_executor_error_mid_reply_ends_reply_without_tone() -> None:
     setup = Setup(MidStreamFailingExecutor())
     setup.port.feed(make_utterance())
     async with running(setup):
         await wait_for(lambda: setup.port.wait_plays(1))
     assert setup.port.plays[0].finished
     assert len(setup.port.plays[0].audio) > 0
-    assert setup.port.tones == [("kitchen", "error")]
+    assert setup.port.tones == []  # оборванного ответа достаточно, сигнал ошибки не нужен
     assert setup.history.messages() == []
 
 
@@ -93,31 +93,61 @@ async def test_analyzer_failure_plays_error_tone() -> None:
     assert executor.calls == []
 
 
-class TTSFailingOnSecondSentence(CountingTTS):
-    """Озвучивает первое предложение, на втором падает."""
+class FailingTTS(CountingTTS):
+    """Озвучивает первые good предложений, на следующем падает."""
+
+    def __init__(self, good: int) -> None:
+        super().__init__()
+        self._good = good
 
     async def _broken(self) -> AsyncIterator[bytes]:
         raise RuntimeError("piper упал")
         yield b""
 
     def synthesize(self, text: str, style: str) -> AsyncIterator[bytes]:
-        if self.texts:
+        if len(self.texts) >= self._good:
             self.texts.append(text)
             return self._broken()
         return super().synthesize(text, style)
 
 
-async def test_tts_failure_mid_reply_ends_reply_and_plays_tone() -> None:
+async def test_tts_failure_mid_reply_ends_reply_without_tone() -> None:
     executor = FakeExecutor(["Сегодня солнечно и тепло. ", "Хорошего тебе дня!"])
-    setup = Setup(executor, tts=TTSFailingOnSecondSentence())
+    setup = Setup(executor, tts=FailingTTS(good=1))
     setup.port.feed(make_utterance())
     async with running(setup):
         await wait_for(lambda: setup.port.wait_plays(1))
     play = setup.port.plays[0]
     assert play.finished  # поток закончился штатно — настоящий хаб пошлёт reply_end
     assert len(play.audio) > 0
+    assert setup.port.tones == []
+    assert setup.history.messages() == []
+
+
+async def test_tts_failure_before_any_audio_plays_tone() -> None:
+    setup = Setup(FakeExecutor(["Сегодня солнечно и тепло."]), tts=FailingTTS(good=0))
+    setup.port.feed(make_utterance())
+    async with running(setup):
+        await wait_for(lambda: setup.port.wait_plays(1))
+    play = setup.port.plays[0]
+    assert (play.audio, play.finished) == (b"", True)
+    assert setup.port.tones == [("kitchen", "error")]
+
+
+@pytest.mark.parametrize("parts", [[], ["  ", "\n"]], ids=["no-parts", "whitespace"])
+async def test_empty_answer_is_failure(parts: list[str], caplog: pytest.LogCaptureFixture) -> None:
+    setup = Setup(FakeExecutor(parts))
+    setup.port.feed(make_utterance())
+    with caplog.at_level(logging.INFO, logger="smartesp.conversation"):
+        async with running(setup):
+            await wait_for(lambda: setup.port.wait_plays(1))
+    play = setup.port.plays[0]
+    assert (play.audio, play.finished) == (b"", True)
     assert setup.port.tones == [("kitchen", "error")]
     assert setup.history.messages() == []
+    assert "пустой ответ" in caplog.text
+    assert "ход готов" not in caplog.text
+    assert "ход ошибка" in caplog.text
 
 
 class InterruptedFailingExecutor:

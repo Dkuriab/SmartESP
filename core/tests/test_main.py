@@ -49,6 +49,14 @@ def test_unknown_kind_exits_with_known_kinds(home: Path) -> None:
     assert (home / "logs" / "core.log").exists()
 
 
+def test_broken_yaml_exits_with_message(home: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (home / "config.yaml").write_text("server: [\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="ошибка YAML.*config.yaml") as info:
+        main()
+    assert isinstance(info.value.code, str)  # SystemExit со строкой: Python печатает её без traceback
+    assert "Traceback" not in capsys.readouterr().err
+
+
 def test_bad_config_exits_with_message(home: Path) -> None:
     (home / "config.yaml").write_text("executors: []\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="entry"):

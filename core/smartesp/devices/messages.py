@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 MAX_TURN = 0xFFFFFFFF  # ход — uint32
+LOWEST_LEVEL = -1000.0  # громкость для NaN/бесконечности/переполнения: слово участвует, но проигрывает
 
 
 @dataclass(frozen=True)
@@ -61,7 +62,11 @@ def _turn(data: dict[str, Any]) -> int | None:
 
 
 def _level(data: dict[str, Any]) -> tuple[bool, float | None]:
-    """Возвращает (корректно ли поле level, значение). Отсутствие — корректно, None."""
+    """Возвращает (корректно ли поле level, значение). Отсутствие — корректно, None.
+
+    Число, которое не годится для сравнения (NaN, бесконечность, не влезает во float),
+    становится LOWEST_LEVEL: слово не теряется, но уступает любой настоящей громкости.
+    """
     if "level" not in data or data["level"] is None:
         return True, None
     level = data["level"]
@@ -70,9 +75,9 @@ def _level(data: dict[str, Any]) -> tuple[bool, float | None]:
     try:
         value = float(level)
     except OverflowError:  # огромное целое не влезает в float
-        return False, None
-    if not math.isfinite(value):  # NaN и бесконечности ломают арбитраж
-        return False, None
+        return True, LOWEST_LEVEL
+    if not math.isfinite(value):  # NaN и бесконечности ломают сравнение в арбитраже
+        return True, LOWEST_LEVEL
     return True, value
 
 

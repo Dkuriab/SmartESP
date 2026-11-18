@@ -89,6 +89,6 @@ async def test_idle_timeout_between_parts_ends_reply() -> None:
     assert play.finished  # поток закончился штатно — настоящий хаб пошлёт reply_end
     assert len(play.audio) > 0
     assert setup.tts.texts == ["Первое предложение ответа."]
-    assert setup.port.tones == [ERROR]
+    assert setup.port.tones == []  # звук уже был — сигнал ошибки не нужен
     assert executor.closed
     assert setup.history.messages() == []

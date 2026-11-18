@@ -194,7 +194,7 @@ async def _serve(
     host, port = config.server.host, config.server.port
     # log_config=None: uvicorn пишет через корневой журнал (консоль + core.log)
     server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="info", log_config=None))
-    logger.info("Ядро слушает ws://%s:%d/device", host, port)
+    logger.info("Запускаю сервер на ws://%s:%d/device", host, port)
     await server.serve()
 
 
