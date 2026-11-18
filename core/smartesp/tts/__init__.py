@@ -12,6 +12,7 @@ from .piper_tts import PiperTTS
 from .resample import resample_s16
 from .silero_tts import SileroTTS
 from .text_prep import keep_speakable, numbers_to_words
+from .vosk_tts import VoskTTS
 
 __all__ = [
     "QUIET_VOLUME",
@@ -19,6 +20,7 @@ __all__ = [
     "SileroTTS",
     "VoiceDownloadError",
     "VoiceUnavailableError",
+    "VoskTTS",
     "catalog",
     "download_voice",
     "ensure_voice",
