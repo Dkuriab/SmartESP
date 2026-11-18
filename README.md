@@ -32,6 +32,10 @@
    uv python install 3.12
    (cd core && uv sync)
    ```
+   Интерфейс (нужен Node.js):
+   ```bash
+   cd ui && npm ci && npm run build
+   ```
 5. Запуск:
    ```bash
    cd core && uv run python -m smartesp

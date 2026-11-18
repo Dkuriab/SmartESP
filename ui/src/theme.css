@@ -1,0 +1,50 @@
+/* Тёмная тема (единственная), цвета из наброска. */
+:root {
+  --canvas: #141416;
+  --dot: #2a2a2e;
+  --panel: #1c1c1f;
+  --panel2: #232327;
+  --line: #2f2f34;
+  --text: #f2f2f4;
+  --muted: #8e8e93;
+  --faint: #5c5c61;
+  --accent: #3d8bfd;
+  --accent-bg: #1d3355;
+  --green: #32d74b;
+  --orange: #ff9f0a;
+  --purple: #bf5af2;
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--canvas);
+  color: var(--text);
+}
+
+/* Холст в точку */
+.canvas {
+  min-height: 100%;
+  background-color: var(--canvas);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+  display: grid;
+  place-items: center;
+}
+
+.canvas-title {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--muted);
+}
