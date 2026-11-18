@@ -34,8 +34,8 @@ def voice_path(kind: str, voice: str, home: Path) -> Path:
     """
     voices = home / "voices"
     if kind == "piper":
-        if voice not in _known("piper") and not PIPER_NAME.match(voice):
-            raise ValueError(f"Неизвестный голос Piper {voice!r}: нужен вид <locale>-<name>-<quality>")
+        if not voice or "/" in voice or "\\" in voice or voice.startswith("."):
+            raise ValueError(f"Небезопасное имя голоса Piper {voice!r}")
         return voices / f"{voice}.onnx"
     if kind not in ("silero", "vosk") or voice not in _known(kind):
         known = ", ".join(f"{k}/{v}" for k, v, _, _ in _BUILTIN)

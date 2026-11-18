@@ -40,3 +40,17 @@ def test_voice_path_unknown_raises(tmp_path: Path) -> None:
         voice_path("espeak", "x", tmp_path)
     with pytest.raises(ValueError):
         voice_path("piper", "../evil", tmp_path)
+
+
+def test_stray_piper_file_is_listed_and_has_path(tmp_path: Path) -> None:
+    (tmp_path / "voices").mkdir()
+    (tmp_path / "voices" / "my_voice.onnx").write_bytes(b"x")
+    assert ("piper", "my_voice") in {(v.kind, v.voice) for v in catalog(tmp_path)}
+    assert voice_path("piper", "my_voice", tmp_path) == tmp_path / "voices" / "my_voice.onnx"
+    assert is_downloaded("piper", "my_voice", tmp_path)
+
+
+@pytest.mark.parametrize("name", ["../x", "a/b", "a\\b", ".hidden", ""])
+def test_piper_unsafe_stem_rejected(tmp_path: Path, name: str) -> None:
+    with pytest.raises(ValueError):
+        voice_path("piper", name, tmp_path)

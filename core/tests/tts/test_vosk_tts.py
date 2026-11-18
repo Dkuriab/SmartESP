@@ -77,6 +77,13 @@ async def test_empty_after_cleanup_yields_nothing(monkeypatch: pytest.MonkeyPatc
     assert synth.calls == []
 
 
+async def test_punctuation_only_is_not_synthesized(monkeypatch: pytest.MonkeyPatch, model_dir: Path) -> None:
+    synth = FakeSynth()
+    tts = make(monkeypatch, model_dir, synth)
+    assert await collect(tts, "Wi-Fi!") == b""
+    assert synth.calls == []
+
+
 async def test_latin_and_digits_are_removed(monkeypatch: pytest.MonkeyPatch, model_dir: Path) -> None:
     synth = FakeSynth()
     tts = make(monkeypatch, model_dir, synth)

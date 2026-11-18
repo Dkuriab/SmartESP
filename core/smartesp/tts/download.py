@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 
 from .catalog import (
+    PIPER_NAME,
     SILERO_FILE,
     VOSK_DIR,
     catalog,
@@ -24,7 +25,7 @@ PIPER_URL = (
 )
 SILERO_URL = "https://models.silero.ai/models/tts/ru/" + SILERO_FILE
 VOSK_URL = "https://alphacephei.com/vosk/models/" + VOSK_DIR + ".zip"
-TIMEOUT = httpx.Timeout(None, connect=30.0)
+TIMEOUT = httpx.Timeout(60.0, connect=30.0)  # 60 с — на каждый кусок, зависший поток обрывается
 Progress = Callable[[int, int | None], None]
 
 
@@ -119,6 +120,8 @@ def download_voice(
     При сбое бросает VoiceDownloadError и не оставляет частичных файлов и папок.
     """
     voice_path(kind, voice, home)  # проверка имени до сети
+    if kind == "piper" and not PIPER_NAME.match(voice):
+        raise ValueError(f"Неизвестный голос Piper {voice!r}: URL не построить")
     own = client is None
     http = client or httpx.Client()
     try:

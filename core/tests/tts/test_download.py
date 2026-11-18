@@ -8,6 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+import smartesp.tts.download as download_mod
 from smartesp.tts import (
     VoiceDownloadError,
     VoiceUnavailableError,
@@ -92,6 +93,16 @@ class Dropping(httpx.SyncByteStream):
         raise httpx.ReadError("обрыв")
 
 
+class Stalled(httpx.SyncByteStream):
+    def __iter__(self):  # type: ignore[no-untyped-def]
+        yield b"a" * 10
+        raise httpx.ReadTimeout("тишина")
+
+
+def stall_handler(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(200, stream=Stalled())
+
+
 def drop_handler(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, stream=Dropping())
 
@@ -101,6 +112,7 @@ def drop_handler(request: httpx.Request) -> httpx.Response:
     [
         ("piper", IRINA, lambda r: httpx.Response(404)),
         ("piper", IRINA, drop_handler),
+        ("piper", IRINA, stall_handler),
         ("vosk", "female_0", lambda r: httpx.Response(200, content=b"not a zip")),
     ],
 )
@@ -151,3 +163,21 @@ def test_ensure_voice_unknown_voice(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         ensure_voice("silero", "aidar", tmp_path, download=lambda *a: called.append(1))
     assert not called
+
+
+def test_download_timeout_has_read_limit() -> None:
+    assert download_mod.TIMEOUT.read == 60.0
+    assert download_mod.TIMEOUT.connect == 30.0
+
+
+def test_download_unsafe_piper_name_rejected(tmp_path: Path) -> None:
+    (tmp_path / "voices").mkdir()
+    (tmp_path / "voices" / "my_voice.onnx").write_bytes(b"x")
+    with pytest.raises(ValueError):
+        download_voice("piper", "my_voice", tmp_path, client=client(lambda r: httpx.Response(200)))
+
+
+def test_ensure_voice_falls_back_to_stray_piper(tmp_path: Path) -> None:
+    (tmp_path / "voices").mkdir()
+    (tmp_path / "voices" / "my_voice.onnx").write_bytes(b"x")
+    assert ensure_voice("silero", "xenia", tmp_path, download=fail) == ("piper", "my_voice")

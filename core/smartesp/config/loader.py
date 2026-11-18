@@ -52,6 +52,8 @@ def load_config(path: Path) -> Config:
     Нет файла — создаёт пустой (с подсказками). Файл прежнего формата (все
     настройки целиком, без version) один раз переводится: остаются только
     отличия от значений по умолчанию, старый файл сохраняется как config.yaml.bak.
+    Файл версии 2 так же сохраняется в .bak и переписывается как версия 3 (tts без
+    kind остаётся piper — прежнее умолчание).
     Рядом пишется config.defaults.yaml. Файл не читается, не разбирается как YAML
     или настройки неверные — ValueError с понятным сообщением и путём к файлу.
     """
@@ -61,9 +63,10 @@ def load_config(path: Path) -> Config:
         _write_overrides(path, {})
         return Config()
     raw = _read(path)
-    if "version" not in raw:
+    version = raw.get("version")
+    if version != CONFIG_VERSION:
         shutil.copyfile(path, path.with_name(path.name + ".bak"))
-        raw = _migrate(raw)
+        raw = _migrate(raw) if version is None else _migrate_v2(raw)
         _write_overrides(path, raw)
     try:
         return Config.model_validate(raw)
@@ -81,6 +84,15 @@ def _read(path: Path) -> dict[str, Any]:
         raise ValueError(f"ошибка YAML в файле настроек {path}:\n{error}") from error
     if not isinstance(raw, dict):
         raise ValueError(f"неверные настройки в {path}: ожидался словарь ключей")
+    return raw
+
+
+def _migrate_v2(raw: dict[str, Any]) -> dict[str, Any]:
+    """Версия 2 → 3: умолчанием tts был piper, поэтому tts без kind закрепляем как piper."""
+    raw = {k: v for k, v in raw.items() if k != "version"}
+    tts = raw.get("tts")
+    if isinstance(tts, dict) and "kind" not in tts:
+        raw["tts"] = {"kind": "piper", **tts}
     return raw
 
 

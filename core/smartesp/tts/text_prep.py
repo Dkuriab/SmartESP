@@ -6,9 +6,10 @@ from num2words import num2words
 
 _NUMBER = re.compile(
     r"(?P<time>\b(?P<hh>\d{1,2}):(?P<mm>\d{2})\b)"
-    r"|(?P<dec>(?<![\w-])-?\d+[.,]\d+)"
-    r"|(?P<int>(?<![\w-])-?\d+|\d+)(?P<pct>%)?"
+    r"|(?:(?P<dec>(?<![\w-])-?\d+[.,]\d+)|(?P<int>(?<![\w-])-?\d+|\d+))(?P<pct>\s?%)?"
 )
+# Разделители тысяч: обычный, неразрывный и узкий неразрывный пробел.
+_THOUSANDS = re.compile(r"(?<!\d)\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?!\d)")
 _LATIN_WORD = re.compile(r"[A-Za-z][\w-]*")
 _UNSPEAKABLE = re.compile(r"[^А-Яа-яЁё0-9\s.,!?:;\-()']")
 _SPACES = re.compile(r"\s+")
@@ -23,11 +24,12 @@ def _spell_digits(digits: str) -> str:
 
 def _words(raw: str) -> str:
     """Число (строкой) словами через num2words; при любой ошибке — по одной цифре."""
+    sign = "минус " if raw.startswith("-") else ""
+    raw = raw.lstrip("-")
     try:
         value = float(raw.replace(",", ".")) if re.search(r"[.,]", raw) else int(raw)
-        return num2words(value, lang="ru")
+        return sign + num2words(value, lang="ru")
     except Exception:
-        sign = "минус " if raw.startswith("-") else ""
         return sign + _spell_digits(raw)
 
 
@@ -45,11 +47,7 @@ def _replace_number(match: re.Match[str]) -> str:
     """Заменяет одно найденное число его словесной записью."""
     if match.group("time"):
         return _time_to_words(match.group("hh"), match.group("mm"))
-    if match.group("dec"):
-        raw = match.group("dec")
-        return _words(raw)
-    raw = match.group("int")
-    result = _words(raw)
+    result = _words(match.group("dec") or match.group("int"))
     return result + " процентов" if match.group("pct") else result
 
 
@@ -58,6 +56,7 @@ def numbers_to_words(text: str) -> str:
 
     Склонение не делается. Число, которое num2words не осилил, читается по цифрам.
     """
+    text = _THOUSANDS.sub(lambda m: re.sub(r"\D", "", m.group()), text)
     return _NUMBER.sub(_replace_number, text)
 
 
@@ -68,5 +67,5 @@ def keep_speakable(text: str) -> str:
     виду, кавычки и прочие символы убираются, пробелы схлопываются.
     """
     text = _LATIN_WORD.sub("", text).translate(_REPLACEMENTS).translate(_DROPPED)
-    text = _UNSPEAKABLE.sub("", text)
+    text = _UNSPEAKABLE.sub(" ", text)
     return _SPACES.sub(" ", text).strip()

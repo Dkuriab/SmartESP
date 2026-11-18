@@ -52,6 +52,13 @@ async def test_empty_after_cleanup_yields_nothing(monkeypatch: pytest.MonkeyPatc
     assert model.calls == []
 
 
+async def test_punctuation_only_is_not_synthesized(monkeypatch: pytest.MonkeyPatch) -> None:
+    model = FakeModel()
+    tts = make(monkeypatch, model)
+    assert await collect(tts, "Wi-Fi!") == b""
+    assert model.calls == []
+
+
 async def test_numbers_become_words(monkeypatch: pytest.MonkeyPatch) -> None:
     model = FakeModel()
     tts = make(monkeypatch, model)

@@ -128,7 +128,7 @@ class WarmableTTS(FakeTTS):
             raise RuntimeError("нет модели")
 
 
-async def test_warm_up_warms_tts(caplog: pytest.LogCaptureFixture) -> None:
+async def test_warm_up_warms_tts() -> None:
     tts = WarmableTTS()
     await _warm_up(FakeSTT(""), FakeExecutor([]), tts)
     assert tts.warmed

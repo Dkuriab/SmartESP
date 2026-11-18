@@ -56,7 +56,7 @@ class SileroTTS:
         Пустой итератор — нечего говорить или синтез не удался (ошибка в журнале).
         """
         clean = keep_speakable(numbers_to_words(text))
-        if not clean:
+        if not any(ch.isalpha() for ch in clean):
             return
         pcm = await asyncio.to_thread(self._render, clean, style == "quiet")
         if pcm:

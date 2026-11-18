@@ -6,7 +6,7 @@ DEFAULT_SYSTEM_PROMPT = (
     "Ты голосовой помощник умной колонки. Отвечай по-русски, коротко, 1–3 предложения, "
     "без разметки, списков и эмодзи — ответ будет озвучен."
 )
-CONFIG_VERSION = 2  # 2 — в config.yaml только изменения владельца
+CONFIG_VERSION = 3  # 2 — в config.yaml только изменения владельца; 3 — умолчание tts стало silero
 DEFAULT_MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
 
 
