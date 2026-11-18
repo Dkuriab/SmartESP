@@ -136,3 +136,28 @@ async def test_real_ollama_streams_answer() -> None:
         text += part.text
     print(f"\nanswer={text!r} first_token={first:.2f}s total={time.monotonic() - start:.2f}s")
     assert "париж" in text.lower()
+
+
+async def test_unload_sends_keep_alive_zero() -> None:
+    client = FakeClient()
+    ex = make(client)
+    await ex.unload()
+    assert client.generate_kwargs == {"model": "m", "prompt": "", "keep_alive": 0}
+    assert ex.model == "m"
+
+
+async def test_unload_swallows_error(caplog: pytest.LogCaptureFixture) -> None:
+    await make(FakeClient(error=httpx.ConnectError("x"))).unload()
+    assert "выгрузить" in caplog.text
+
+
+async def test_unload_times_out_on_hang() -> None:
+    import asyncio
+
+    class Hanging(FakeClient):
+        async def generate(self, **kwargs: Any) -> None:
+            await asyncio.sleep(10)
+
+    start = time.monotonic()
+    await make(Hanging()).unload(timeout_s=0.1)
+    assert time.monotonic() - start < 1.0

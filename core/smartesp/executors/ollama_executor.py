@@ -1,5 +1,7 @@
 """Исполнитель на локальной LLM в Ollama."""
 
+import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import aclosing
 from typing import Any
@@ -8,6 +10,8 @@ import httpx
 import ollama
 
 from smartesp.contracts import ChatMessage, ExecutorError, ReplyPart
+
+_log = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT_S = 60.0  # таймаут HTTP-операций (соединение, каждое чтение) — запрос не висит вечно
 
@@ -40,6 +44,11 @@ class OllamaExecutor:
         self._system_prompt = system_prompt
         self._keep_alive = keep_alive
         self._client: Any = client if client is not None else ollama.AsyncClient(timeout=timeout_s)
+
+    @property
+    def model(self) -> str:
+        """Имя модели этого исполнителя."""
+        return self._model
 
     def _wrap_error(self, exc: Exception) -> ExecutorError:
         """Превращает ошибку ollama/сети в понятную ExecutorError."""
@@ -86,3 +95,14 @@ class OllamaExecutor:
             await self._client.generate(model=self._model, prompt="", keep_alive=self._keep_alive)
         except (httpx.HTTPError, ConnectionError, ollama.ResponseError) as exc:
             raise self._wrap_error(exc) from exc
+
+    async def unload(self, timeout_s: float = 1.0) -> None:
+        """Выгружает модель из памяти (keep_alive=0), ждёт не дольше timeout_s секунд.
+
+        Не кидает исключений: ошибка или таймаут — только предупреждение в журнал.
+        """
+        try:
+            async with asyncio.timeout(timeout_s):
+                await self._client.generate(model=self._model, prompt="", keep_alive=0)
+        except Exception as exc:  # noqa: BLE001 — выгрузка не должна ломать остановку
+            _log.warning("Не удалось выгрузить модель «%s»: %r", self._model, exc)
