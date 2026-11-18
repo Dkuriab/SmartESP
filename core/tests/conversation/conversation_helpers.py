@@ -9,7 +9,7 @@ import pytest
 from fakes.fake_device_port import FakeDevicePort
 from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
-from smartesp.contracts import Annotation, Executor, SpeechToText, Utterance
+from smartesp.contracts import Annotation, EventSink, Executor, SpeechToText, Utterance
 from smartesp.conversation import History, Orchestrator
 
 TIMEOUT = 2.0
@@ -46,10 +46,11 @@ class RecordingAnalyzer:
 class Setup:
     def __init__(
         self,
-        executor: Executor,
+        executor: Executor | None,
         stt: SpeechToText | None = None,
         analyzer: RecordingAnalyzer | None = None,
         tts: CountingTTS | None = None,
+        events: EventSink | None = None,
         **timing: float,
     ) -> None:
         self.port = FakeDevicePort(names={"kitchen": "Кухня"})
@@ -63,6 +64,7 @@ class Setup:
             executor,
             self.tts,
             self.history,
+            events=events,
             **timing,  # таймауты ожидания исполнителя (параметры Orchestrator)
         )
 
@@ -79,5 +81,27 @@ async def running(setup: Setup) -> AsyncIterator[None]:
             await task
 
 
-async def wait_for(predicate: Callable[[], Awaitable[None]]) -> None:
+async def wait_for(predicate: Callable[[], Awaitable[object]]) -> None:
     await asyncio.wait_for(predicate(), TIMEOUT)
+
+
+async def until(condition: Callable[[], bool]) -> None:
+    """Ждёт (не дольше TIMEOUT), пока условие станет истинным."""
+
+    async def poll() -> None:
+        while not condition():
+            await asyncio.sleep(0.001)
+
+    await asyncio.wait_for(poll(), TIMEOUT)
+
+
+class CountingSTT:
+    """Распознавание: возвращает заданный текст и считает вызовы."""
+
+    def __init__(self, text: str = "Какая погода?") -> None:
+        self.calls = 0
+        self._text = text
+
+    async def transcribe(self, pcm: bytes) -> str:
+        self.calls += 1
+        return self._text

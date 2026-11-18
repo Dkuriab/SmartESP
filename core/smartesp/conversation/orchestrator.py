@@ -1,6 +1,5 @@
 """Оркестратор хода: вопрос с колонки → STT → пометки → исполнитель → TTS → звук на колонку."""
 
-import asyncio
 import dataclasses
 import functools
 import logging
@@ -11,6 +10,7 @@ from smartesp.contracts import (
     Analyzer,
     ChatMessage,
     DevicePort,
+    EventSink,
     Executor,
     ExecutorError,
     ReplyPart,
@@ -23,7 +23,9 @@ from .history import History
 from .prompt import build_messages
 from .sentences import clean_for_speech, is_meaningless, split_sentences, take_style
 from .streams import closing, first_part, next_part, no_audio
-from .turn import Turn, answer_text, format_ms, status
+from .turn import Parts, Turn, answer_text, log_turn
+from .turn_events import finished_data, heard_data, started_data
+from .turn_tasks import TurnTasks
 
 _log = logging.getLogger(__name__)
 
@@ -40,18 +42,21 @@ class Orchestrator:
     def __init__(
         self,
         devices: DevicePort,
-        stt: SpeechToText,
-        analyze: Analyzer,
-        executor: Executor,
-        tts: TextToSpeech,
+        stt: SpeechToText | None,
+        analyze: Analyzer | None,
+        executor: Executor | None,
+        tts: TextToSpeech | None,
         history: History,
         *,
+        events: EventSink | None = None,
         thinking_interval_s: float = THINKING_INTERVAL_S,
         first_part_limit_s: float = FIRST_PART_LIMIT_S,
         part_idle_s: float = PART_IDLE_S,
     ) -> None:
         """Запоминает колонки, распознавание, обработчики, исполнителя, синтез и историю.
 
+        Любую из четырёх частей можно не задать (None) — тогда ядро не готово: ход
+        получает сигнал ошибки и пустой ответ. events — куда публиковать события хода.
         thinking_interval_s — период сигнала «думаю», пока ждём первый кусок ответа;
         first_part_limit_s — сколько всего ждать первый кусок; part_idle_s — сколько
         ждать каждый следующий кусок. Всё в секундах.
@@ -62,10 +67,41 @@ class Orchestrator:
         self._executor = executor
         self._tts = tts
         self._history = history
+        self._events = events
+        self._accepting = True
         self._thinking_interval_s = thinking_interval_s
         self._first_part_limit_s = first_part_limit_s
         self._part_idle_s = part_idle_s
-        self._tasks: set[asyncio.Task[None]] = set()
+        self._tasks = TurnTasks()
+
+    def use_stt(self, stt: SpeechToText) -> None:
+        """Подменяет распознавание; идущие ходы доделываются прежним."""
+        self._stt = stt
+
+    def use_analyzer(self, analyze: Analyzer) -> None:
+        """Подменяет обработчики; идущие ходы доделываются прежними."""
+        self._analyze = analyze
+
+    def use_executor(self, executor: Executor) -> None:
+        """Подменяет исполнителя; идущие ходы доделываются прежним."""
+        self._executor = executor
+
+    def use_tts(self, tts: TextToSpeech) -> None:
+        """Подменяет синтез речи; идущие ходы доделываются прежним."""
+        self._tts = tts
+
+    @property
+    def ready(self) -> bool:
+        """True, если заданы все четыре части: распознавание, обработчики, исполнитель и синтез."""
+        return self._snapshot() is not None
+
+    def stop_accepting(self) -> None:
+        """Перестаёт принимать ходы: новые получают сигнал ошибки и пустой ответ."""
+        self._accepting = False
+
+    async def drain(self, timeout_s: float) -> None:
+        """Ждёт идущие ходы не дольше timeout_s секунд, затем отменяет оставшиеся и дожидается их."""
+        await self._tasks.drain(timeout_s)
 
     async def run(self) -> None:
         """Бесконечно ждёт реплики и запускает на каждую свою задачу хода.
@@ -76,59 +112,67 @@ class Orchestrator:
         try:
             while True:
                 utterance = await self._devices.next_utterance()
-                task = asyncio.create_task(
+                self._tasks.start(
                     self._handle(utterance, time.monotonic()),
                     name=f"turn {utterance.device_id}#{utterance.turn}",
                 )
-                self._tasks.add(task)
-                task.add_done_callback(self._on_turn_done)
         finally:
-            await self._cancel_turns()
+            await self._tasks.cancel_all()
 
-    def _on_turn_done(self, task: asyncio.Task[None]) -> None:
-        """Забывает задачу хода и пишет в журнал её ошибку, если была."""
-        self._tasks.discard(task)
-        if task.cancelled():
-            return
-        error = task.exception()
-        if error is not None:
-            _log.error("Ход %s упал", task.get_name(), exc_info=error)
+    def _snapshot(self) -> Parts | None:
+        """Текущие части одним снимком или None, если какой-то части нет."""
+        stt, analyze, executor, tts = self._stt, self._analyze, self._executor, self._tts
+        if stt is None or analyze is None or executor is None or tts is None:
+            return None
+        return Parts(stt, analyze, executor, tts)
 
-    async def _cancel_turns(self) -> None:
-        """Отменяет незавершённые ходы и ждёт их завершения."""
-        tasks = list(self._tasks)
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+    def _publish(self, kind: str, data: dict[str, object]) -> None:
+        """Публикует событие хода, если задан приёмник."""
+        if self._events is not None:
+            self._events.publish(kind, data)
 
     def _is_live(self, turn: Turn) -> bool:
         """True, пока ход актуален для колонки."""
         return self._devices.is_active(turn.utterance.device_id, turn.utterance.turn)
 
     async def _handle(self, utterance: Utterance, received_at: float) -> None:
-        """Один ход целиком; любая ошибка (кроме отмены) — сигнал ошибки, колонка не молчит."""
+        """Один ход целиком; любая ошибка (кроме отмены) — сигнал ошибки, колонка не молчит.
+
+        Части берутся снимком в начале хода. Нет частей или приём остановлен —
+        сигнал ошибки и пустой ответ без распознавания.
+        """
         turn = Turn(utterance, self._devices.device_name(utterance.device_id), received_at)
+        parts = self._snapshot() if self._accepting else None
+        self._publish("turn_started", started_data(turn))
         try:
-            await self._converse(turn)
+            if parts is None:
+                _log.warning("Колонка %s: ядро не готово или останавливается", turn.device_name)
+                turn.failed = True
+                await self._recover(turn)
+            else:
+                await self._converse(turn, parts)
         except Exception:
             _log.error("Колонка %s: ход %s упал", turn.device_name, utterance.turn, exc_info=True)
             turn.failed = True
             await self._recover(turn)
-        self._log_turn(turn)
+        finally:
+            self._publish("turn_finished", finished_data(turn))
+            log_turn(turn)
 
-    async def _converse(self, turn: Turn) -> None:
+    async def _converse(self, turn: Turn, parts: Parts) -> None:
         """Распознаёт, понимает, отвечает и записывает завершённый ход в историю."""
-        turn.text = await self._stt.transcribe(turn.utterance.pcm)
+        turn.text = await parts.stt.transcribe(turn.utterance.pcm)
         turn.stt_ms = turn.elapsed_ms()
+        self._publish("turn_heard", heard_data(turn))
         if is_meaningless(turn.text):
             turn.meaningless = True
             await self._play(turn, no_audio())
             return
         if not self._is_live(turn):
             return
-        turn.annotations = await self._analyze(dataclasses.replace(turn.utterance, text=turn.text))
+        turn.annotations = await parts.analyze(dataclasses.replace(turn.utterance, text=turn.text))
         messages = build_messages(turn.annotations, self._history.messages(), turn.text, turn.device_name)
-        await self._reply(turn, messages)
+        await self._reply(turn, parts, messages)
         answer = answer_text(turn)
         if turn.completed and answer and self._is_live(turn):
             self._history.add(turn.text, answer)
@@ -150,17 +194,17 @@ class Orchestrator:
         async with closing(audio) as stream:
             await self._devices.play(turn.utterance.device_id, turn.utterance.turn, stream)
 
-    async def _reply(self, turn: Turn, messages: list[ChatMessage]) -> None:
+    async def _reply(self, turn: Turn, parts: Parts, messages: list[ChatMessage]) -> None:
         """Запускает исполнителя и проигрывает ответ.
 
         Первый кусок берём до play, напоминая колонке «думаю»: если исполнитель
         недоступен или молчит дольше first_part_limit_s — сигнал ошибки и пустой
         ответ. Генератор исполнителя закрывается при любом выходе.
         """
-        async with closing(self._executor.run(messages)) as parts:
+        async with closing(parts.executor.run(messages)) as stream:
             try:
                 first = await first_part(
-                    parts,
+                    stream,
                     functools.partial(self._thinking, turn),
                     self._thinking_interval_s,
                     self._first_part_limit_s,
@@ -174,10 +218,10 @@ class Orchestrator:
             if first is not None:
                 turn.first_text_ms = turn.elapsed_ms()
             async with (
-                closing(self._collect(turn, first, parts)) as texts,
+                closing(self._collect(turn, first, stream)) as texts,
                 closing(split_sentences(texts)) as sentences,
             ):
-                await self._play(turn, self._speak(turn, sentences))
+                await self._play(turn, self._speak(turn, parts.tts, sentences))
         await self._finish_reply(turn)
 
     async def _finish_reply(self, turn: Turn) -> None:
@@ -211,7 +255,9 @@ class Orchestrator:
             yield part
             part = await next_part(parts, self._part_idle_s)
 
-    async def _speak(self, turn: Turn, sentences: AsyncIterator[str]) -> AsyncIterator[bytes]:
+    async def _speak(
+        self, turn: Turn, tts: TextToSpeech, sentences: AsyncIterator[str]
+    ) -> AsyncIterator[bytes]:
         """Озвучивает предложения по одному и отдаёт PCM; останавливается, как только ход неактуален.
 
         Ошибка исполнителя или TTS посреди ответа заканчивает поток штатно
@@ -224,12 +270,12 @@ class Orchestrator:
                 if not self._is_live(turn):
                     return
                 if first:  # метка стиля — только в начале ответа
-                    turn.style, sentence = take_style(sentence, self._tts.styles())
+                    turn.style, sentence = take_style(sentence, tts.styles())
                     first = False
                 text = clean_for_speech(sentence)
                 if not text:
                     continue
-                async with closing(self._tts.synthesize(text, turn.style)) as audio:
+                async with closing(tts.synthesize(text, turn.style)) as audio:
                     async for chunk in audio:
                         if not self._is_live(turn):
                             return
@@ -245,19 +291,3 @@ class Orchestrator:
             turn.failed = True
             return
         turn.completed = self._is_live(turn)
-
-    def _log_turn(self, turn: Turn) -> None:
-        """Пишет в журнал итог хода: вопрос, пометки, задержки и ответ."""
-        _log.info(
-            "Колонка %s: ход %s; вопрос %r; пометки %s; стиль %s; "
-            "stt_ms=%s first_text_ms=%s first_audio_ms=%s; ответ %r",
-            turn.device_name,
-            status(turn),
-            turn.text,
-            [f"[{a.source}] {a.text}" for a in turn.annotations],
-            turn.style,
-            format_ms(turn.stt_ms),
-            format_ms(turn.first_text_ms),
-            format_ms(turn.first_audio_ms),
-            answer_text(turn),
-        )

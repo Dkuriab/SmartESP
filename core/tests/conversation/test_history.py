@@ -46,3 +46,16 @@ def test_build_messages() -> None:
 def test_build_messages_without_annotations() -> None:
     messages = build_messages([], [], "Привет", "Спальня")
     assert messages == [ChatMessage("user", "Колонка: Спальня\n\nПривет")]
+
+
+def test_set_limits_keeps_newest() -> None:
+    clock = FakeClock()
+    history = History(max_turns=10, max_age_s=600, clock=clock)
+    for i in range(5):
+        history.add(f"вопрос {i}", f"ответ {i}")
+    history.set_limits(max_turns=2, max_age_s=60)
+    assert [m.content for m in history.messages()] == ["вопрос 3", "ответ 3", "вопрос 4", "ответ 4"]
+    history.add("вопрос 5", "ответ 5")
+    assert [m.content for m in history.messages() if m.role == "user"] == ["вопрос 4", "вопрос 5"]
+    clock.now += 61
+    assert history.messages() == []

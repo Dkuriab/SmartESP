@@ -43,3 +43,8 @@ class History:
     def add(self, user: str, assistant: str) -> None:
         """Запоминает завершённый ход: текст вопроса и полный текст ответа."""
         self._exchanges.append(_Exchange(self._clock(), user, assistant))
+
+    def set_limits(self, max_turns: int, max_age_s: float) -> None:
+        """Меняет пределы на лету: из записанных ходов остаются последние max_turns."""
+        self._max_age_s = max_age_s
+        self._exchanges = deque(self._exchanges, maxlen=max_turns)

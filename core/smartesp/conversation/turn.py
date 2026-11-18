@@ -1,11 +1,24 @@
 """Состояние одного хода разговора и его итог для журнала."""
 
+import logging
 import time
 from dataclasses import dataclass, field
 
-from smartesp.contracts import Annotation, Utterance
+from smartesp.contracts import Analyzer, Annotation, Executor, SpeechToText, TextToSpeech, Utterance
 
 from .sentences import DEFAULT_STYLE, strip_style_tag
+
+_log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Parts:
+    """Снимок сменных частей на начало хода: ход доделывается ими, даже если части подменили."""
+
+    stt: SpeechToText
+    analyze: Analyzer
+    executor: Executor
+    tts: TextToSpeech
 
 
 @dataclass
@@ -49,3 +62,20 @@ def status(turn: Turn) -> str:
     if turn.meaningless:
         return "бессмысленный вопрос, пустой ответ"
     return "готов" if turn.completed else "прерван"
+
+
+def log_turn(turn: Turn) -> None:
+    """Пишет в журнал итог хода: вопрос, пометки, задержки и ответ."""
+    _log.info(
+        "Колонка %s: ход %s; вопрос %r; пометки %s; стиль %s; "
+        "stt_ms=%s first_text_ms=%s first_audio_ms=%s; ответ %r",
+        turn.device_name,
+        status(turn),
+        turn.text,
+        [f"[{a.source}] {a.text}" for a in turn.annotations],
+        turn.style,
+        format_ms(turn.stt_ms),
+        format_ms(turn.first_text_ms),
+        format_ms(turn.first_audio_ms),
+        answer_text(turn),
+    )
