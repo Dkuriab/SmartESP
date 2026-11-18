@@ -12,11 +12,11 @@ from typing import Any
 from smartesp.contracts import DeviceInfo, EventSink, Utterance
 
 from .arbiter import Arbiter, Decision
-from .connection import DeviceConnection
-from .messages import BargeIn, Hello, PlaybackDone, UtteranceEnd, Wake, cancel_turn, parse_message, tone
+from .connection import DeviceConnection, close_quietly
+from .messages import BargeIn, PlaybackDone, UtteranceEnd, Wake, cancel_turn, parse_message, tone
 from .playback import send_reply
 from .registry import DeviceRegistry
-from .session import ActiveTurn, Recording, Session
+from .session import ActiveTurn, Recording, Session, wait_hello
 
 POLL_S = 0.05  # как часто таймер хаба спрашивает арбитра
 NO_SPEECH = "no_speech"
@@ -65,7 +65,7 @@ class DeviceHub:
         self._ensure_polling()
         session: Session | None = None
         try:
-            session, fw = await self._wait_hello(conn)
+            session, fw = await wait_hello(conn)
             self._open(session, fw)
             while not session.closed:
                 frame = await conn.receive()
@@ -111,13 +111,24 @@ class DeviceHub:
         return self._registry.devices(set(self._sessions))
 
     def stop_accepting(self) -> None:
-        """Новые wake сразу отменяются (cancel_turn), звук не копится."""
+        """Новые вопросы не принимаются, звучащие ответы доигрываются.
+
+        Новые и ожидающие решения арбитра wake отменяются (cancel_turn), запись выбрасывается;
+        уже принятые ходы идут дальше, их вопрос ещё может попасть в next_utterance.
+        """
         self._accepting = False
+        for session in list(self._sessions.values()):
+            pending = session.recording
+            if pending is not None and pending.turn_id is None:
+                session.recording = None
+                self._send_cancel(session, pending.esp_turn)
 
     async def close_all(self) -> None:
-        """Закрывает все текущие соединения и ждёт закрытия."""
+        """Закрывает все соединения и сразу заканчивает их сессии."""
         sessions = list(self._sessions.values())
-        await asyncio.gather(*(_close_quietly(s.conn) for s in sessions))
+        await asyncio.gather(*(close_quietly(s.conn) for s in sessions))
+        for session in sessions:
+            self._close(session)
 
     async def aclose(self) -> None:
         """Останавливает таймер арбитра и фоновые отправки и ждёт их. Повторный вызов безопасен."""
@@ -155,13 +166,10 @@ class DeviceHub:
 
         task.add_done_callback(done)
 
-    async def _wait_hello(self, conn: DeviceConnection) -> tuple[Session, str]:
-        """Ждёт hello; всё, что пришло раньше, игнорирует. Возвращает сессию и версию прошивки."""
-        while True:
-            frame = await conn.receive()
-            message = parse_message(frame) if isinstance(frame, str) else None
-            if isinstance(message, Hello):
-                return Session(message.device_id or f"legacy:{conn.remote}", conn), message.fw
+    def _send_cancel(self, session: Session, esp_turn: int) -> None:
+        """Шлёт cancel_turn в фоне и сообщает арбитру, что ход закончен."""
+        self._arbiter.on_turn_finished(session.device_id, esp_turn)
+        self._spawn(session.send(cancel_turn(esp_turn)), f"cancel_turn to {session.device_id}")
 
     def _publish(self, kind: str, data: dict[str, object]) -> None:
         """Публикует событие, если есть приёмник."""
@@ -179,7 +187,7 @@ class DeviceHub:
         self._publish("device_connected", {**info, "remote": remote, "fw": fw})
         if old is not None:
             self._end_session(old)
-            self._spawn(_close_quietly(old.conn), f"closing old session of {old.device_id}")
+            self._spawn(close_quietly(old.conn), f"closing old session of {old.device_id}")
 
     def _close(self, session: Session) -> None:
         """Колонка отключилась: убрать сессию (если её не заменили) и закончить ход."""
@@ -222,7 +230,7 @@ class DeviceHub:
     def _on_wake(self, session: Session, wake: Wake) -> None:
         """Новый ход: прежний заканчивается, звук копится, решает арбитр. При остановке — сразу отмена."""
         if not self._accepting:
-            self._spawn(session.send(cancel_turn(wake.turn)), f"cancel_turn to {session.device_id}")
+            self._send_cancel(session, wake.turn)
             return
         if session.active is not None:
             self._end_turn(session, session.active.esp_turn)
@@ -276,20 +284,12 @@ class DeviceHub:
 
     def _cancel(self, decision: Decision) -> None:
         """Ход отменён: выбросить запись, закончить ход, сказать колонке cancel_turn."""
-        self._arbiter.on_turn_finished(decision.device_id, decision.turn)
         self._publish("arbitration", {"device_id": decision.device_id, "decision": "cancel"})
         session = self._sessions.get(decision.device_id)
         if session is None:
+            self._arbiter.on_turn_finished(decision.device_id, decision.turn)
             return
         if session.recording is not None and session.recording.esp_turn == decision.turn:
             session.recording = None
         self._end_turn(session, decision.turn)
-        self._spawn(session.send(cancel_turn(decision.turn)), f"cancel_turn to {session.device_id}")
-
-
-async def _close_quietly(conn: DeviceConnection) -> None:
-    """Закрывает соединение; уже оборванное — не ошибка."""
-    try:
-        await conn.close()
-    except ConnectionError:
-        pass
+        self._send_cancel(session, decision.turn)

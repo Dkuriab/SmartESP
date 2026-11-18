@@ -6,6 +6,7 @@ import asyncio
 from dataclasses import dataclass, field
 
 from .connection import DeviceConnection
+from .messages import Hello, parse_message
 
 
 @dataclass
@@ -60,3 +61,12 @@ class Session:
             except ConnectionError:
                 return False
             return True
+
+
+async def wait_hello(conn: DeviceConnection) -> tuple[Session, str]:
+    """Ждёт hello; всё, что пришло раньше, игнорирует. Возвращает сессию и версию прошивки."""
+    while True:
+        frame = await conn.receive()
+        message = parse_message(frame) if isinstance(frame, str) else None
+        if isinstance(message, Hello):
+            return Session(message.device_id or f"legacy:{conn.remote}", conn), message.fw

@@ -2,6 +2,7 @@
 
 import asyncio
 
+import pytest
 from hub_helpers import LATE_S, WINDOW_S, FakeClock, accepted_turn, connect, eventually
 
 from fakes.fake_events import RecordingSink
@@ -93,11 +94,8 @@ async def test_stop_accepting_cancels_wake() -> None:
     conn.feed_json("utterance_end", turn=5, reason="vad")
     await eventually(lambda: any(m.get("type") == "cancel_turn" for m in conn.sent_json()))
     assert [m for m in conn.sent_json() if m["type"] == "cancel_turn"][0]["turn"] == 5
-    try:
+    with pytest.raises(TimeoutError):
         await asyncio.wait_for(hub.next_utterance(), 0.1)
-        raise AssertionError("utterance queued")
-    except TimeoutError:
-        pass
 
 
 async def test_close_all_closes_every_connection() -> None:
@@ -107,4 +105,41 @@ async def test_close_all_closes_every_connection() -> None:
     await eventually(lambda: len(hub.devices()) == 2 and all(i.connected for i in hub.devices()))
     await hub.close_all()
     assert a.closed and b.closed
+    assert not any(i.connected for i in hub.devices())
+    assert not hub.is_active("A", 1)
     await asyncio.gather(ta, tb)
+
+
+async def test_close_all_ends_turns_and_publishes_disconnect() -> None:
+    hub, clock, _, sink = make()
+    _conn, _task = await accepted_turn(hub, clock, "A")
+    assert hub.is_active("A", 1)
+    await hub.close_all()
+    assert not hub.is_active("A", 1)
+    assert ("device_disconnected", {"device_id": "A"}) in sink.events
+
+
+async def test_stop_accepting_cancels_pending_wake() -> None:
+    hub, clock, _, _ = make()
+    conn, _ = await connect(hub, "A")
+    conn.feed_json("wake", turn=3, level=-30.0)
+    conn.feed(bytes(1024))
+    conn.feed_json("utterance_end", turn=3, reason="vad")
+    await asyncio.sleep(0.01)
+    hub.stop_accepting()
+    clock.now += WINDOW_S + 0.1
+    await asyncio.sleep(0.15)
+    assert [m["turn"] for m in conn.sent_json() if m["type"] == "cancel_turn"] == [3]
+    assert not hub.is_active("A", 1)
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(hub.next_utterance(), 0.1)
+
+
+async def test_accepted_turn_before_stop_still_emitted() -> None:
+    hub, clock, _, _ = make()
+    conn, _ = await accepted_turn(hub, clock, "A")
+    hub.stop_accepting()
+    conn.feed(bytes(1024))
+    conn.feed_json("utterance_end", turn=1, reason="vad")
+    utterance = await asyncio.wait_for(hub.next_utterance(), 1)
+    assert utterance.device_id == "A" and hub.is_active("A", 1)

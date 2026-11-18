@@ -28,3 +28,11 @@ class DeviceConnection(Protocol):
     async def close(self) -> None:
         """Закрывает соединение; ждущий receive получает ConnectionError."""
         ...
+
+
+async def close_quietly(conn: DeviceConnection) -> None:
+    """Закрывает соединение; уже оборванное — не ошибка."""
+    try:
+        await conn.close()
+    except ConnectionError:
+        pass
