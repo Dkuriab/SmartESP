@@ -3,7 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Protocol
+
+
+@dataclass(frozen=True)
+class VoiceInfo:
+    """Голос из каталога: вид, имя, подпись, размер загрузки и наличие на диске."""
+
+    kind: str
+    voice: str
+    title: str
+    size_mb: int
+    downloaded: bool
 
 
 class TextToSpeech(Protocol):

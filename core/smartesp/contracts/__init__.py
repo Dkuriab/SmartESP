@@ -5,7 +5,7 @@ from .device import DevicePort
 from .executor import ChatMessage, Executor, ExecutorError, ReplyPart
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
-from .tts import TextToSpeech
+from .tts import TextToSpeech, VoiceInfo
 
 __all__ = [
     "SAMPLE_RATE",
@@ -20,4 +20,5 @@ __all__ = [
     "Stage",
     "TextToSpeech",
     "Utterance",
+    "VoiceInfo",
 ]
