@@ -6,17 +6,19 @@ import json
 import logging
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 import pytest
+from core_harness import fake_kinds, make_core
 from starlette.testclient import TestClient, WebSocketTestSession
 
 from fakes.fake_executor import FakeExecutor
-from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
-from smartesp.config import Config, DeviceConfig
 from smartesp.contracts import Executor
-from smartesp.main import build_app
+from smartesp.wiring import Assembly
 
 FRAME = bytes(1024)  # кадр колонки: 512 отсчётов s16le
 RECEIVE_TIMEOUT_S = 5.0  # больше любого шага теста: тест не висит, даже если ядро молчит
@@ -88,24 +90,35 @@ KITCHEN = "AA:BB:CC:DD:EE:01"
 BEDROOM = "AA:BB:CC:DD:EE:02"
 
 
-def make_client(executor: Executor, tts: FakeTTS | None = None) -> TestClient:
-    config = Config(
-        devices={
-            "kitchen": DeviceConfig(name="Кухня"),
-            KITCHEN: DeviceConfig(name="Кухня"),
-            BEDROOM: DeviceConfig(name="Спальня"),
-        }
-    )
-    app = build_app(config, FakeSTT("сколько времени"), tts or FakeTTS(), executor, [])
-    return TestClient(app)
+CONFIG_YAML = f"""
+devices:
+  kitchen: {{name: Кухня}}
+  "{KITCHEN}": {{name: Кухня}}
+  "{BEDROOM}": {{name: Спальня}}
+stages: []
+"""
+
+
+@contextmanager
+def running_core(
+    home: Path, executor: Executor, tts: FakeTTS | None = None
+) -> Iterator[tuple[TestClient, Assembly]]:
+    """Ядро на подделках под TestClient (с lifespan: прогрев в фоне); ждём состояния ready."""
+    core = make_core(home, fake_kinds(lambda c: executor, tts=tts or FakeTTS()), CONFIG_YAML)
+    with TestClient(core.app) as client:
+        deadline = time.monotonic() + RECEIVE_TIMEOUT_S
+        while core.core.state != "ready":
+            assert time.monotonic() < deadline, "ядро не прогрелось"
+            time.sleep(0.01)
+        yield client, core
 
 
 HELLO = {"type": "hello", "device_id": "kitchen", "fw": "2.0", "protocol": 2}
 
 
-def test_question_gets_spoken_reply() -> None:
+def test_question_gets_spoken_reply(tmp_path: Path) -> None:
     executor = FakeExecutor(["Сейчас полдень."])
-    with make_client(executor) as client, client.websocket_connect("/device") as ws:
+    with running_core(tmp_path, executor) as (client, _), client.websocket_connect("/device") as ws:
         ws.send_json(HELLO)
         ask(ws, 1)
         texts, audio = receive_reply(ws, 1)
@@ -115,19 +128,18 @@ def test_question_gets_spoken_reply() -> None:
     assert executor.calls[0][-1].content.endswith("сколько времени")
 
 
-def test_disconnect_mid_reply_is_quiet(caplog: pytest.LogCaptureFixture) -> None:
+def test_disconnect_mid_reply_is_quiet(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO)
     long_answer = [f"Предложение номер {i}. " for i in range(40)]
     executor = FakeExecutor(long_answer, delay=0.02)
     # короткий звук: ответ длится ~0,8 с из-за исполнителя, а не из-за темпа отправки
-    with make_client(executor, FakeTTS(bytes_per_char=32)) as client:
-        app = client.app
+    with running_core(tmp_path, executor, FakeTTS(bytes_per_char=32)) as (client, core):
         with client.websocket_connect("/device") as ws:
             ws.send_json(HELLO)
             ask(ws, 1)
             assert json.loads(receive(ws)["text"]) == {"type": "reply_start", "turn": 1}
             assert receive(ws).get("bytes")  # пошёл звук — рвём связь посреди ответа
-        hub = app.state.hub  # type: ignore[attr-defined]
+        hub = core.hub
         deadline = time.monotonic() + RECEIVE_TIMEOUT_S
         while hub.is_active("kitchen", 1) and time.monotonic() < deadline:
             time.sleep(0.01)
@@ -150,11 +162,11 @@ def hello(device_id: str) -> dict[str, Any]:
     return {"type": "hello", "device_id": device_id, "fw": "2.0", "protocol": 2}
 
 
-def test_two_speakers_louder_one_answers() -> None:
+def test_two_speakers_louder_one_answers(tmp_path: Path) -> None:
     # номера ходов колонок (5 и 9) не совпадают с номерами хаба (1, 2…): путаница номеров видна
     executor = FakeExecutor(["Сейчас полдень."])
     with (
-        make_client(executor) as client,
+        running_core(tmp_path, executor) as (client, _),
         client.websocket_connect("/device") as quiet,
         client.websocket_connect("/device") as loud,
     ):

@@ -1,67 +1,61 @@
-"""Связка ядра (аналог SmartEsp.ino): создаёт модули по config.yaml и соединяет их.
+"""Связка ядра (аналог SmartEsp.ino): реестры реализаций, запуск, остановка и перезапуск.
 
-Своей логики здесь нет: реестры реализаций, сборка приложения, прогрев и запуск.
+Своей логики здесь нет. Сборка частей и порядок прогрева и остановки — в wiring.py.
+Запуск: python -m smartesp [--parent-watch] [--openapi PATH].
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import functools
+import json
 import logging
-import time
-from collections.abc import AsyncIterator, Callable, Sequence
-from contextlib import asynccontextmanager
+import os
+import sys
+import tomllib
+from collections.abc import Callable, Sequence
+from importlib.metadata import PackageNotFoundError, version
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Protocol, runtime_checkable
 
 import uvicorn
-from fastapi import FastAPI, WebSocket
 
+from smartesp.api import load_or_create_token
 from smartesp.config import (
     Config,
+    ConfigFile,
     ExecutorConfig,
     StageConfig,
     SttConfig,
-    TtsConfig,
     data_dir,
-    load_config,
 )
-from smartesp.contracts import Executor, ExecutorError, SpeechToText, Stage, TextToSpeech
-from smartesp.conversation import History, Orchestrator
-from smartesp.devices import DeviceHub, WebSocketConnection
-from smartesp.executors import OllamaExecutor
-from smartesp.stages import WhisperDetect, run_stages
+from smartesp.contracts import Executor, SpeechToText, Stage, TextToSpeech
+from smartesp.executors import OllamaExecutor, list_models, loaded_models
+from smartesp.lifecycle import GracefulServer, watch_parent
+from smartesp.stages import WhisperDetect
 from smartesp.stt import MlxWhisperSTT
-from smartesp.tts import (
-    PiperTTS,
-    SileroTTS,
-    VoiceUnavailableError,
-    VoskTTS,
-    ensure_voice,
-    voice_path,
-)
+from smartesp.tts import PiperTTS, SileroTTS, VoskTTS
+from smartesp.wiring import Kinds, Ollama, StartupError, assemble, check_kinds, stop
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 LOG_MAX_BYTES = 1_000_000
 LOG_BACKUPS = 5
-WARM_UP_PCM = bytes(16000)  # 0,5 с тишины (16 кГц, s16le)
-WARM_UP_TIMEOUT_S = 120.0  # дольше прогрева исполнителя не ждём: старт не должен висеть
+GRACE_S = 2  # uvicorn после нашей остановки ждёт соединения API не дольше этого
+PACKAGE = "smartesp-core"
+UI_DIR = Path(__file__).resolve().parents[2] / "ui" / "dist"
+PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
 
 logger = logging.getLogger("smartesp")
-
-
-class StartupError(Exception):
-    """Ядро не может стартовать: понятное сообщение для человека."""
-
 
 STT_KINDS: dict[str, Callable[[SttConfig], SpeechToText]] = {
     "mlx_whisper": lambda c: MlxWhisperSTT(c.model, c.language),
 }
-TTS_KINDS: dict[str, Callable[[TtsConfig, Path], TextToSpeech]] = {
-    "piper": lambda c, home: PiperTTS(voice_path("piper", c.voice, home)),
-    "silero": lambda c, home: SileroTTS(voice_path("silero", c.voice, home), c.voice),
-    "vosk": lambda c, home: VoskTTS(voice_path("vosk", c.voice, home), c.voice),
+# (путь голоса, голос) → синтез; путь и скачивание — забота менеджера голосов
+TTS_KINDS: dict[str, Callable[[Path, str], TextToSpeech]] = {
+    "piper": lambda path, voice: PiperTTS(path),
+    "silero": lambda path, voice: SileroTTS(path, voice),
+    "vosk": lambda path, voice: VoskTTS(path, voice),
 }
 EXECUTOR_KINDS: dict[str, Callable[[ExecutorConfig], Executor]] = {
     "ollama": lambda c: OllamaExecutor(c.model, c.system_prompt, c.keep_alive),
@@ -69,67 +63,8 @@ EXECUTOR_KINDS: dict[str, Callable[[ExecutorConfig], Executor]] = {
 STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
     "whisper_detect": lambda c: WhisperDetect(),
 }
-
-
-@runtime_checkable
-class _WarmsUp(Protocol):
-    """Реализация, которую можно прогреть заранее (например, загрузить модель)."""
-
-    async def warm_up(self) -> None: ...
-
-
-def _pick[T](registry: dict[str, T], kind: str, what: str) -> T:
-    """Реализация из реестра по имени; неизвестное имя — StartupError со списком известных."""
-    if kind not in registry:
-        known = ", ".join(sorted(registry)) or "нет"
-        raise StartupError(f"Неизвестный {what} kind={kind!r}; известные: {known}")
-    return registry[kind]
-
-
-def build_app(
-    config: Config,
-    stt: SpeechToText,
-    tts: TextToSpeech,
-    executor: Executor,
-    stages: list[tuple[Stage, float]],
-) -> FastAPI:
-    """Собирает приложение: хаб колонок, оркестратор и WebSocket /device.
-
-    stages — пары (обработчик, таймаут в секундах). Хаб доступен как app.state.hub.
-    """
-    arbitration = config.arbitration
-    names = {dev_id: d.name for dev_id, d in config.devices.items()}
-    hub = DeviceHub(arbitration.window_ms / 1000, arbitration.late_ms / 1000, names)
-    history = History(config.history.max_turns, config.history.max_age_s)
-    analyze = functools.partial(run_stages, stages)
-    orchestrator = Orchestrator(hub, stt, analyze, executor, tts, history)
-
-    @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        task = asyncio.create_task(orchestrator.run(), name="orchestrator")
-        task.add_done_callback(_log_crash)
-        try:
-            yield
-        finally:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-            await hub.aclose()
-
-    app = FastAPI(lifespan=lifespan)
-    app.state.hub = hub
-
-    @app.websocket("/device")
-    async def device(ws: WebSocket) -> None:
-        await ws.accept()
-        await hub.handle(WebSocketConnection(ws))
-
-    return app
-
-
-def _log_crash(task: asyncio.Task[None]) -> None:
-    """Оркестратор не должен завершаться сам: если упал — громко в журнал."""
-    if not task.cancelled() and task.exception() is not None:
-        logger.critical("Оркестратор остановился с ошибкой", exc_info=task.exception())
+KINDS = Kinds(STT_KINDS, TTS_KINDS, EXECUTOR_KINDS, STAGE_KINDS)
+OLLAMA = Ollama(list_models, loaded_models)
 
 
 def _setup_logging(logs: Path) -> None:
@@ -147,96 +82,96 @@ def _setup_logging(logs: Path) -> None:
         root.addHandler(handler)
 
 
-def with_stage_hints(prompt: str, stages: Sequence[Stage]) -> str:
-    """Системный промпт входного исполнителя + правила включённых обработчиков."""
-    hints = [stage.prompt_hint for stage in stages if stage.prompt_hint]
-    return "\n".join([prompt, *hints])
+def _flush_logs() -> None:
+    for handler in logging.getLogger().handlers:
+        handler.flush()
 
 
-def _create(
-    config: Config, home: Path
-) -> tuple[SpeechToText, TextToSpeech, Executor, list[tuple[Stage, float]]]:
-    """Создаёт реализации, выбранные в настройках, через реестры."""
-    stt = _pick(STT_KINDS, config.stt.kind, "stt")(config.stt)
-    _pick(TTS_KINDS, config.tts.kind, "tts")  # вид проверяем до скачивания голоса
+def _version() -> str:
+    """Версия ядра: из метаданных пакета, а в виртуальном проекте uv — из pyproject.toml."""
     try:
-        kind, voice = ensure_voice(config.tts.kind, config.tts.voice, home)
-    except VoiceUnavailableError as error:
-        raise StartupError(str(error)) from error
-    tts = TTS_KINDS[kind](config.tts.model_copy(update={"kind": kind, "voice": voice}), home)
-    stages = [(_pick(STAGE_KINDS, s.kind, "stage")(s), s.timeout_ms / 1000) for s in config.stages]
-    entry = config.entry_executor()
-    prompt = with_stage_hints(entry.system_prompt, [stage for stage, _ in stages])
-    entry = entry.model_copy(update={"system_prompt": prompt})
-    executor = _pick(EXECUTOR_KINDS, entry.kind, "executor")(entry)
-    return stt, tts, executor, stages
+        return version(PACKAGE)
+    except PackageNotFoundError:
+        with PYPROJECT.open("rb") as file:
+            return str(tomllib.load(file)["project"]["version"])
 
 
-async def _warm_up(
-    stt: SpeechToText,
-    executor: Executor,
-    tts: TextToSpeech,
-    executor_timeout_s: float = WARM_UP_TIMEOUT_S,
-) -> None:
-    """Загружает модели (STT, исполнитель, TTS) заранее. Сбой — предупреждение, не остановка.
-
-    Прогрев исполнителя ограничен executor_timeout_s секундами.
-    """
-    if isinstance(executor, _WarmsUp):
-        started = time.monotonic()
-        try:
-            async with asyncio.timeout(executor_timeout_s):
-                await executor.warm_up()
-            logger.info("Исполнитель прогрет за %.1f с", time.monotonic() - started)
-        except ExecutorError as error:
-            logger.warning("Ollama недоступна: %s. Ходы будут заканчиваться сигналом ошибки.", error)
-        except TimeoutError:
-            logger.warning("Исполнитель не прогрелся за %g с; запускаюсь без прогрева.", executor_timeout_s)
-    started = time.monotonic()
-    try:
-        await stt.transcribe(WARM_UP_PCM)
-        logger.info("STT прогрет за %.1f с", time.monotonic() - started)
-    except Exception:
-        logger.error("STT не прогрелся: распознавание, скорее всего, не работает", exc_info=True)
-    if isinstance(tts, _WarmsUp):
-        started = time.monotonic()
-        try:
-            await tts.warm_up()
-            logger.info("TTS прогрет за %.1f с", time.monotonic() - started)
-        except Exception:
-            logger.error("TTS не прогрелся: первая фраза может быть медленной", exc_info=True)
+def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog="smartesp", description="Ядро SmartESP")
+    parser.add_argument(
+        "--parent-watch", action="store_true", help="остановиться, когда родитель закроет stdin"
+    )
+    parser.add_argument("--openapi", type=Path, metavar="PATH", help="записать схему OpenAPI и выйти")
+    return parser.parse_args(argv)
 
 
-async def _serve(
-    config: Config,
-    stt: SpeechToText,
-    tts: TextToSpeech,
-    executor: Executor,
-    stages: list[tuple[Stage, float]],
-) -> None:
-    """Прогрев и запуск uvicorn до Ctrl+C."""
-    await _warm_up(stt, executor, tts)
-    app = build_app(config, stt, tts, executor, stages)
+def _write_openapi(path: Path) -> None:
+    """Схема API настоящего роутера; части не греются, файлы в папке данных не пишутся."""
+    home = data_dir()
+    parts = assemble(
+        ConfigFile(home / "config.yaml"),
+        Config(),
+        home,
+        KINDS,
+        OLLAMA,
+        version=_version(),
+        token="",
+        ui_dir=UI_DIR,
+    )
+    path.write_text(json.dumps(parts.app.openapi(), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+async def _serve(store: ConfigFile, config: Config, home: Path, parent_watch: bool) -> bool:
+    """Сервер сразу, прогрев в фоне, работа до остановки. True — просили перезапуск."""
+    token = load_or_create_token(home)
+    parts = assemble(store, config, home, KINDS, OLLAMA, version=_version(), token=token, ui_dir=UI_DIR)
     host, port = config.server.host, config.server.port
     # log_config=None: uvicorn пишет через корневой журнал (консоль + core.log)
-    server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="info", log_config=None))
-    logger.info("Запускаю сервер на ws://%s:%d/device", host, port)
-    await server.serve()
+    uv_config = uvicorn.Config(
+        parts.app, host=host, port=port, log_config=None, timeout_graceful_shutdown=GRACE_S
+    )
+    server = GracefulServer(uv_config, functools.partial(stop, parts), on_started=parts.run_file.write)
+    server.stop_after(parts.core.wait_restart())
+    if parent_watch:
+        watch_parent(sys.stdin.buffer, server.request_stop)
+    logger.info("Запускаю сервер на %s:%d (/device, /api/v1)", host, port)
+    try:
+        await server.serve()
+    finally:
+        parts.run_file.remove()
+    return parts.core.restart_requested
 
 
-def main() -> None:
-    """Точка входа: config.yaml → реестры → прогрев → сервер на server.host:server.port."""
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    execv: Callable[[str, list[str]], object] = os.execv,
+) -> None:
+    """Точка входа: config.yaml → проверка видов → сервер → прогрев в фоне.
+
+    После остановки по просьбе о перезапуске запускает себя заново через execv.
+    """
+    args = _parse_args(argv)
+    if args.openapi is not None:
+        _write_openapi(args.openapi)
+        return
     home = data_dir()
     _setup_logging(home / "logs")
-    config_path = home / "config.yaml"
+    store = ConfigFile(home / "config.yaml")
     try:
-        config = load_config(config_path)
-        logger.info("Настройки: %s", config_path)
-        stt, tts, executor, stages = _create(config, home)
+        config = store.load()
+        logger.info("Настройки: %s", home / "config.yaml")
+        check_kinds(config, KINDS)
     except (StartupError, ValueError) as error:
         logger.error("Ядро не запущено: %s", error)
         raise SystemExit(f"Ядро не запущено: {error}") from error
+    restart = False
     try:
-        asyncio.run(_serve(config, stt, tts, executor, stages))
+        restart = asyncio.run(_serve(store, config, home, args.parent_watch))
     except KeyboardInterrupt:
-        logger.info("Ядро остановлено")
+        pass
+    logger.info("Ядро остановлено")
+    if restart:
+        logger.info("Перезапуск: %s -m smartesp %s", sys.executable, " ".join(sys.argv[1:]))
+        _flush_logs()
+        execv(sys.executable, [sys.executable, "-m", "smartesp", *sys.argv[1:]])

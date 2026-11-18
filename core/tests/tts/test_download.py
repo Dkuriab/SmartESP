@@ -1,7 +1,6 @@
 """Тесты скачивания голосов (сеть подменена MockTransport)."""
 
 import io
-import logging
 import zipfile
 from pathlib import Path
 
@@ -9,13 +8,7 @@ import httpx
 import pytest
 
 import smartesp.tts.download as download_mod
-from smartesp.tts import (
-    VoiceDownloadError,
-    VoiceUnavailableError,
-    download_voice,
-    ensure_voice,
-    is_downloaded,
-)
+from smartesp.tts import VoiceDownloadError, download_voice, is_downloaded
 
 IRINA = "ru_RU-irina-medium"
 BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/medium/"
@@ -124,47 +117,6 @@ def test_failed_download_leaves_nothing(tmp_path: Path, kind: str, voice: str, h
     assert not is_downloaded(kind, voice, tmp_path)
 
 
-def fake_ok(kind: str, voice: str, home: Path) -> None:
-    (home / "voices").mkdir(parents=True, exist_ok=True)
-    (home / "voices" / f"{voice}.onnx").write_bytes(b"x")
-
-
-def fail(kind: str, voice: str, home: Path) -> None:
-    raise VoiceDownloadError("нет сети")
-
-
-def test_ensure_voice_present(tmp_path: Path) -> None:
-    fake_ok("piper", IRINA, tmp_path)
-    called: list[int] = []
-    got = ensure_voice("piper", IRINA, tmp_path, download=lambda *a: called.append(1))
-    assert got == ("piper", IRINA)
-    assert not called
-
-
-def test_ensure_voice_downloads(tmp_path: Path) -> None:
-    assert ensure_voice("piper", IRINA, tmp_path, download=fake_ok) == ("piper", IRINA)
-
-
-def test_ensure_voice_falls_back(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-    fake_ok("piper", IRINA, tmp_path)
-    with caplog.at_level(logging.WARNING):
-        got = ensure_voice("silero", "xenia", tmp_path, download=fail)
-    assert got == ("piper", IRINA)
-    assert any(r.levelno == logging.WARNING for r in caplog.records)
-
-
-def test_ensure_voice_none_available(tmp_path: Path) -> None:
-    with pytest.raises(VoiceUnavailableError, match="интернет"):
-        ensure_voice("silero", "xenia", tmp_path, download=fail)
-
-
-def test_ensure_voice_unknown_voice(tmp_path: Path) -> None:
-    called: list[int] = []
-    with pytest.raises(ValueError):
-        ensure_voice("silero", "aidar", tmp_path, download=lambda *a: called.append(1))
-    assert not called
-
-
 def test_download_timeout_has_read_limit() -> None:
     assert download_mod.TIMEOUT.read == 60.0
     assert download_mod.TIMEOUT.connect == 30.0
@@ -175,9 +127,3 @@ def test_download_unsafe_piper_name_rejected(tmp_path: Path) -> None:
     (tmp_path / "voices" / "my_voice.onnx").write_bytes(b"x")
     with pytest.raises(ValueError):
         download_voice("piper", "my_voice", tmp_path, client=client(lambda r: httpx.Response(200)))
-
-
-def test_ensure_voice_falls_back_to_stray_piper(tmp_path: Path) -> None:
-    (tmp_path / "voices").mkdir()
-    (tmp_path / "voices" / "my_voice.onnx").write_bytes(b"x")
-    assert ensure_voice("silero", "xenia", tmp_path, download=fail) == ("piper", "my_voice")

@@ -1,4 +1,4 @@
-"""Скачивание голосов: атомарно, без недокачанных файлов, и выбор голоса при старте."""
+"""Скачивание голосов: атомарно, без недокачанных файлов."""
 
 import logging
 import shutil
@@ -13,8 +13,6 @@ from .catalog import (
     PIPER_NAME,
     SILERO_FILE,
     VOSK_DIR,
-    catalog,
-    is_downloaded,
     voice_path,
 )
 
@@ -31,10 +29,6 @@ Progress = Callable[[int, int | None], None]
 
 class VoiceDownloadError(Exception):
     """Голос не скачался: сеть, ответ сервера или битый архив."""
-
-
-class VoiceUnavailableError(Exception):
-    """Нет ни нужного голоса, ни скачанного запасного."""
 
 
 def _fetch(client: httpx.Client, url: str, dest: Path, progress: Progress | None) -> None:
@@ -129,32 +123,3 @@ def download_voice(
     finally:
         if own:
             http.close()
-
-
-def ensure_voice(
-    kind: str,
-    voice: str,
-    home: Path,
-    *,
-    download: Callable[[str, str, Path], None] = download_voice,
-) -> tuple[str, str]:
-    """Гарантирует голос при старте; возвращает (вид, голос), которым можно говорить.
-
-    Нет голоса — скачивает; не вышло — берёт первый скачанный из каталога (с
-    предупреждением). Нет и его — VoiceUnavailableError. Неизвестный голос — ValueError.
-    """
-    if is_downloaded(kind, voice, home):
-        return kind, voice
-    try:
-        download(kind, voice, home)
-        if is_downloaded(kind, voice, home):
-            return kind, voice
-    except VoiceDownloadError as exc:
-        log.warning("Не удалось скачать голос %s/%s: %s", kind, voice, exc)
-    for info in catalog(home):
-        if info.downloaded:
-            log.warning("Использую запасной голос %s/%s", info.kind, info.voice)
-            return info.kind, info.voice
-    raise VoiceUnavailableError(
-        f"Голос {kind}/{voice} не скачан, запасного нет. Проверьте интернет и запустите снова."
-    )

@@ -23,3 +23,34 @@ class FakeExecutor:
             if self._delay:
                 await asyncio.sleep(self._delay)
             yield ReplyPart(part)
+
+
+class FakeOllama(FakeExecutor):
+    """Исполнитель с моделью, прогревом и выгрузкой — как OllamaExecutor.
+
+    warm_gate — прогрев ждёт, пока событие не взведут (None — не ждёт).
+    """
+
+    def __init__(
+        self,
+        parts: list[str],
+        model: str = "model",
+        *,
+        delay: float = 0,
+        warm_gate: asyncio.Event | None = None,
+        prompt: str = "",
+    ) -> None:
+        super().__init__(parts, delay=delay)
+        self.model = model
+        self.prompt = prompt  # системный промпт из настроек (для проверок)
+        self.warm_gate = warm_gate
+        self.warmed = 0
+        self.unloaded: list[float] = []  # таймауты вызовов unload
+
+    async def warm_up(self) -> None:
+        if self.warm_gate is not None:
+            await self.warm_gate.wait()
+        self.warmed += 1
+
+    async def unload(self, timeout_s: float = 1.0) -> None:
+        self.unloaded.append(timeout_s)
