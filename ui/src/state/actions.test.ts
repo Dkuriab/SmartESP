@@ -43,6 +43,18 @@ function setup(current: Config | null = null) {
 const accepted = { change_id: 3, status: 'accepted', error: '' }
 
 describe('actions', () => {
+  it('select, selectTurn и dismissNotice отправляют действия редьюсера', () => {
+    const { actions, dispatched } = setup()
+    actions.select({ kind: 'device', id: 'a' })
+    actions.selectTurn(5)
+    actions.dismissNotice()
+    expect(dispatched).toEqual([
+      { type: 'select', selected: { kind: 'device', id: 'a' } },
+      { type: 'selectTurn', turnId: 5 },
+      { type: 'dismissNotice' },
+    ])
+  })
+
   it('setDispatcher шлёт executors целиком, меняя модель только у входного', async () => {
     const { client, actions, dispatched } = setup(config())
     client.PATCH.mockResolvedValue(ok(accepted))

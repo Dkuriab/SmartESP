@@ -1,0 +1,51 @@
+/* Раскладка плавающих панелей. */
+.canvas {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--canvas);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.panel {
+  position: absolute;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.cap {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.left {
+  left: 16px;
+  top: 16px;
+  bottom: 16px;
+  width: 280px;
+  padding: 14px 10px;
+  overflow: auto;
+}
+
+.right {
+  right: 16px;
+  top: 66px;
+  width: 300px;
+  padding: 16px;
+}
+
+.schema {
+  position: absolute;
+  left: 300px;
+  right: 320px;
+  top: 70px;
+  bottom: 220px;
+}

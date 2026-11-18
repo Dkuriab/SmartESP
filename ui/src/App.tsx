@@ -1,8 +1,8 @@
-// Корень интерфейса: пока пустой холст с названием.
+// Корень интерфейса: состояние ядра и каркас экрана.
+import Shell from './components/layout/Shell'
+import { useCore } from './state/useCore'
+
 export default function App() {
-  return (
-    <main className="canvas">
-      <h1 className="canvas-title">SmartESP</h1>
-    </main>
-  )
+  const [state, actions] = useCore()
+  return <Shell state={state} actions={actions} />
 }

@@ -1,6 +1,6 @@
 // Действия интерфейса: запросы к ядру. Ошибки становятся уведомлениями.
 import type { createClient } from '../api/client'
-import type { Config } from './model'
+import type { Config, Selection } from './model'
 import type { Dispatch } from './request'
 import { send, sendNotify } from './request'
 
@@ -26,6 +26,11 @@ export type CoreActions = {
   /** Адреса для входа из сети; ошибка — пустой список. */
   loadAccess(): Promise<string[]>
   setToken(token: string): void
+  /** Выбор на схеме или в списке (null — снять). */
+  select(selected: Selection | null): void
+  /** Выбор хода в ленте (null — снять). */
+  selectTurn(turnId: number | string | null): void
+  dismissNotice(): void
 }
 
 export type ActionDeps = {
@@ -98,5 +103,8 @@ export function createActions(deps: ActionDeps): CoreActions {
       await sendNotify(dispatch, () => client.POST('/api/v1/restart'))
     },
     setToken: onToken,
+    select: (selected) => dispatch({ type: 'select', selected }),
+    selectTurn: (turnId) => dispatch({ type: 'selectTurn', turnId }),
+    dismissNotice: () => dispatch({ type: 'dismissNotice' }),
   }
 }

@@ -1,0 +1,84 @@
+/* Общие элементы: кнопки, плашки, уведомления, экран токена. */
+.btn {
+  background: var(--accent-bg);
+  color: #8ab8ff;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.icon-btn {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.banner,
+.notice {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 20;
+  max-width: min(560px, calc(100% - 32px));
+}
+
+.banner {
+  top: 70px;
+  border-color: var(--orange);
+}
+
+.notice {
+  bottom: 220px;
+}
+
+.notice-error {
+  border-color: #ff453a;
+}
+
+.notice-ok {
+  border-color: var(--green);
+}
+
+.notice-text {
+  overflow-wrap: anywhere;
+}
+
+.token-screen {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 30;
+  background: var(--canvas);
+}
+
+.token-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 320px;
+  padding: 20px;
+}
+
+.token-form input {
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+}

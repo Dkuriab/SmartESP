@@ -1,0 +1,144 @@
+/* Лента ходов и карточка хода. */
+.feed {
+  left: 312px;
+  right: 332px;
+  bottom: 16px;
+  height: 190px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.feed-full {
+  left: 16px;
+  right: 16px;
+  top: 70px;
+  height: auto;
+}
+
+.feed-title {
+  margin-bottom: 6px;
+}
+
+.feed-list {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.empty {
+  color: var(--muted);
+  padding: 8px 6px;
+}
+
+.msg {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.msg.sel {
+  background: var(--accent-bg);
+  outline: 1px solid var(--accent);
+}
+
+.when {
+  color: var(--faint);
+  font-size: 11.5px;
+  width: 68px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.msg-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.line {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.cut {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.q {
+  flex: 0 1 auto;
+}
+
+.tag {
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--panel2);
+  color: var(--muted);
+}
+
+.tag.p {
+  background: #3a2350;
+  color: #d9a6ff;
+}
+
+.tag.err {
+  background: #4a1d1b;
+  color: #ff6961;
+}
+
+.route {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.timing {
+  flex-shrink: 0;
+  color: var(--faint);
+  font-size: 11.5px;
+  padding-top: 2px;
+}
+
+.turn-card {
+  right: 332px;
+  bottom: 222px;
+  width: 420px;
+  max-width: calc(100% - 664px);
+  max-height: 50%;
+  overflow: auto;
+  padding: 14px;
+  z-index: 10;
+}
+
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.card-label {
+  margin: 12px 0 4px;
+}
+
+.card-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
