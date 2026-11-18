@@ -50,13 +50,20 @@ class Setup:
         stt: SpeechToText | None = None,
         analyzer: RecordingAnalyzer | None = None,
         tts: CountingTTS | None = None,
+        **timing: float,
     ) -> None:
         self.port = FakeDevicePort(names={"kitchen": "Кухня"})
         self.tts = tts or CountingTTS()
         self.history = History(max_turns=10, max_age_s=600)
         self.analyzer = analyzer or RecordingAnalyzer()
         self.orchestrator = Orchestrator(
-            self.port, stt or FakeSTT("Какая погода?"), self.analyzer, executor, self.tts, self.history
+            self.port,
+            stt or FakeSTT("Какая погода?"),
+            self.analyzer,
+            executor,
+            self.tts,
+            self.history,
+            **timing,  # таймауты ожидания исполнителя (параметры Orchestrator)
         )
 
 

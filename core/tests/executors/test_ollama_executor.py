@@ -111,6 +111,17 @@ async def test_warm_up_calls_generate_and_wraps_errors() -> None:
         await make(FakeClient(error=httpx.ConnectError("x"))).warm_up()
 
 
+def test_default_client_has_timeout() -> None:
+    ex = OllamaExecutor("m", "Ты помощник.", "30m", timeout_s=12.5)
+    assert ex._client._client.timeout == httpx.Timeout(12.5)  # type: ignore[attr-defined]
+    assert OllamaExecutor("m", "", "30m")._client._client.timeout == httpx.Timeout(60.0)  # type: ignore[attr-defined]
+
+
+async def test_read_timeout_becomes_executor_error() -> None:
+    with pytest.raises(ExecutorError, match="«m»"):
+        await collect(make(FakeClient(error=httpx.ReadTimeout("долго"))))
+
+
 @pytest.mark.models
 async def test_real_ollama_streams_answer() -> None:
     model = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"

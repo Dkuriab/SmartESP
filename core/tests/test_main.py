@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
+from fakes.fake_executor import FakeExecutor
+from fakes.fake_stt import FakeSTT
 from smartesp.config import TtsConfig
-from smartesp.main import EXECUTOR_KINDS, STAGE_KINDS, STT_KINDS, TTS_KINDS, StartupError, main
+from smartesp.main import EXECUTOR_KINDS, STAGE_KINDS, STT_KINDS, TTS_KINDS, StartupError, _warm_up, main
 
 
 @pytest.fixture
@@ -50,3 +53,16 @@ def test_bad_config_exits_with_message(home: Path) -> None:
     (home / "config.yaml").write_text("executors: []\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="entry"):
         main()
+
+
+class HangingExecutor(FakeExecutor):
+    """Исполнитель, чей прогрев не кончается (Ollama приняла соединение и молчит)."""
+
+    async def warm_up(self) -> None:
+        await asyncio.sleep(3600)
+
+
+async def test_hanging_warm_up_does_not_block_startup(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.WARNING, logger="smartesp"):
+        await asyncio.wait_for(_warm_up(FakeSTT(""), HangingExecutor([]), executor_timeout_s=0.05), 2)
+    assert "не прогрелся" in caplog.text

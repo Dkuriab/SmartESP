@@ -9,6 +9,8 @@ import ollama
 
 from smartesp.contracts import ChatMessage, ExecutorError, ReplyPart
 
+REQUEST_TIMEOUT_S = 60.0  # таймаут HTTP-операций (соединение, каждое чтение) — запрос не висит вечно
+
 
 def _chunk_text(chunk: Any) -> str:
     """Достаёт текст из куска ответа (объект ollama или словарь)."""
@@ -28,12 +30,16 @@ class OllamaExecutor:
         system_prompt: str,
         keep_alive: str,
         client: Any = None,
+        timeout_s: float = REQUEST_TIMEOUT_S,
     ) -> None:
-        """Запоминает настройки; клиент по умолчанию — локальный ollama.AsyncClient."""
+        """Запоминает настройки; клиент по умолчанию — локальный ollama.AsyncClient.
+
+        timeout_s — таймаут HTTP-операций клиента по умолчанию, секунды (с client не нужен).
+        """
         self._model = model
         self._system_prompt = system_prompt
         self._keep_alive = keep_alive
-        self._client: Any = client if client is not None else ollama.AsyncClient()
+        self._client: Any = client if client is not None else ollama.AsyncClient(timeout=timeout_s)
 
     def _wrap_error(self, exc: Exception) -> ExecutorError:
         """Превращает ошибку ollama/сети в понятную ExecutorError."""

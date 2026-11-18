@@ -39,6 +39,7 @@ LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 LOG_MAX_BYTES = 1_000_000
 LOG_BACKUPS = 5
 WARM_UP_PCM = bytes(16000)  # 0,5 с тишины (16 кГц, s16le)
+WARM_UP_TIMEOUT_S = 120.0  # дольше прогрева исполнителя не ждём: старт не должен висеть
 
 logger = logging.getLogger("smartesp")
 
@@ -155,15 +156,23 @@ def _create(
     return stt, tts, executor, stages
 
 
-async def _warm_up(stt: SpeechToText, executor: Executor) -> None:
-    """Загружает модели заранее, чтобы первый вопрос не ждал. Сбой — предупреждение, не остановка."""
+async def _warm_up(
+    stt: SpeechToText, executor: Executor, executor_timeout_s: float = WARM_UP_TIMEOUT_S
+) -> None:
+    """Загружает модели заранее, чтобы первый вопрос не ждал. Сбой — предупреждение, не остановка.
+
+    Прогрев исполнителя ограничен executor_timeout_s секундами.
+    """
     if isinstance(executor, _WarmsUp):
         started = time.monotonic()
         try:
-            await executor.warm_up()
+            async with asyncio.timeout(executor_timeout_s):
+                await executor.warm_up()
             logger.info("Исполнитель прогрет за %.1f с", time.monotonic() - started)
         except ExecutorError as error:
             logger.warning("Ollama недоступна: %s. Ходы будут заканчиваться сигналом ошибки.", error)
+        except TimeoutError:
+            logger.warning("Исполнитель не прогрелся за %g с; запускаюсь без прогрева.", executor_timeout_s)
     started = time.monotonic()
     try:
         await stt.transcribe(WARM_UP_PCM)
