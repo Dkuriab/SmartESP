@@ -7,7 +7,6 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import functools
 import json
 import logging
@@ -32,7 +31,7 @@ from smartesp.config import (
 )
 from smartesp.contracts import Executor, SpeechToText, Stage, TextToSpeech
 from smartesp.executors import OllamaExecutor, list_models, loaded_models
-from smartesp.lifecycle import GracefulServer, watch_parent
+from smartesp.lifecycle import GracefulServer, run_loop, watch_parent
 from smartesp.stages import WhisperDetect
 from smartesp.stt import MlxWhisperSTT
 from smartesp.tts import PiperTTS, SileroTTS, VoskTTS
@@ -85,6 +84,8 @@ def _setup_logging(logs: Path) -> None:
 def _flush_logs() -> None:
     for handler in logging.getLogger().handlers:
         handler.flush()
+    sys.stdout.flush()
+    sys.stderr.flush()
 
 
 def _version() -> str:
@@ -122,7 +123,10 @@ def _write_openapi(path: Path) -> None:
 
 
 async def _serve(store: ConfigFile, config: Config, home: Path, parent_watch: bool) -> bool:
-    """Сервер сразу, прогрев в фоне, работа до остановки. True — просили перезапуск."""
+    """Сервер сразу, прогрев в фоне, работа до остановки.
+
+    True — просили перезапуск, и никто не просил выхода (сигнал, закрытый stdin).
+    """
     token = load_or_create_token(home)
     parts = assemble(store, config, home, KINDS, OLLAMA, version=_version(), token=token, ui_dir=UI_DIR)
     host, port = config.server.host, config.server.port
@@ -133,23 +137,26 @@ async def _serve(store: ConfigFile, config: Config, home: Path, parent_watch: bo
     server = GracefulServer(uv_config, functools.partial(stop, parts), on_started=parts.run_file.write)
     server.stop_after(parts.core.wait_restart())
     if parent_watch:
-        watch_parent(sys.stdin.buffer, server.request_stop)
+        watch_parent(sys.stdin.fileno(), server.request_stop)
     logger.info("Запускаю сервер на %s:%d (/device, /api/v1)", host, port)
     try:
         await server.serve()
     finally:
         parts.run_file.remove()
-    return parts.core.restart_requested
+    return parts.core.restart_requested and not server.exit_requested
 
 
 def main(
     argv: Sequence[str] | None = None,
     *,
     execv: Callable[[str, list[str]], object] = os.execv,
+    exit_process: Callable[[int], object] = os._exit,
 ) -> None:
     """Точка входа: config.yaml → проверка видов → сервер → прогрев в фоне.
 
-    После остановки по просьбе о перезапуске запускает себя заново через execv.
+    После остановки по просьбе о перезапуске запускает себя заново через execv, иначе
+    выходит с кодом 0 через os._exit: потоки пула (например, зависшее скачивание) не
+    держат процесс дольше бюджета остановки.
     """
     args = _parse_args(argv)
     if args.openapi is not None:
@@ -167,7 +174,7 @@ def main(
         raise SystemExit(f"Ядро не запущено: {error}") from error
     restart = False
     try:
-        restart = asyncio.run(_serve(store, config, home, args.parent_watch))
+        restart = run_loop(_serve(store, config, home, args.parent_watch))
     except KeyboardInterrupt:
         pass
     logger.info("Ядро остановлено")
@@ -175,3 +182,5 @@ def main(
         logger.info("Перезапуск: %s -m smartesp %s", sys.executable, " ".join(sys.argv[1:]))
         _flush_logs()
         execv(sys.executable, [sys.executable, "-m", "smartesp", *sys.argv[1:]])
+    _flush_logs()
+    exit_process(0)

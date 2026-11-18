@@ -6,6 +6,8 @@ import io
 import json
 import logging
 import os
+import signal
+import subprocess
 import sys
 import threading
 import time
@@ -107,14 +109,18 @@ def run_main(argv: list[str], calls: list[ExecCall]) -> threading.Thread:
     def execv(path: str, args: list[str]) -> None:
         calls.append((path, args))
 
-    thread = threading.Thread(target=main, args=(argv,), kwargs={"execv": execv}, daemon=True)
+    def exit_process(code: int) -> None:
+        calls.append(("exit", [str(code)]))
+
+    kwargs = {"execv": execv, "exit_process": exit_process}
+    thread = threading.Thread(target=main, args=(argv,), kwargs=kwargs, daemon=True)
     thread.start()
     return thread
 
 
-def wait_run_file(home: Path) -> dict[str, object]:
+def wait_run_file(home: Path, timeout: float = 10) -> dict[str, object]:
     path = home / "run" / "core.json"
-    deadline = time.monotonic() + 10
+    deadline = time.monotonic() + timeout
     while not path.exists():
         assert time.monotonic() < deadline, "ядро не написало core.json"
         time.sleep(0.02)
@@ -134,7 +140,7 @@ def test_restart_request_stops_and_execs_same_command(home: Path, monkeypatch: p
     assert response.status_code == 202
     thread.join(10)
     assert not thread.is_alive()
-    assert calls == [(sys.executable, [sys.executable, "-m", "smartesp", *sys.argv[1:]])]
+    assert calls[0] == (sys.executable, [sys.executable, "-m", "smartesp", *sys.argv[1:]])
     assert not (home / "run" / "core.json").exists()
     assert "Остановка: готово" in (home / "logs" / "core.log").read_text(encoding="utf-8")
 
@@ -149,5 +155,54 @@ def test_parent_watch_closed_stdin_stops_core(home: Path, monkeypatch: pytest.Mo
     os.close(write_fd)
     thread.join(10)
     assert not thread.is_alive()
-    assert calls == []
+    assert calls == [("exit", ["0"])]  # без перезапуска; выход с кодом 0
+    assert not (home / "run" / "core.json").exists()
+
+
+CORE_ON_FAKES = """
+import sys
+from core_harness import NO_OLLAMA
+from fakes.fake_executor import FakeOllama
+from fakes.fake_stt import FakeSTT
+from fakes.fake_tts import FakeTTS
+import smartesp.main as m
+m.STT_KINDS["mlx_whisper"] = lambda c: FakeSTT("")
+m.TTS_KINDS["silero"] = lambda path, voice: FakeTTS()
+m.EXECUTOR_KINDS["ollama"] = lambda c: FakeOllama(["Да."], c.model)
+m.OLLAMA = NO_OLLAMA
+m.main(sys.argv[1:])
+"""
+
+
+def test_sigterm_with_parent_alive_exits_zero(tmp_path: Path) -> None:
+    """Так приложение останавливает ядро: stdin открыт, SIGTERM → код 0 без падения интерпретатора."""
+    core_dir = Path(__file__).resolve().parents[1]
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "config.yaml").write_text("server:\n  host: 127.0.0.1\n  port: 0\n", encoding="utf-8")
+    put_voice(home)
+    env = {**os.environ, "SMARTESP_HOME": str(home), "PYTHONPATH": f"{core_dir}:{core_dir / 'tests'}"}
+    log = (tmp_path / "out.log").open("wb")
+    process = subprocess.Popen(
+        [sys.executable, "-c", CORE_ON_FAKES, "--parent-watch"],
+        cwd=core_dir,
+        env=env,
+        stdin=subprocess.PIPE,  # родитель жив: stdin открыт до конца теста
+        stdout=log,
+        stderr=subprocess.STDOUT,
+    )
+    try:
+        wait_run_file(home, timeout=60)
+        process.send_signal(signal.SIGTERM)
+        assert process.wait(timeout=15) == 0
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        assert process.stdin is not None
+        process.stdin.close()
+        log.close()
+    output = (tmp_path / "out.log").read_text(encoding="utf-8", errors="replace")
+    assert "Fatal Python error" not in output
+    assert "Остановка: готово" in output
     assert not (home / "run" / "core.json").exists()

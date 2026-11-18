@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import os
@@ -25,7 +26,8 @@ from core_harness import (
 
 from fakes.fake_executor import FakeOllama
 from smartesp import wiring
-from smartesp.contracts import Subscription
+from smartesp.config import ExecutorConfig, SttConfig
+from smartesp.contracts import Executor, SpeechToText, Subscription
 from smartesp.lifecycle import GracefulServer, RunFile, watch_parent
 from smartesp.main import main
 from smartesp.wiring import finish, start, stop
@@ -138,6 +140,61 @@ async def test_prompt_change_keeps_model_and_model_change_unloads_old(tmp_path: 
     await finish(core)
 
 
+async def test_stop_mid_release_unloads_old_and_new_models(tmp_path: Path) -> None:
+    made: list[FakeOllama] = []
+    answer = ["Раз. ", "Два. ", "Три."]
+    core = make_core(tmp_path, fake_kinds(ollama_factory(made, answer, delay=0.15)))
+    start(core)
+    await eventually(lambda: core.core.state == "ready")
+    speaking, _ = await connect(core, "kitchen")
+    ask(speaking, 1)
+    await eventually(lambda: "reply_start" in sent_types(speaking))
+    entry = core.config.entry_executor().model_dump()
+    await core.core.patch_config({"executors": [{**entry, "model": "other"}]})
+    await eventually(lambda: core.live.executor is not made[0])  # подменили, старая ждёт конца хода
+    assert made[0].unloaded == []
+
+    await stop(core)
+    assert made[0].unloaded == [1.0]  # старая модель выгружена один раз, хоть release и отменён
+    assert made[1].model == "other" and made[1].unloaded == [1.0]
+    await finish(core)
+
+
+async def test_stop_mid_build_unloads_model_being_warmed(tmp_path: Path) -> None:
+    made: list[FakeOllama] = []
+
+    def factory(config: ExecutorConfig) -> Executor:
+        gate = asyncio.Event() if config.model == "big" else None
+        made.append(FakeOllama(["Да."], config.model, warm_gate=gate))
+        return made[-1]
+
+    core = make_core(tmp_path, fake_kinds(factory))
+    start(core)
+    await eventually(lambda: core.core.state == "ready")
+    entry = core.config.entry_executor().model_dump()
+    await core.core.patch_config({"executors": [{**entry, "model": "big"}]})
+    await eventually(lambda: len(made) == 2)  # новая модель греется
+    await stop(core)
+    assert made[1].unloaded == [1.0] and made[0].unloaded == [1.0]
+    await finish(core)
+
+
+async def test_warm_up_step_failure_is_logged_and_core_gets_ready(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    def broken(config: SttConfig) -> SpeechToText:
+        raise RuntimeError("нет модели whisper")
+
+    kinds = dataclasses.replace(fake_kinds(ollama_factory([])), stt={"mlx_whisper": broken})
+    core = make_core(tmp_path, kinds)
+    with caplog.at_level(logging.ERROR):
+        start(core)
+        await eventually(lambda: core.core.state == "ready")
+    assert "STT не прогрелся" in caplog.text
+    await stop(core)
+    await finish(core)
+
+
 async def test_run_file_holds_port_and_pid_and_is_removed(tmp_path: Path) -> None:
     run_file = RunFile(tmp_path / "run" / "core.json")
     run_file.write(8765)
@@ -167,16 +224,16 @@ async def test_parent_watch_eof_stops_server_gracefully(tmp_path: Path) -> None:
     config = uvicorn.Config(core.app, host="127.0.0.1", port=0, log_config=None)
     server = GracefulServer(config, stop=lambda: stop(core), on_started=started)
     read_fd, write_fd = os.pipe()
-    stdin = os.fdopen(read_fd, "rb")
     serving = asyncio.create_task(server.serve())
     await eventually(lambda: server.started)
-    watch_parent(stdin, server.request_stop)
+    watch_parent(read_fd, server.request_stop)
     assert ports and ports[0] > 0
     assert (tmp_path / "run" / "core.json").exists()
 
     os.close(write_fd)  # родитель умер: stdin закрылся
     await asyncio.wait_for(serving, 5)
-    stdin.close()
+    os.close(read_fd)
+    assert server.exit_requested
     assert core.core.state == "stopping"
     assert not (tmp_path / "run" / "core.json").exists()
 
@@ -199,6 +256,41 @@ async def test_second_stop_request_forces_exit(tmp_path: Path) -> None:
     await asyncio.wait_for(serving, 5)
     assert server.force_exit
     await finish(core)
+
+
+async def test_exit_request_during_restart_stop_cancels_restart(tmp_path: Path) -> None:
+    hang = asyncio.Event()
+
+    async def slow_stop() -> None:
+        await hang.wait()
+
+    core = make_core(tmp_path, fake_kinds(ollama_factory([])))
+    config = uvicorn.Config(core.app, host="127.0.0.1", port=0, log_config=None)
+    server = GracefulServer(config, stop=slow_stop)
+    restart = asyncio.Event()
+    server.stop_after(restart.wait())
+    serving = asyncio.create_task(server.serve())
+    await eventually(lambda: server.started)
+    restart.set()  # перезапуск: идёт честная остановка
+    await asyncio.sleep(0.05)
+    assert not server.exit_requested
+    server.request_stop()  # а тут SIGTERM от приложения
+    await asyncio.wait_for(serving, 5)
+    assert server.exit_requested
+    await finish(core)
+
+
+async def test_restart_alone_does_not_request_exit(tmp_path: Path) -> None:
+    core = make_core(tmp_path, fake_kinds(ollama_factory([])))
+    config = uvicorn.Config(core.app, host="127.0.0.1", port=0, log_config=None)
+    server = GracefulServer(config, stop=lambda: stop(core))
+    restart = asyncio.Event()
+    server.stop_after(restart.wait())
+    serving = asyncio.create_task(server.serve())
+    await eventually(lambda: server.started)
+    restart.set()
+    await asyncio.wait_for(serving, 5)
+    assert not server.exit_requested
 
 
 async def test_stop_is_bounded(tmp_path: Path) -> None:

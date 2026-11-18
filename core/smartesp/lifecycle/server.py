@@ -12,12 +12,14 @@ import uvicorn
 
 _log = logging.getLogger(__name__)
 
-STOP_LIMIT_S = 15.0  # вся честная остановка — не дольше этого
+STOP_LIMIT_S = 12.0  # с выходом процесса — меньше 15 с, после которых приложение убивает ядро
 
 
 class GracefulServer(uvicorn.Server):
     """uvicorn.Server, который по первой просьбе об остановке сначала выполняет stop().
 
+    exit_requested — остановку просили сигналом или request_stop() (а не только
+    stop_after): тогда перезапуск отменяется, процесс просто выходит.
     Сигналы SIGINT/SIGTERM, request_stop() и stop_after() ведут к одной остановке:
     первая просьба запускает stop() (не дольше limit_s секунд), после неё сервер
     выходит; вторая — немедленный выход (force_exit). Сигнал после остановки не
@@ -41,6 +43,7 @@ class GracefulServer(uvicorn.Server):
         self._loop = asyncio.get_running_loop()
         self._stopping: asyncio.Task[None] | None = None
         self._watchers: set[asyncio.Task[None]] = set()
+        self.exit_requested = False
 
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
         """Работает до конца остановки; ждущие stop_after снимаются."""
@@ -57,13 +60,17 @@ class GracefulServer(uvicorn.Server):
             self._on_started(self._port())
 
     def request_stop(self) -> None:
-        """Просит остановку; можно звать из любого потока. После закрытия цикла ничего не делает."""
+        """Просит остановку и выход (без перезапуска); можно звать из любого потока.
+
+        После закрытия цикла ничего не делает.
+        """
+        self.exit_requested = True
         try:
             self._loop.call_soon_threadsafe(self._on_request)
         except RuntimeError:  # цикл уже закрыт: процесс и так выходит
             pass
 
-    def stop_after(self, waiting: Awaitable[None]) -> None:
+    def stop_after(self, waiting: Awaitable[object]) -> None:
         """Просит остановку, когда waiting завершится (например, просьба о перезапуске)."""
 
         async def watch() -> None:

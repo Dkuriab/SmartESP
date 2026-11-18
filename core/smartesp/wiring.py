@@ -24,7 +24,7 @@ from smartesp.control import Core
 from smartesp.conversation import History, Orchestrator
 from smartesp.devices import DeviceHub, WebSocketConnection
 from smartesp.events import EventBus
-from smartesp.lifecycle import Answering, LiveAnswering, RunFile, timed, warm_strict, warm_tolerant
+from smartesp.lifecycle import Answering, LiveAnswering, RunFile, guarded, timed
 from smartesp.stages import run_stages
 from smartesp.tts import VoiceManager
 
@@ -92,10 +92,8 @@ def make_answering(config: Config, kinds: Kinds) -> Answering:
     return functools.partial(run_stages, stages), executor
 
 
-async def _build_answering(kinds: Kinds, config: Config) -> Answering:
-    analyze, executor = make_answering(config, kinds)
-    await warm_strict(executor, WARM_UP_TIMEOUT_S)
-    return analyze, executor
+async def _build_answering(kinds: Kinds, live: LiveAnswering, config: Config) -> Answering:
+    return await live.build(make_answering(config, kinds), WARM_UP_TIMEOUT_S)
 
 
 async def _device_names(config: Config) -> dict[str, str]:
@@ -108,7 +106,7 @@ async def _history_limits(config: Config) -> tuple[int, int]:
 
 def _sections(hub: DeviceHub, history: History, live: LiveAnswering, kinds: Kinds) -> dict[str, Section]:
     """Разделы, применяемые на лету (tts пульт открывает через менеджер голосов)."""
-    answering = Section(functools.partial(_build_answering, kinds), live.use, live.release)
+    answering = Section(functools.partial(_build_answering, kinds, live), live.use, live.release)
     return {
         "devices": Section(_device_names, lambda names: hub.set_names(cast(dict[str, str], names))),
         "history": Section(_history_limits, lambda new: history.set_limits(*cast(tuple[int, int], new))),
@@ -213,24 +211,20 @@ def start(parts: Assembly) -> None:
     tts = parts.config.tts
     voice = asyncio.create_task(parts.voices.open(tts.kind, tts.voice, retry=True), name="voice-open")
     parts.running = asyncio.create_task(parts.orchestrator.run(), name="orchestrator")
-    parts.running.add_done_callback(_log_crash)
     parts.warming = asyncio.create_task(warm_up(parts, voice), name="warm-up")
+    parts.running.add_done_callback(_log_crash)
+    parts.warming.add_done_callback(_log_crash)
 
 
 async def warm_up(parts: Assembly, voice: asyncio.Task[bool]) -> None:
-    """Прогрев в фоне: STT, обработчики, исполнитель (до 120 с), голос; затем ready."""
-    config = parts.config
-    stt = parts.kinds.stt[config.stt.kind](config.stt)
-    await timed("STT", stt.transcribe(WARM_UP_PCM))
-    parts.orchestrator.use_stt(stt)
-    answering = make_answering(config, parts.kinds)
-    parts.live.starting = answering[1]
-    await warm_tolerant(answering[1], WARM_UP_TIMEOUT_S)
-    parts.live.starting = None
-    if parts.live.executor is None:
-        parts.live.use(answering)
-    else:  # правку executors/stages применили, пока грелись: она новее
-        await parts.live.release(answering)
+    """Прогрев в фоне: STT, обработчики и исполнитель (до 120 с), голос; затем ready.
+
+    Сбой одного шага пишется в журнал и не мешает остальным.
+    """
+    await timed("STT", _warm_stt(parts))
+    answering = guarded("исполнитель", lambda: make_answering(parts.config, parts.kinds))
+    if answering is not None:
+        await parts.live.warm_startup(answering, WARM_UP_TIMEOUT_S)
     waiting = asyncio.create_task(parts.voice_ready.wait())
     try:  # хватит любого голоса, хоть запасного: нужный может ещё качаться
         await asyncio.wait([voice, waiting], return_when=asyncio.FIRST_COMPLETED)
@@ -242,19 +236,26 @@ async def warm_up(parts: Assembly, voice: asyncio.Task[bool]) -> None:
     logger.info("Ядро готово")
 
 
+async def _warm_stt(parts: Assembly) -> None:
+    stt = parts.kinds.stt[parts.config.stt.kind](parts.config.stt)
+    parts.orchestrator.use_stt(stt)
+    await stt.transcribe(WARM_UP_PCM)
+
+
 async def stop(parts: Assembly) -> None:
     """Честная остановка: договорить, отключить колонки, выгрузить модель, убрать файл запуска."""
     logger.info("Остановка: новые ходы и правки не принимаются")
     parts.core.set_state("stopping")
     parts.hub.stop_accepting()
     parts.orchestrator.stop_accepting()
+    parts.live.close()  # освобождения старых моделей больше не ждут ходов: их выгрузит unload_all
     await _cancel(parts.warming)  # прогрев, если ещё идёт; оркестратор — в finish
     await parts.core.aclose()  # правка в работе отменяется: живой исполнитель больше не меняется
     await parts.orchestrator.drain(DRAIN_S)
     logger.info("Остановка: идущие ходы закончены")
     await parts.hub.close_all()
     logger.info("Остановка: колонки отключены")
-    await parts.live.unload_live()
+    await parts.live.unload_all()
     await parts.voices.aclose()
     parts.run_file.remove()
     logger.info("Остановка: готово")
@@ -275,6 +276,6 @@ async def _cancel(*tasks: asyncio.Task[None] | None) -> None:
 
 
 def _log_crash(task: asyncio.Task[None]) -> None:
-    """Оркестратор не должен завершаться сам: если упал — громко в журнал."""
+    """Фоновая задача ядра упала — громко в журнал (оркестратор не должен завершаться сам)."""
     if not task.cancelled() and task.exception() is not None:
-        logger.critical("Оркестратор остановился с ошибкой", exc_info=task.exception())
+        logger.critical("Задача %s упала", task.get_name(), exc_info=task.exception())
