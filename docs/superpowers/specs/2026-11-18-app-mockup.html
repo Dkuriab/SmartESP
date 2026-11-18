@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ядро — набросок</title>
+<style>
+  :root {
+    --canvas:#141416; --dot:#2a2a2e; --panel:#1c1c1f; --panel2:#232327; --line:#2f2f34;
+    --text:#f2f2f4; --muted:#8e8e93; --faint:#5c5c61; --accent:#3d8bfd; --accent-bg:#1d3355;
+    --green:#32d74b; --orange:#ff9f0a; --purple:#bf5af2;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; height:100vh; overflow:hidden; background:var(--canvas); color:var(--text);
+    font:13px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    background-image:radial-gradient(var(--dot) 1px, transparent 1px); background-size:22px 22px; }
+  .panel { position:absolute; background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    box-shadow:0 10px 30px rgba(0,0,0,.45); }
+  .cap { font-size:11px; letter-spacing:.08em; color:var(--muted); text-transform:uppercase; font-weight:600; }
+  .row { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:9px; color:var(--text); }
+  .row.sel { background:var(--accent-bg); outline:1px solid var(--accent); }
+  .row .sub { color:var(--muted); font-size:11.5px; margin-left:auto; }
+  .ico { width:18px; text-align:center; opacity:.85; }
+  .dotg { width:7px; height:7px; border-radius:50%; background:var(--green); display:inline-block; }
+  .dotf { width:7px; height:7px; border-radius:50%; background:var(--faint); display:inline-block; }
+
+  /* левая панель */
+  #left { left:16px; top:16px; bottom:16px; width:280px; padding:14px 10px; overflow:auto; }
+  #left .head { padding:0 8px 12px; font-weight:600; font-size:14px; }
+  #left .head span { color:var(--muted); font-weight:400; }
+  .sec { display:flex; justify-content:space-between; padding:14px 8px 6px; }
+  .sec a { color:var(--muted); font-size:12px; text-decoration:none; }
+
+  /* верхняя панель */
+  #top { left:50%; transform:translateX(-50%); top:16px; display:flex; align-items:center; gap:4px; padding:5px; }
+  .seg { padding:6px 14px; border-radius:9px; color:var(--muted); }
+  .seg.on { background:var(--panel2); color:var(--text); }
+  .sep { width:1px; height:20px; background:var(--line); margin:0 6px; }
+
+  #status { right:16px; top:16px; display:flex; align-items:center; gap:10px; padding:7px 12px; }
+  #status b { font-weight:600; }
+  .btn { background:var(--accent-bg); color:#8ab8ff; padding:5px 12px; border-radius:8px; font-weight:600; }
+
+  /* правая панель — настройки выбранного */
+  #right { right:16px; top:66px; width:300px; padding:16px; }
+  #right h3 { margin:0; font-size:15px; }
+  #right .sub { color:var(--muted); font-size:12px; margin-top:2px; }
+  .field { display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-top:1px solid var(--line); }
+  .field:first-of-type { border-top:none; }
+  .lbl { color:var(--muted); }
+  .val { background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:5px 10px; min-width:120px; text-align:right; }
+  textarea { width:100%; background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px; font:inherit; font-size:12px; resize:none; }
+  .slider { height:4px; background:var(--line); border-radius:2px; position:relative; width:130px; }
+  .slider i { position:absolute; left:0; top:0; bottom:0; width:40%; background:var(--accent); border-radius:2px; }
+  .slider b { position:absolute; left:40%; top:-5px; width:14px; height:14px; margin-left:-7px; border-radius:50%; background:#fff; }
+
+  /* нижняя лента */
+  #feed { left:312px; right:332px; bottom:16px; height:190px; padding:12px 14px; overflow:hidden; }
+  .msg { display:flex; gap:12px; align-items:flex-start; padding:8px 6px; border-radius:9px; }
+  .msg.sel { background:var(--accent-bg); outline:1px solid var(--accent); }
+  .msg .when { color:var(--faint); font-size:11.5px; width:68px; flex-shrink:0; padding-top:2px; }
+  .tag { display:inline-block; font-size:11px; padding:1px 7px; border-radius:6px; background:var(--panel2); color:var(--muted); margin-left:4px; }
+  .tag.a { background:var(--accent-bg); color:#8ab8ff; }
+  .tag.p { background:#3a2350; color:#d9a6ff; }
+  .route { color:var(--muted); font-size:12px; margin-top:2px; }
+
+  /* холст */
+  svg { position:absolute; left:300px; top:70px; width:calc(100% - 640px); height:calc(100% - 300px); }
+  .n rect { fill:var(--panel); stroke:var(--line); stroke-width:1.2; }
+  .n.hot rect { stroke:var(--accent); stroke-width:2; }
+  .n text { fill:var(--text); font-size:12.5px; font-family:-apple-system, sans-serif; }
+  .n .s { fill:var(--muted); font-size:10.5px; }
+  .e { stroke:#3a3a40; stroke-width:1.6; fill:none; }
+  .e.hot { stroke:var(--accent); stroke-width:2.2; }
+  .ep { fill:#cfe0ff; stroke:var(--accent); stroke-width:1.5; }
+  .note { fill:var(--faint); font-size:11px; font-family:-apple-system, sans-serif; }
+</style>
+</head>
+<body>
+
+<!-- левая панель -->
+<div class="panel" id="left">
+  <div class="head">Ядро <span>/ Дом</span></div>
+
+  <div class="sec"><span class="cap">Колонки 2</span><a>+ Новая</a></div>
+  <div class="row"><span class="ico">🔊</span>Кухня<span class="sub"><span class="dotg"></span></span></div>
+  <div class="row"><span class="ico">🔊</span>Спальня<span class="sub"><span class="dotg"></span></span></div>
+
+  <div class="sec"><span class="cap">Люди 2</span><a>+ Добавить</a></div>
+  <div class="row"><span class="ico">👤</span>Даня<span class="sub">3 образца</span></div>
+  <div class="row"><span class="ico">👤</span>Маша<span class="sub">3 образца</span></div>
+
+  <div class="sec"><span class="cap">Обработчики фразы</span><a>+ Добавить</a></div>
+  <div class="row"><span class="ico">🗣</span>Кто говорит<span class="sub">~120 мс</span></div>
+  <div class="row"><span class="ico">🤫</span>Шёпот<span class="sub">~10 мс</span></div>
+
+  <div class="sec"><span class="cap">Исполнители</span><a>+ Добавить</a></div>
+  <div class="row sel"><span class="ico">⚡️</span>Диспетчер<span class="sub">gemma</span></div>
+  <div class="row"><span class="ico">🧠</span>Большая локальная<span class="sub">gpt-oss</span></div>
+  <div class="row"><span class="ico">⏳</span>Умная + задачи<span class="sub">deepseek</span></div>
+  <div class="row"><span class="ico">🛠</span>Агент-программист<span class="sub">удалённый</span></div>
+
+  <div class="sec"><span class="cap">Коннекторы MCP</span><a>+ Подключить</a></div>
+  <div class="row"><span class="ico">💡</span>Лампочки<span class="sub"><span class="dotg"></span></span></div>
+  <div class="row"><span class="ico">📝</span>Заметки · файлы<span class="sub"><span class="dotg"></span></span></div>
+  <div class="row"><span class="ico">⏰</span>Напоминания<span class="sub"><span class="dotf"></span></span></div>
+
+  <div class="sec"><span class="cap">Фоновые задачи 1</span><a>Все</a></div>
+  <div class="row"><span class="ico">⏳</span>Цена велосипеда<span class="sub">1:20 / 5:00</span></div>
+</div>
+
+<!-- верхняя панель -->
+<div class="panel" id="top">
+  <span class="seg on">Схема</span><span class="seg">Лента</span><span class="seg">Задачи</span>
+  <span class="sep"></span>
+  <span class="seg">−</span><span class="seg">100%</span><span class="seg">+</span><span class="seg">Вписать</span>
+</div>
+
+<div class="panel" id="status">
+  <span class="dotg"></span><b>Ollama</b><span style="color:var(--muted)">· 2 колонки</span>
+  <span class="btn">Проверить голосом</span>
+</div>
+
+<!-- холст со схемой -->
+<svg viewBox="0 0 760 420" preserveAspectRatio="xMidYMid meet">
+  <!-- рёбра -->
+  <path class="e hot" d="M120 110 C 160 110, 160 150, 200 150"/>
+  <path class="e" d="M120 200 C 160 200, 160 170, 200 170"/>
+  <path class="e hot" d="M330 160 C 360 160, 360 170, 390 170"/>
+  <path class="e" d="M520 160 C 560 160, 560 60, 600 60"/>
+  <path class="e" d="M520 170 C 560 170, 560 170, 600 170"/>
+  <path class="e" d="M520 180 C 560 180, 560 280, 600 280"/>
+  <path class="e hot" d="M455 200 C 455 260, 300 280, 300 330"/>
+  <circle class="ep" cx="520" cy="160" r="4"/><circle class="ep" cx="520" cy="170" r="4"/><circle class="ep" cx="520" cy="180" r="4"/>
+  <circle class="ep" cx="330" cy="160" r="4"/>
+
+  <!-- колонки -->
+  <g class="n hot"><rect x="10" y="88" width="110" height="46" rx="10"/><text x="24" y="108">🔊 Кухня</text><text class="s" x="24" y="124">Даня · шёпот</text></g>
+  <g class="n"><rect x="10" y="178" width="110" height="46" rx="10"/><text x="24" y="198">🔊 Спальня</text><text class="s" x="24" y="214">ждёт слово</text></g>
+
+  <!-- обработчики -->
+  <g class="n hot"><rect x="200" y="100" width="130" height="120" rx="10"/>
+    <text x="214" y="122">Обработчики</text>
+    <text class="s" x="214" y="146">∥ кто говорит → Даня</text>
+    <text class="s" x="214" y="164">∥ шёпот → да</text>
+    <text class="s" x="214" y="200" style="fill:var(--faint)">работают параллельно</text></g>
+
+  <!-- диспетчер -->
+  <g class="n hot"><rect x="390" y="140" width="130" height="60" rx="10"/><text x="404" y="164">⚡️ Диспетчер</text><text class="s" x="404" y="182">gemma · 0.4 с</text></g>
+
+  <!-- исполнители -->
+  <g class="n"><rect x="600" y="36" width="150" height="48" rx="10"/><text x="614" y="56">🧠 Большая локальная</text><text class="s" x="614" y="72">вопросы на знания</text></g>
+  <g class="n"><rect x="600" y="146" width="150" height="48" rx="10"/><text x="614" y="166">⏳ Умная + задачи</text><text class="s" x="614" y="182">долгие, следить</text></g>
+  <g class="n"><rect x="600" y="256" width="150" height="48" rx="10"/><text x="614" y="276">🛠 Агент-программист</text><text class="s" x="614" y="292">проекты в папках</text></g>
+
+  <!-- коннекторы -->
+  <g class="n hot"><rect x="230" y="330" width="120" height="40" rx="10"/><text x="246" y="355">💡 Лампочки</text></g>
+  <g class="n"><rect x="360" y="330" width="120" height="40" rx="10"/><text x="376" y="355">📝 Заметки</text></g>
+  <g class="n"><rect x="490" y="330" width="130" height="40" rx="10" style="stroke-dasharray:4 3"/><text x="506" y="355" style="fill:var(--muted)">⏰ Напоминания</text></g>
+  <text class="note" x="230" y="392">коннекторы доступны всем исполнителям · пунктир — не подключён</text>
+</svg>
+
+<!-- правая панель: настройки выбранного -->
+<div class="panel" id="right">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+    <div><h3>⚡️ Диспетчер</h3><div class="sub">Исполнитель · отвечает первым</div></div>
+    <span style="color:var(--muted)">⋯</span>
+  </div>
+  <div style="height:14px"></div>
+  <div class="field"><span class="lbl">Модель</span><span class="val">gemma-4 ▾</span></div>
+  <div class="field"><span class="lbl">Где</span><span class="val">Ollama · этот Mac</span></div>
+  <div class="field"><span class="lbl">Температура</span><span class="slider"><i></i><b></b></span></div>
+  <div class="field" style="display:block">
+    <div class="cap" style="margin:6px 0 8px">Может передать</div>
+    <div class="row" style="padding:5px 0"><span class="dotg"></span>Большая локальная</div>
+    <div class="row" style="padding:5px 0"><span class="dotg"></span>Умная + задачи</div>
+    <div class="row" style="padding:5px 0"><span class="dotg"></span>Агент-программист</div>
+  </div>
+  <div class="field" style="display:block">
+    <div class="cap" style="margin:6px 0 8px">Описание для модели</div>
+    <textarea rows="4">Отвечай сразу и коротко. Простое делай сам. Если нужно подумать — передай и скажи, кому передал.</textarea>
+  </div>
+</div>
+
+<!-- нижняя лента -->
+<div class="panel" id="feed">
+  <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span class="cap">Лента</span><span style="color:var(--muted); font-size:12px">нажмите на фразу — путь подсветится на схеме</span></div>
+  <div class="msg sel"><span class="when">21:04 Кухня</span><div>«включи свет в коридоре» <span class="tag a">Даня 0.92</span><span class="tag p">шёпот</span>
+    <div class="route">Диспетчер сам → 💡 Лампочки → ответ «тихий» · 0.9 с</div></div></div>
+  <div class="msg"><span class="when">20:51 Спальня</span><div>«о чём была „Пикник на обочине“?» <span class="tag a">Маша 0.88</span>
+    <div class="route">Диспетчер: «спрошу большую модель» → 🧠 Большая локальная · 3.4 с</div></div></div>
+  <div class="msg"><span class="when">20:30 Кухня</span><div>«запомни купить молоко» <span class="tag">голос не узнан</span>
+    <div class="route">Диспетчер: «не узнал вас, чьи это заметки?»</div></div></div>
+</div>
+
+</body>
+</html>
