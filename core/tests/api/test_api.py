@@ -124,3 +124,20 @@ async def test_root_with_build(core: FakeCore, bus: EventBus, tmp_path: Path) ->
         assert (await c.get("/")).text == "<h1>UI</h1>"
         assert (await c.get(f"{P}/status")).status_code == 401  # API побеждает статику
         assert (await c.get(f"{P}/status", headers=HEADERS)).status_code == 200
+
+
+async def test_bearer_scheme_case_insensitive_but_strict_spacing(client: httpx.AsyncClient) -> None:
+    ok = await client.get(f"{P}/status", headers={"Authorization": "bearer secret-token"})
+    assert ok.status_code == 200
+    bad = await client.get(f"{P}/status", headers={"Authorization": "Bearer  secret-token"})
+    assert bad.status_code == 401
+
+
+def test_openapi_declares_error_bodies(app: FastAPI) -> None:
+    paths = app.openapi()["paths"]
+    patch = paths[f"{P}/config"]["patch"]["responses"]
+    assert {"401", "422", "503"} <= set(patch)
+    assert "ChangeOut" in str(patch["422"]) and "ChangeOut" in str(patch["503"])
+    assert "ChangeOut" in str(paths[f"{P}/voices/download"]["post"]["responses"]["503"])
+    assert "ErrorOut" in str(paths[f"{P}/models"]["get"]["responses"]["502"])
+    assert "401" in paths[f"{P}/status"]["get"]["responses"]

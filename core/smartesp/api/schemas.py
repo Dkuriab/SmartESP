@@ -55,6 +55,12 @@ class ConfigOut(BaseModel):
     restart_sections: list[str]
 
 
+class ErrorOut(BaseModel):
+    """Тело ошибки HTTP."""
+
+    detail: str
+
+
 class ChangeOut(BaseModel):
     """Ответ на изменение."""
 

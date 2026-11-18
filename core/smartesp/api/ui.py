@@ -18,7 +18,8 @@ NOT_BUILT_HTML = (
 def mount_ui(app: FastAPI, ui_dir: Path) -> None:
     """Раздаёт `ui_dir` на `/`, а без сборки — страницу с командой сборки.
 
-    Вызывать после подключения роутера API, чтобы маршруты /api побеждали.
+    Вызывать после подключения ВСЕХ остальных маршрутов (API, /device и т. д.):
+    монтирование на `/` перехватывает всё, что объявлено позже.
     """
     if (ui_dir / "index.html").is_file():
         app.mount("/", StaticFiles(directory=ui_dir, html=True), name="ui")
