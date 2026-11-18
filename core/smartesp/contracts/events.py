@@ -24,11 +24,28 @@ class EventSink(Protocol):
         ...
 
 
+class Subscription(Protocol):
+    """Подписка на ленту: асинхронный итератор, который нужно закрывать."""
+
+    def __aiter__(self) -> AsyncIterator[CoreEvent]: ...
+
+    async def __anext__(self) -> CoreEvent:
+        """Ждёт следующее событие."""
+        ...
+
+    async def aclose(self) -> None:
+        """Снимает подписку; повторный вызов безопасен."""
+        ...
+
+
 class EventFeed(Protocol):
     """Лента событий для интерфейса."""
 
-    def subscribe(self) -> AsyncIterator[CoreEvent]:
-        """Подписывает на новые события; выход из цикла снимает подписку."""
+    def subscribe(self) -> Subscription:
+        """Подписывает на новые события с момента вызова.
+
+        Потребитель обязан закрыть подписку: `async with aclosing(feed.subscribe())`.
+        """
         ...
 
     def recent_turns(self, limit: int) -> list[dict[str, object]]:
