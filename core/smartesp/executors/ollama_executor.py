@@ -1,6 +1,7 @@
 """Исполнитель на локальной LLM в Ollama."""
 
 from collections.abc import AsyncIterator
+from contextlib import aclosing
 from typing import Any
 
 import httpx
@@ -61,10 +62,12 @@ class OllamaExecutor:
                 think=False,
                 keep_alive=self._keep_alive,
             )
-            async for chunk in stream:
-                text = _chunk_text(chunk)
-                if text:
-                    yield ReplyPart(text)
+            # aclosing закрывает HTTP-поток и при раннем выходе (barge-in)
+            async with aclosing(stream):
+                async for chunk in stream:
+                    text = _chunk_text(chunk)
+                    if text:
+                        yield ReplyPart(text)
         except (httpx.HTTPError, ConnectionError, ollama.ResponseError) as exc:
             raise self._wrap_error(exc) from exc
 

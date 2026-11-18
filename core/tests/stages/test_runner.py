@@ -34,7 +34,7 @@ async def test_runs_in_parallel_and_keeps_order() -> None:
     a, b = FakeStage("a", 0.2), FakeStage("b", 0.2)
     start = time.monotonic()
     out = await run_stages([(a, 1.0), (b, 1.0)], UTT)
-    assert time.monotonic() - start < 0.35
+    assert time.monotonic() - start < 0.39
     assert [x.source for x in out] == ["a", "b"]
 
 

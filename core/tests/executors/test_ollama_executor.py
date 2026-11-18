@@ -18,6 +18,8 @@ class FakeClient:
         self.error = error
         self.chat_kwargs: dict[str, Any] = {}
         self.generate_kwargs: dict[str, Any] = {}
+        self.stream_closed = False
+        self.mid_error: Exception | None = None
 
     async def chat(self, **kwargs: Any) -> AsyncIterator[dict[str, Any]]:
         self.chat_kwargs = kwargs
@@ -26,8 +28,13 @@ class FakeClient:
         return self._stream()
 
     async def _stream(self) -> AsyncIterator[dict[str, Any]]:
-        for p in self.parts:
-            yield {"message": {"content": p}}
+        try:
+            for p in self.parts:
+                yield {"message": {"content": p}}
+            if self.mid_error:
+                raise self.mid_error
+        finally:
+            self.stream_closed = True
 
     async def generate(self, **kwargs: Any) -> None:
         self.generate_kwargs = kwargs
@@ -70,8 +77,25 @@ async def test_passes_think_false_and_keep_alive() -> None:
 
 
 async def test_connection_error_becomes_executor_error() -> None:
-    with pytest.raises(ExecutorError, match="m"):
+    with pytest.raises(ExecutorError, match="«m»"):
         await collect(make(FakeClient(error=httpx.ConnectError("нет связи"))))
+
+
+async def test_stream_closed_on_early_stop() -> None:
+    c = FakeClient(["a", "b", "c"])
+    gen = make(c).run([ChatMessage("user", "привет")])
+    async for _ in gen:
+        break
+    await gen.aclose()  # type: ignore[attr-defined]
+    assert c.stream_closed
+
+
+async def test_mid_stream_error_becomes_executor_error() -> None:
+    c = FakeClient(["a"])
+    c.mid_error = httpx.ReadError("обрыв")
+    with pytest.raises(ExecutorError, match="«m»"):
+        await collect(make(c))
+    assert c.stream_closed
 
 
 async def test_missing_model_becomes_executor_error() -> None:
