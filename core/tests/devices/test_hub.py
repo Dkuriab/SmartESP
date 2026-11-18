@@ -222,3 +222,28 @@ async def test_stuck_speaker_does_not_stall_arbitration() -> None:
     await eventually(lambda: {"type": "cancel_turn", "turn": 1} in conn_a.sent_json())
     assert conn_a.sent_audio() == b""  # повис reply_start; после отмены звук не шлётся
     assert '{"type":"reply_end","turn":1}' not in conn_a.sent
+
+
+async def test_aclose_stops_timer_and_background_sends() -> None:
+    clock = FakeClock()
+    hub = make_hub(clock)
+    conn_a, task_a = await connect(hub, "A")
+    conn_b, task_b = await connect(hub, "B")
+    conn_b.stall()  # cancel_turn для B повиснет в фоне
+    conn_a.feed_json("wake", turn=1, level=-20.0)
+    conn_b.feed_json("wake", turn=1, level=-40.0)
+    await asyncio.sleep(0.01)
+    clock.now += WINDOW_S + 0.1
+    await eventually(lambda: hub.is_active("A", 1))
+    await asyncio.sleep(0.01)
+    handlers = {task_a, task_b}
+    pending = {t for t in asyncio.all_tasks() if t is not asyncio.current_task()} - handlers
+    assert any(not t.done() for t in pending)  # таймер арбитра и повисшая отправка
+
+    await asyncio.wait_for(hub.aclose(), 1)
+    await hub.aclose()  # повторно — без ошибок
+
+    assert all(t.done() for t in pending)
+    for task in handlers:
+        task.cancel()
+    await asyncio.gather(*handlers, return_exceptions=True)

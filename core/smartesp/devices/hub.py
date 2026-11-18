@@ -90,6 +90,14 @@ class DeviceHub:
         """Имя колонки из конфигурации или сам id."""
         return self._names.get(device_id, device_id)
 
+    async def aclose(self) -> None:
+        """Останавливает таймер арбитра и фоновые отправки и ждёт их. Повторный вызов безопасен."""
+        tasks = [t for t in (self._poll_task, *self._background) if t is not None]
+        self._poll_task = None
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
     # --- сессии ---
 
     def _ensure_polling(self) -> None:

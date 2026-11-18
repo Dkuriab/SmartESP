@@ -17,6 +17,7 @@ from .messages import (
     stop_playback,
     tone,
 )
+from .websocket_connection import WebSocketConnection
 
 __all__ = [
     "Arbiter",
@@ -29,6 +30,7 @@ __all__ = [
     "PlaybackDone",
     "UtteranceEnd",
     "Wake",
+    "WebSocketConnection",
     "cancel_turn",
     "parse_message",
     "reply_end",
