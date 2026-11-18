@@ -214,7 +214,7 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str) -> FastA
         await ws.accept()
         await parts.hub.handle(WebSocketConnection(ws))
 
-    app.include_router(create_api(parts.core, parts.bus, token))
+    app.include_router(create_api(parts.core, parts.bus, token, port=parts.config.server.port))
     mount_ui(app, ui_dir)  # последним: монтирование на / перехватывает всё, что объявлено позже
     return app
 

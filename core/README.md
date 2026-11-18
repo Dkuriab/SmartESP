@@ -148,6 +148,7 @@ curl -X PATCH -H "Authorization: Bearer $(cat ~/SmartEsp/token)" \
 | `POST /voices/download` | `{kind, voice}` → 202, `{change_id, status: "accepted"}`; ход скачивания — события `voice_download`, `voice_ready`. Голоса нет в каталоге `GET /voices` — 422 (`status: "invalid"`, текст в `error`), ядро останавливается — 503 (`status: "stopping"`) |
 | `POST /voices/preview` | `{kind, voice, style="normal", text=null}` → `audio/wav` (16 кГц, 16 бит, моно); голос не скачан (или ещё качается) — 409, неизвестный голос — 404, модель не озвучила образец — 500; тело ошибки `{detail}` |
 | `GET /turns?limit=100` | последние ходы (данные `turn_finished`), от новых к старым; ядро хранит 100 последних в памяти |
+| `GET /access` | `{urls}` — адреса `http://<ip>:<порт>/?token=…` для входа с других компьютеров сети (без `127.*`) |
 | `POST /restart` | перезапуск ядра, ответ 202 |
 | `WS /events?token=` | поток событий JSON `{"kind", "data", "at"}`: `core_state`, `device_connected`, `device_disconnected`, `wake`, `arbitration`, `turn_started`, `turn_heard`, `turn_finished`, `change_applied`, `voice_download`, `voice_ready` |
 

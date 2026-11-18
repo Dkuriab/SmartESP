@@ -12,12 +12,13 @@ from smartesp.api import create_api, mount_ui
 from smartesp.events import EventBus
 
 TOKEN = "secret-token"
+PORT = 8765
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 
 
 def make_app(core: FakeCore, bus: EventBus, ui_dir: Path) -> FastAPI:
     app = FastAPI()
-    app.include_router(create_api(core, bus, TOKEN))
+    app.include_router(create_api(core, bus, TOKEN, port=PORT))
     mount_ui(app, ui_dir)
     return app
 

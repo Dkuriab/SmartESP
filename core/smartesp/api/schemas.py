@@ -124,3 +124,9 @@ class PreviewIn(BaseModel):
     voice: str
     style: str = "normal"
     text: str | None = None
+
+
+class AccessOut(BaseModel):
+    """Адреса для входа в интерфейс с других компьютеров сети (с токеном)."""
+
+    urls: list[str]

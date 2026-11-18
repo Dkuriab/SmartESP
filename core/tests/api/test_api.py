@@ -154,3 +154,16 @@ def test_openapi_declares_error_bodies(app: FastAPI) -> None:
     assert "ChangeOut" in str(download["503"]) and "ChangeOut" in str(download["422"])
     assert "ErrorOut" in str(paths[f"{P}/models"]["get"]["responses"]["502"])
     assert "401" in paths[f"{P}/status"]["get"]["responses"]
+
+
+async def test_access_lists_lan_urls_without_loopback(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("smartesp.api.routes.lan_addresses", lambda: ["10.0.0.5"])
+    response = await client.get(f"{P}/access", headers=HEADERS)
+    assert response.status_code == 200
+    assert response.json() == {"urls": ["http://10.0.0.5:8765/?token=secret-token"]}
+
+
+async def test_access_requires_token(client: httpx.AsyncClient) -> None:
+    assert (await client.get(f"{P}/access")).status_code == 401

@@ -18,8 +18,10 @@ from smartesp.contracts import (
     VoiceNotDownloadedError,
 )
 
+from .access import lan_addresses
 from .auth import require_token, token_matches
 from .schemas import (
+    AccessOut,
     ChangeOut,
     ConfigOut,
     DownloadIn,
@@ -42,12 +44,13 @@ def _change_response(result: ChangeResult, codes: dict[str, int]) -> JSONRespons
     return JSONResponse(body.model_dump(), status_code=codes.get(result.status, 200))
 
 
-def create_api(core: CorePort, feed: EventFeed, token: str) -> APIRouter:
-    """Собирает роутер `/api/v1`; все ресурсы требуют токен."""
+def create_api(core: CorePort, feed: EventFeed, token: str, *, port: int) -> APIRouter:
+    """Собирает роутер `/api/v1`; все ресурсы требуют токен. `port` — порт сервера для адресов входа."""
     router = APIRouter(prefix="/api/v1")
     secured = APIRouter(dependencies=[Depends(require_token(token))], responses=_UNAUTHORIZED)
     _add_core_routes(secured, core)
     _add_voice_routes(secured, core)
+    _add_access_route(secured, token, port)
     router.include_router(secured)
     _add_events_route(router, feed, token)
     return router
@@ -87,6 +90,14 @@ def _add_core_routes(secured: APIRouter, core: CorePort) -> None:
     @secured.post("/restart", status_code=202)
     def restart() -> None:
         core.request_restart()
+
+
+def _add_access_route(secured: APIRouter, token: str, port: int) -> None:
+    """Адреса входа из локальной сети."""
+
+    @secured.get("/access")
+    def get_access() -> AccessOut:
+        return AccessOut(urls=[f"http://{ip}:{port}/?token={token}" for ip in lan_addresses()])
 
 
 def _add_voice_routes(secured: APIRouter, core: CorePort) -> None:
