@@ -14,6 +14,7 @@ export function makeTurn(id: number, over: Partial<Turn> = {}): Turn {
     style: 'normal',
     answer: `ответ ${id}`,
     status: 'ok',
+    at: 1700000000,
     ...over,
   }
 }

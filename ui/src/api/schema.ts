@@ -337,6 +337,8 @@ export interface components {
              * @enum {string}
              */
             status: "ok" | "error" | "interrupted" | "meaningless";
+            /** At */
+            at: number;
             /** Stt Ms */
             stt_ms?: number | null;
             /** First Text Ms */

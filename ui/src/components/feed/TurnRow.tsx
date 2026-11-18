@@ -1,6 +1,7 @@
 // Строка хода: колонка, вопрос, пометки, ответ, стиль, задержки, ошибка.
 import type { Turn } from '../../state/model'
 import './feed.css'
+import { formatTime } from './time'
 
 type Props = { turn: Turn; selected: boolean; onSelect: (id: Turn['turn_id']) => void }
 
@@ -19,6 +20,7 @@ export default function TurnRow({ turn, selected, onSelect }: Props) {
       aria-pressed={selected}
       onClick={() => onSelect(turn.turn_id)}
     >
+      <span className="time">{formatTime(turn.at)}</span>
       <span className="when cut">{turn.device_name || turn.device_id}</span>
       <span className="msg-body">
         <span className="line">

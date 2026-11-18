@@ -13,6 +13,12 @@
   --green: #32d74b;
   --orange: #ff9f0a;
   --purple: #bf5af2;
+  --purple-bg: #3a2350;
+  --purple-text: #d9a6ff;
+  --red: #ff453a;
+  --red-bg: #4a1d1b;
+  --red-text: #ff6961;
+  --accent-text: #8ab8ff;
   color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
 }

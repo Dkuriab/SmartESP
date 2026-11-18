@@ -56,7 +56,7 @@
 }
 
 .dot-bad {
-  background: #ff453a;
+  background: var(--red);
 }
 
 .dot-off {

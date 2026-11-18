@@ -1,7 +1,7 @@
 /* Общие элементы: кнопки, плашки, уведомления, экран токена. */
 .btn {
   background: var(--accent-bg);
-  color: #8ab8ff;
+  color: var(--accent-text);
   padding: 5px 12px;
   border: 0;
   border-radius: 8px;
@@ -46,7 +46,7 @@
 }
 
 .notice-error {
-  border-color: #ff453a;
+  border-color: var(--red);
 }
 
 .notice-ok {

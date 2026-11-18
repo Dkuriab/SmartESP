@@ -46,6 +46,12 @@ describe('Feed', () => {
     expect(screen.getByText('ошибка')).toBeInTheDocument()
   })
 
+  it('показывает время хода HH:MM:SS в местном времени', () => {
+    const at = new Date(2024, 0, 2, 9, 5, 7).getTime() / 1000
+    setup([makeTurn(1, { at })])
+    expect(screen.getByText('09:05:07')).toBeInTheDocument()
+  })
+
   it('клик выделяет ход', async () => {
     const { onSelect } = setup()
     await userEvent.click(screen.getByText('вопрос 1'))
@@ -57,6 +63,7 @@ describe('Feed', () => {
     const turns = [makeTurn(1, { text: long, answer: 'о'.repeat(1500) })]
     render(<Feed turns={turns} selectedId={1} onSelect={vi.fn()} />)
     const card = screen.getByRole('dialog')
+    expect(within(card).getByText(/\d\d:\d\d:\d\d/)).toBeInTheDocument()
     expect(within(card).getByText(long)).toBeInTheDocument()
     expect(within(card).getByText('о'.repeat(1500))).toBeInTheDocument()
   })

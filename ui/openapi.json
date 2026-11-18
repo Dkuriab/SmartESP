@@ -812,6 +812,10 @@
             ],
             "title": "Status"
           },
+          "at": {
+            "type": "number",
+            "title": "At"
+          },
           "stt_ms": {
             "anyOf": [
               {
@@ -855,7 +859,8 @@
           "annotations",
           "style",
           "answer",
-          "status"
+          "status",
+          "at"
         ],
         "title": "TurnOut",
         "description": "Данные события turn_finished."
