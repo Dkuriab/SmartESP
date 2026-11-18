@@ -2,11 +2,12 @@
 
 import copy
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args, get_origin
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
-from .loader import _prune, _read, _write_overrides, load_config  # pyright: ignore[reportPrivateUsage]
+from ._files import prune, write_overrides
+from .loader import load_with_overrides
 from .models import Config
 
 
@@ -20,10 +21,7 @@ class ConfigFile:
 
     def load(self) -> Config:
         """Читает файл (как load_config, с переводом старого формата) и запоминает."""
-        config = load_config(self._path)
-        raw = _read(self._path)
-        raw.pop("version", None)
-        self._overrides = raw
+        config, self._overrides = load_with_overrides(self._path)
         self._config = config
         return config
 
@@ -48,7 +46,12 @@ class ConfigFile:
         Словари сливаются вглубь, списки заменяются целиком, null сбрасывает ключ
         к умолчанию. Неверный результат — ValueError с понятным текстом.
         """
+        if not isinstance(patch, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise ValueError("правка настроек должна быть словарём")
+        if "version" in patch:
+            raise ValueError("ключ version менять нельзя")
         merged = _merge(self._overrides, patch)
+        _check_keys(Config, merged, "")
         try:
             return Config.model_validate(merged)
         except ValidationError as error:
@@ -56,8 +59,8 @@ class ConfigFile:
 
     def save(self, config: Config) -> None:
         """Пишет в файл только отличия от умолчаний (атомарно) и запоминает их."""
-        overrides = _prune(config.model_dump(mode="json"), Config().model_dump(mode="json"))
-        _write_overrides(self._path, overrides)
+        overrides = prune(config.model_dump(mode="json"), Config().model_dump(mode="json"))
+        write_overrides(self._path, overrides)
         self._overrides = overrides
         self._config = config
 
@@ -91,3 +94,36 @@ def _dotted(tree: dict[str, Any], prefix: str) -> list[str]:
         else:
             keys.append(name)
     return keys
+
+
+def _models_in(annotation: object) -> list[type[BaseModel]]:
+    """Модели, вложенные в тип поля: сама модель, элементы списка, значения словаря."""
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return [annotation]
+    return [m for arg in get_args(annotation) for m in _models_in(arg)]
+
+
+def _check_keys(model: type[BaseModel], data: dict[str, Any], prefix: str) -> None:
+    """Отвергает неизвестные ключи вглубь; ключи-идентификаторы (devices) свободны."""
+    for key, value in data.items():
+        field = model.model_fields.get(key)
+        if field is None:
+            raise ValueError(f"неизвестный ключ настроек: {prefix}{key}")
+        nested = _models_in(field.annotation)
+        if len(nested) == 1:
+            _check_value(field.annotation, nested[0], value, f"{prefix}{key}")
+
+
+def _check_value(annotation: object, sub: type[BaseModel], value: object, name: str) -> None:
+    """Проверяет значение поля: модель, словарь моделей по идентификаторам или список моделей."""
+    origin = get_origin(annotation)
+    items: list[tuple[str, object]] = []
+    if origin is dict and isinstance(value, dict):
+        items = [(f"{name}.{k}", v) for k, v in value.items()]  # pyright: ignore[reportUnknownVariableType]
+    elif origin is list and isinstance(value, list):
+        items = [(f"{name}[{i}]", v) for i, v in enumerate(value)]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
+    elif origin is None:
+        items = [(name, value)]
+    for item_name, item in items:
+        if isinstance(item, dict):
+            _check_keys(sub, item, item_name + ".")  # pyright: ignore[reportUnknownArgumentType]

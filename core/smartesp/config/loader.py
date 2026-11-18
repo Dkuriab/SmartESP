@@ -14,23 +14,12 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from ._files import prune, read_yaml, write_overrides
 from .models import CONFIG_VERSION, Config
 from .models import DEFAULT_SYSTEM_PROMPT as _CURRENT_PROMPT
 
-HEADER = """# Настройки ядра SmartESP: здесь только то, что вы поменяли сами.
-# Все значения по умолчанию — в config.defaults.yaml рядом (только для справки):
-# скопируйте оттуда нужный ключ сюда и поменяйте. После правки перезапустите ядро.
-"""
 DEFAULTS_HEADER = """# Значения по умолчанию — ТОЛЬКО ДЛЯ СПРАВКИ, ядро перезаписывает этот файл при старте.
 # Чтобы поменять настройку, перенесите ключ в config.yaml.
-"""
-# Пример колонки: только комментарии, загрузку не меняет.
-DEVICES_EXAMPLE = """
-# Колонки: ключ — MAC Wi-Fi из hello колонки (заглавными, через двоеточие),
-# обязательно в кавычках: MAC из одних цифр без кавычек YAML прочтёт как число.
-# devices:
-#   "AA:BB:CC:DD:EE:FF":
-#     name: Кухня
 """
 # Системные промпты по умолчанию прежних версий: в старом файле они значат «не меняли».
 _LEGACY_PROMPTS = (
@@ -47,6 +36,11 @@ def data_dir() -> Path:
 
 
 def load_config(path: Path) -> Config:
+    """Читает настройки (см. load_with_overrides)."""
+    return load_with_overrides(path)[0]
+
+
+def load_with_overrides(path: Path) -> tuple[Config, dict[str, Any]]:
     """Читает настройки: изменения из config.yaml поверх значений по умолчанию.
 
     Нет файла — создаёт пустой (с подсказками). Файл прежнего формата (все
@@ -56,37 +50,26 @@ def load_config(path: Path) -> Config:
     kind остаётся piper — прежнее умолчание).
     Рядом пишется config.defaults.yaml. Файл не читается, не разбирается как YAML
     или настройки неверные — ValueError с понятным сообщением и путём к файлу.
+    Возвращает настройки и изменения владельца (содержимое файла без version).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     _write_defaults(path.with_name("config.defaults.yaml"))
     if not path.exists():
-        _write_overrides(path, {})
-        return Config()
-    raw = _read(path)
+        write_overrides(path, {})
+        return Config(), {}
+    raw = read_yaml(path)
     version = raw.get("version")
     if version is not None and (isinstance(version, bool) or version not in (2, CONFIG_VERSION)):
         raise ValueError(f"файл настроек от более новой версии ядра: {path} (version: {version!r})")
     if version != CONFIG_VERSION:
         shutil.copyfile(path, path.with_name(path.name + ".bak"))
         raw = _migrate(raw) if version is None else _migrate_v2(raw)
-        _write_overrides(path, raw)
+        write_overrides(path, raw)
     try:
-        return Config.model_validate(raw)
+        config = Config.model_validate(raw)
     except ValidationError as error:
         raise ValueError(f"неверные настройки в {path}:\n{error}") from error
-
-
-def _read(path: Path) -> dict[str, Any]:
-    """Содержимое YAML-файла как словарь (пустой файл — пустой словарь)."""
-    try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except (OSError, UnicodeDecodeError) as error:
-        raise ValueError(f"не удалось прочитать файл настроек {path}: {error}") from error
-    except yaml.YAMLError as error:
-        raise ValueError(f"ошибка YAML в файле настроек {path}:\n{error}") from error
-    if not isinstance(raw, dict):
-        raise ValueError(f"неверные настройки в {path}: ожидался словарь ключей")
-    return raw
+    return config, {k: v for k, v in raw.items() if k != "version"}
 
 
 def _migrate_v2(raw: dict[str, Any]) -> dict[str, Any]:
@@ -107,7 +90,7 @@ def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
         del raw["tts"]  # прежнее умолчание-голос, а не выбор владельца
     if _is_legacy_executors(raw.get("executors")):
         del raw["executors"]
-    return _prune(raw, Config().model_dump())
+    return prune(raw, Config().model_dump())
 
 
 def _is_legacy_executors(value: object) -> bool:
@@ -123,33 +106,6 @@ def _is_legacy_executors(value: object) -> bool:
         }:
             return False
     return True
-
-
-def _prune(raw: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
-    """Убирает из raw значения, совпадающие с умолчаниями (вглубь по словарям)."""
-    result: dict[str, Any] = {}
-    for key, value in raw.items():
-        default = defaults.get(key)
-        if isinstance(value, dict) and isinstance(default, dict):
-            nested = _prune(value, default)
-            if nested:
-                result[key] = nested
-        elif key not in defaults or value != default:
-            result[key] = value
-    return result
-
-
-def _write_overrides(path: Path, overrides: dict[str, Any]) -> None:
-    """Пишет config.yaml атомарно (временный файл рядом и replace): версия формата и изменения владельца."""
-    body = yaml.safe_dump({"version": CONFIG_VERSION, **overrides}, allow_unicode=True, sort_keys=False)
-    example = "" if "devices" in overrides else DEVICES_EXAMPLE
-    text = HEADER + body + example
-    temp = path.with_name(path.name + ".tmp")
-    try:
-        temp.write_text(text, encoding="utf-8")
-        os.replace(temp, path)  # атомарно: читатель видит старый файл целиком или новый целиком
-    finally:
-        temp.unlink(missing_ok=True)
 
 
 def _write_defaults(path: Path) -> None:

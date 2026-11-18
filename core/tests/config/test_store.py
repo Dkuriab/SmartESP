@@ -18,7 +18,7 @@ def _store(tmp_path: Path, text: str | None = None) -> ConfigFile:
 
 
 def test_merge_deep_keeps_other_columns(tmp_path: Path) -> None:
-    store = _store(tmp_path, f'version: 3\ndevices:\n  "{MAC}":\n    name: Старое\n    volume: 7\n')
+    store = _store(tmp_path, f'version: 3\ndevices:\n  "{MAC}":\n    name: Старое\n')
     config = store.merge({"devices": {MAC: {"name": "Кухня"}}})
     assert config.devices[MAC].name == "Кухня"
 
@@ -99,3 +99,57 @@ def test_unknown_version_rejected_untouched(tmp_path: Path, version: str) -> Non
         load_config(path)
     assert path.read_text(encoding="utf-8") == before
     assert not path.with_name("config.yaml.bak").exists()
+
+
+def test_version_in_patch_rejected(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    with pytest.raises(ValueError, match="version"):
+        store.merge({"version": 99})
+
+
+def test_write_overrides_never_replaces_version(tmp_path: Path) -> None:
+    from smartesp.config._files import write_overrides
+    from smartesp.config.models import CONFIG_VERSION
+
+    path = tmp_path / "config.yaml"
+    write_overrides(path, {"version": 99, "tts": {"kind": "piper"}})
+    assert yaml.safe_load(path.read_text(encoding="utf-8"))["version"] == CONFIG_VERSION
+    load_config(path)
+
+
+@pytest.mark.parametrize(
+    ("patch", "key"),
+    [
+        ({"ttss": {"kind": "x"}}, "ttss"),
+        ({"tts": {"kidn": "x"}}, "tts.kidn"),
+        ({"devices": {MAC: {"nmae": "x"}}}, f"devices.{MAC}.nmae"),
+        (
+            {"executors": [{"id": "a", "name": "A", "model": "m", "entry": True, "modle": "x"}]},
+            "executors[0].modle",
+        ),
+        ({"stages": [{"kind": "k", "tmeout": 1}]}, "stages[0].tmeout"),
+    ],
+)
+def test_unknown_keys_rejected(tmp_path: Path, patch: dict[str, object], key: str) -> None:
+    store = _store(tmp_path)
+    with pytest.raises(
+        ValueError, match="неизвестный ключ настроек: " + key.replace("[", r"\[").replace("]", r"\]")
+    ):
+        store.merge(patch)
+
+
+def test_new_device_id_accepted(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    assert store.merge({"devices": {"NEW:ID": {"name": "Зал"}}}).devices["NEW:ID"].name == "Зал"
+
+
+def test_load_tolerates_unknown_keys(tmp_path: Path) -> None:
+    store = _store(tmp_path, "version: 3\nfuture_key: 1\n")
+    assert store.config == Config()
+
+
+@pytest.mark.parametrize("patch", [[], None, "x", 5])
+def test_non_dict_patch_is_value_error(tmp_path: Path, patch: object) -> None:
+    store = _store(tmp_path)
+    with pytest.raises(ValueError, match="словар"):
+        store.merge(patch)  # type: ignore[arg-type]
