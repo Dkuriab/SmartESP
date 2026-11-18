@@ -1,0 +1,120 @@
+"""Схемы ответов и тел запросов HTTP API (по ним генерируется клиент интерфейса)."""
+
+from __future__ import annotations
+
+from typing import Any, Literal
+
+from pydantic import BaseModel
+
+
+class OllamaOut(BaseModel):
+    """Состояние Ollama: доступна ли и какие модели загружены."""
+
+    reachable: bool
+    loaded: list[str]
+
+
+class DeviceOut(BaseModel):
+    """Колонка в сводке."""
+
+    device_id: str
+    name: str
+    connected: bool
+    remote: bool
+    fw: str
+    last_seen: float | None = None
+
+
+class VoiceStateOut(BaseModel):
+    """Состояние нужного голоса."""
+
+    kind: str
+    voice: str
+    state: Literal["ready", "downloading", "failed", "missing"]
+    error: str = ""
+
+
+class StatusOut(BaseModel):
+    """Сводка ядра."""
+
+    version: str
+    uptime_s: float
+    state: Literal["warming", "ready", "stopping"]
+    ollama: OllamaOut
+    devices: list[DeviceOut]
+    voice: VoiceStateOut
+    applying: bool
+    restart_required: bool
+
+
+class ConfigOut(BaseModel):
+    """Настройки: целиком, изменённые владельцем и разделы, требующие перезапуска."""
+
+    effective: dict[str, Any]
+    overridden: list[str]
+    restart_sections: list[str]
+
+
+class ChangeOut(BaseModel):
+    """Ответ на изменение."""
+
+    change_id: int
+    status: Literal["accepted", "restart_required", "invalid", "stopping"]
+    error: str = ""
+
+
+class ModelOut(BaseModel):
+    """Модель Ollama."""
+
+    name: str
+    size_bytes: int
+
+
+class VoiceOut(BaseModel):
+    """Голос из каталога."""
+
+    kind: str
+    voice: str
+    title: str
+    size_mb: float
+    downloaded: bool
+    current: bool
+
+
+class AnnotationOut(BaseModel):
+    """Пометка этапа к реплике."""
+
+    source: str
+    text: str
+
+
+class TurnOut(BaseModel):
+    """Данные события turn_finished."""
+
+    turn_id: int | str
+    device_id: str
+    device_name: str
+    text: str
+    annotations: list[AnnotationOut]
+    style: str
+    answer: str
+    status: Literal["ok", "error", "interrupted", "meaningless"]
+    stt_ms: float | None = None
+    first_text_ms: float | None = None
+    first_audio_ms: float | None = None
+
+
+class DownloadIn(BaseModel):
+    """Тело запроса на скачивание голоса."""
+
+    kind: str
+    voice: str
+
+
+class PreviewIn(BaseModel):
+    """Тело запроса на пробное озвучивание."""
+
+    kind: str
+    voice: str
+    style: str = "normal"
+    text: str | None = None
