@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import socket
 
+_SKIPPED_PREFIXES = ("127.", "0.", "169.254.")
 _PROBE_ADDRESS = ("10.255.255.255", 1)
 
 
@@ -21,11 +22,11 @@ def _outbound_address() -> list[str]:
 
 
 def lan_addresses() -> list[str]:
-    """IPv4-адреса Mac без `127.*` и повторов; сбой источника даёт пропуск источника."""
+    """IPv4-адреса Mac без loopback, `0.*`, link-local `169.254.*` и повторов; сбой источника даёт пропуск источника."""
     found: list[str] = []
     for source in (_hostname_addresses, _outbound_address):
         try:
             found.extend(source())
         except OSError:
             continue
-    return [ip for ip in dict.fromkeys(found) if not ip.startswith("127.")]
+    return [ip for ip in dict.fromkeys(found) if not ip.startswith(_SKIPPED_PREFIXES)]

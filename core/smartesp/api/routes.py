@@ -95,6 +95,7 @@ def _add_core_routes(secured: APIRouter, core: CorePort) -> None:
 def _add_access_route(secured: APIRouter, token: str, port: int) -> None:
     """Адреса входа из локальной сети."""
 
+    # Намеренно sync `def`: FastAPI гонит её в потоке, а getaddrinfo на macOS может зависнуть на секунды.
     @secured.get("/access")
     def get_access() -> AccessOut:
         return AccessOut(urls=[f"http://{ip}:{port}/?token={token}" for ip in lan_addresses()])
