@@ -6,6 +6,50 @@
 Устройство прошивки — `docs/superpowers/specs/2026-11-15-firmware-design.md`,
 правила проекта — `CLAUDE.md`.
 
+## Установка на новом Mac с нуля
+
+Ядро работает только на Mac с Apple Silicon (M1 и новее): распознавание речи —
+`mlx-whisper`. Прошивать плату можно с любой системы (разделы ниже).
+
+1. Проект:
+   ```bash
+   git clone https://github.com/Dkuriab/SmartESP.git SmartEsp
+   cd SmartEsp
+   ```
+   Скачать может любой; чтобы пушить — войдите своим аккаунтом GitHub или
+   заведите на этом компьютере свой ключ доступа (чужой ключ не копируйте).
+2. Программы (если нет Homebrew — сначала https://brew.sh):
+   ```bash
+   brew install uv
+   brew install --cask ollama   # затем один раз открыть приложение Ollama
+   ```
+3. Модель для ответов (~6 ГБ):
+   ```bash
+   ollama pull fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive
+   ```
+4. Ядро и голос (`uv sync` в первый раз долгий — ставится torch):
+   ```bash
+   uv python install 3.12
+   (cd core && uv sync)
+   tools/download_voice.sh
+   ```
+5. Запуск:
+   ```bash
+   cd core && uv run python -m smartesp
+   ```
+   Первый старт долгий: скачивается модель распознавания (~1,6 ГБ) и создаётся
+   `~/SmartEsp/config.yaml`. Готово, когда в журнале «Запускаю сервер на
+   ws://0.0.0.0:8765/device». Если macOS спросит про входящие подключения —
+   разрешить, иначе колонка не достучится.
+6. Проверка без платы (второе окно терминала, из корня проекта) — должны прийти
+   `reply_start`, звук и `reply_end`:
+   ```bash
+   uv run --project core python tools/fake_device.py --wav core/tests/data/privet.wav
+   ```
+7. Плата: `cp secrets.example.h secrets.h` (файл не в git — на новом компьютере
+   его нет), вписать Wi-Fi и `SERVER_HOST` = IP этого Mac
+   (`ipconfig getifaddr en0`), собрать и прошить — см. «Сборка в Arduino IDE».
+
 ## Подключение
 
 | Устройство | Пин | GPIO |
