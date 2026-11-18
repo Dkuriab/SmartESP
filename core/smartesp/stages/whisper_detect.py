@@ -17,6 +17,10 @@ VOICED_CORRELATION = 0.5  # кадр с тоном — автокорреляц�
 MIN_ACTIVE_FRAMES = 5  # меньше 160 мс звука — не судим
 WHISPER_VOICED_RATIO = 0.15  # шёпот — кадров с тоном меньше этой доли
 NOTE = "Человек говорит шёпотом — отвечай тихо и коротко"
+PROMPT_HINT = (
+    "Если в сообщении есть пометка, что человек шепчет, начни ответ точно с [style:quiet]. "
+    "Во всех остальных случаях никаких меток не пиши."
+)
 
 _log = logging.getLogger(__name__)
 
@@ -68,6 +72,7 @@ class WhisperDetect:
     """Добавляет пометку, если фраза сказана шёпотом."""
 
     name = "whisper_detect"
+    prompt_hint = PROMPT_HINT
 
     async def analyze(self, utterance: Utterance) -> list[Annotation]:
         """Пометка «шёпот» или пустой список; доля тона пишется в журнал для настройки порогов."""

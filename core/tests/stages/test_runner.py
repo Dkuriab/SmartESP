@@ -15,6 +15,7 @@ UTT = Utterance(device_id="d", turn=1, pcm=b"", started_at=0.0, text="приве
 class FakeStage:
     def __init__(self, name: str, delay: float = 0.0, fail: bool = False) -> None:
         self.name = name
+        self.prompt_hint = ""
         self._delay = delay
         self._fail = fail
         self.cancelled = False

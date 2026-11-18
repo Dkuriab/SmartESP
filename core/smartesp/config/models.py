@@ -4,10 +4,9 @@ from pydantic import BaseModel, Field, model_validator
 
 DEFAULT_SYSTEM_PROMPT = (
     "Ты голосовой помощник умной колонки. Отвечай по-русски, коротко, 1–3 предложения, "
-    "без разметки, списков и эмодзи — ответ будет озвучен. "
-    "Если в сообщении есть пометка, что человек шепчет, начни ответ точно с [style:quiet]. "
-    "Во всех остальных случаях никаких меток не пиши."
+    "без разметки, списков и эмодзи — ответ будет озвучен."
 )
+CONFIG_VERSION = 2  # 2 — в config.yaml только изменения владельца
 DEFAULT_MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
 
 
@@ -87,6 +86,7 @@ def _default_executors() -> list[ExecutorConfig]:
 class Config(BaseModel):
     """Корневые настройки ядра."""
 
+    version: int = CONFIG_VERSION
     server: ServerConfig = Field(default_factory=ServerConfig)
     devices: dict[str, DeviceConfig] = Field(default_factory=dict)
     arbitration: ArbitrationConfig = Field(default_factory=ArbitrationConfig)

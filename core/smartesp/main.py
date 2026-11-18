@@ -9,7 +9,7 @@ import asyncio
 import functools
 import logging
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -146,15 +146,23 @@ def _setup_logging(logs: Path) -> None:
         root.addHandler(handler)
 
 
+def with_stage_hints(prompt: str, stages: Sequence[Stage]) -> str:
+    """Системный промпт входного исполнителя + правила включённых обработчиков."""
+    hints = [stage.prompt_hint for stage in stages if stage.prompt_hint]
+    return "\n".join([prompt, *hints])
+
+
 def _create(
     config: Config, home: Path
 ) -> tuple[SpeechToText, TextToSpeech, Executor, list[tuple[Stage, float]]]:
     """Создаёт реализации, выбранные в настройках, через реестры."""
     stt = _pick(STT_KINDS, config.stt.kind, "stt")(config.stt)
     tts = _pick(TTS_KINDS, config.tts.kind, "tts")(config.tts, home)
-    entry = config.entry_executor()
-    executor = _pick(EXECUTOR_KINDS, entry.kind, "executor")(entry)
     stages = [(_pick(STAGE_KINDS, s.kind, "stage")(s), s.timeout_ms / 1000) for s in config.stages]
+    entry = config.entry_executor()
+    prompt = with_stage_hints(entry.system_prompt, [stage for stage, _ in stages])
+    entry = entry.model_copy(update={"system_prompt": prompt})
+    executor = _pick(EXECUTOR_KINDS, entry.kind, "executor")(entry)
     return stt, tts, executor, stages
 
 
