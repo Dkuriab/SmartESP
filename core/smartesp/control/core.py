@@ -49,7 +49,9 @@ class Core:
         devices: Callable[[], list[DeviceInfo]],
         version: str,
         clock: Callable[[], float] = time.monotonic,
+        validate: Callable[[Any], None] | None = None,
     ) -> None:
+        """validate(настройки) — проверка правки целиком; ValueError — status invalid."""
         self._store = store
         self._events = events
         self._feed = feed
@@ -62,7 +64,7 @@ class Core:
         self._started = clock()
         self._state = "warming"
         self._ids = itertools.count(1)
-        self._changes = ChangeQueue(store, sections, voices=voices, events=events)
+        self._changes = ChangeQueue(store, sections, voices=voices, events=events, validate=validate)
         self._restart = asyncio.Event()
         self._downloads: set[asyncio.Task[None]] = set()
 
@@ -144,11 +146,14 @@ class Core:
         """Запускает скачивание в фоне и сразу отвечает accepted.
 
         Ход и итог публикует менеджер голосов (voice_download, voice_ready);
-        ошибка скачивания здесь только пишется в журнал. После aclose — "stopping".
+        ошибка скачивания здесь только пишется в журнал. Голоса нет в каталоге —
+        "invalid" с текстом ошибки, скачивание не начинается. После aclose — "stopping".
         """
         change_id = next(self._ids)
         if self._changes.closed:
             return ChangeResult(change_id, "stopping", STOPPING)
+        if not any(v.get("kind") == kind and v.get("voice") == voice for v in self._voices.catalog()):
+            return ChangeResult(change_id, "invalid", f"Неизвестный голос {kind}/{voice}")
         task = asyncio.create_task(self._download(kind, voice), name=f"voice-download-{change_id}")
         self._downloads.add(task)
         task.add_done_callback(self._downloads.discard)

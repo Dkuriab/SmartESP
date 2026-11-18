@@ -1,6 +1,7 @@
 """Хранилище настроек для API: чтение, слияние частичных правок, атомарная запись."""
 
 import copy
+import logging
 from pathlib import Path
 from typing import Any, get_args, get_origin
 
@@ -10,6 +11,8 @@ from ._files import prune, write_overrides
 from .loader import load_with_overrides
 from .models import Config
 
+_log = logging.getLogger(__name__)
+
 
 class ConfigFile:
     """Файл config.yaml: текущие настройки и изменения владельца поверх умолчаний."""
@@ -18,11 +21,20 @@ class ConfigFile:
         self._path = path
         self._config: Config | None = None
         self._overrides: dict[str, Any] = {}
+        self._unknown: list[str] = []  # неизвестные ключи из файла, через точку
 
     def load(self) -> Config:
-        """Читает файл (как load_config, с переводом старого формата) и запоминает."""
+        """Читает файл (как load_config, с переводом старого формата) и запоминает.
+
+        Неизвестные ключи в файле (опечатки, ключи будущих версий) не мешают: ядро
+        их не использует, пишет предупреждение, не показывает в overridden(), а при
+        следующей записи (save) они из файла пропадают.
+        """
         config, self._overrides = load_with_overrides(self._path)
         self._config = config
+        self._unknown = _unknown_keys(Config, self._overrides, "")
+        if self._unknown:
+            _log.warning("В %s неизвестные ключи, не используются: %s", self._path, ", ".join(self._unknown))
         return config
 
     @property
@@ -37,21 +49,24 @@ class ConfigFile:
         return self.config.model_dump(mode="json")
 
     def overridden(self) -> list[str]:
-        """Ключи через точку, которые владелец поменял (списки — один ключ)."""
-        return _dotted(self._overrides, "")
+        """Ключи через точку, которые владелец поменял (списки — один ключ); неизвестные — нет."""
+        return [key for key in _dotted(self._overrides, "") if not _under(key, self._unknown)]
 
     def merge(self, patch: dict[str, Any]) -> Config:
         """Сливает правку с изменениями владельца; ничего не пишет.
 
         Словари сливаются вглубь, списки заменяются целиком, null сбрасывает ключ
-        к умолчанию. Неверный результат — ValueError с понятным текстом.
+        к умолчанию. Неизвестный ключ в правке или неверный результат — ValueError
+        с понятным текстом; неизвестные ключи, уже лежащие в файле, правке не мешают.
         """
         if not isinstance(patch, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
             raise ValueError("правка настроек должна быть словарём")
         if "version" in patch:
             raise ValueError("ключ version менять нельзя")
+        unknown = _unknown_keys(Config, patch, "")
+        if unknown:
+            raise ValueError(f"неизвестный ключ настроек: {unknown[0]}")
         merged = _merge(self._overrides, patch)
-        _check_keys(Config, merged, "")
         try:
             return Config.model_validate(merged)
         except ValidationError as error:
@@ -62,6 +77,7 @@ class ConfigFile:
         overrides = prune(config.model_dump(mode="json"), Config().model_dump(mode="json"))
         write_overrides(self._path, overrides)
         self._overrides = overrides
+        self._unknown = []
         self._config = config
 
     @staticmethod
@@ -103,19 +119,27 @@ def _models_in(annotation: object) -> list[type[BaseModel]]:
     return [m for arg in get_args(annotation) for m in _models_in(arg)]
 
 
-def _check_keys(model: type[BaseModel], data: dict[str, Any], prefix: str) -> None:
-    """Отвергает неизвестные ключи вглубь; ключи-идентификаторы (devices) свободны."""
+def _under(key: str, names: list[str]) -> bool:
+    """Ключ key — один из names или лежит внутри одного из них."""
+    return any(key == name or key.startswith(name + ".") for name in names)
+
+
+def _unknown_keys(model: type[BaseModel], data: dict[str, Any], prefix: str) -> list[str]:
+    """Неизвестные ключи вглубь, через точку; ключи-идентификаторы (devices) свободны."""
+    unknown: list[str] = []
     for key, value in data.items():
         field = model.model_fields.get(key)
         if field is None:
-            raise ValueError(f"неизвестный ключ настроек: {prefix}{key}")
+            unknown.append(f"{prefix}{key}")
+            continue
         nested = _models_in(field.annotation)
         if len(nested) == 1:
-            _check_value(field.annotation, nested[0], value, f"{prefix}{key}")
+            unknown.extend(_unknown_in_value(field.annotation, nested[0], value, f"{prefix}{key}"))
+    return unknown
 
 
-def _check_value(annotation: object, sub: type[BaseModel], value: object, name: str) -> None:
-    """Проверяет значение поля: модель, словарь моделей по идентификаторам или список моделей."""
+def _unknown_in_value(annotation: object, sub: type[BaseModel], value: object, name: str) -> list[str]:
+    """Неизвестные ключи значения поля: модель, словарь моделей по идентификаторам или список моделей."""
     origin = get_origin(annotation)
     items: list[tuple[str, object]] = []
     if origin is dict and isinstance(value, dict):
@@ -124,6 +148,8 @@ def _check_value(annotation: object, sub: type[BaseModel], value: object, name: 
         items = [(f"{name}[{i}]", v) for i, v in enumerate(value)]  # pyright: ignore[reportUnknownVariableType, reportUnknownArgumentType]
     elif origin is None:
         items = [(name, value)]
+    unknown: list[str] = []
     for item_name, item in items:
         if isinstance(item, dict):
-            _check_keys(sub, item, item_name + ".")  # pyright: ignore[reportUnknownArgumentType]
+            unknown.extend(_unknown_keys(sub, item, item_name + "."))  # pyright: ignore[reportUnknownArgumentType]
+    return unknown

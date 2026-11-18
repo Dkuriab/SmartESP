@@ -20,7 +20,7 @@ from pathlib import Path
 
 import uvicorn
 
-from smartesp.api import load_or_create_token
+from smartesp.api import HideToken, load_or_create_token
 from smartesp.config import (
     Config,
     ConfigFile,
@@ -31,7 +31,7 @@ from smartesp.config import (
 )
 from smartesp.contracts import Executor, SpeechToText, Stage, TextToSpeech
 from smartesp.executors import OllamaExecutor, list_models, loaded_models
-from smartesp.lifecycle import GracefulServer, run_loop, watch_parent
+from smartesp.lifecycle import GracefulServer, exit_code, run_loop, watch_parent
 from smartesp.stages import WhisperDetect
 from smartesp.stt import MlxWhisperSTT
 from smartesp.tts import PiperTTS, SileroTTS, VoskTTS
@@ -67,7 +67,7 @@ OLLAMA = Ollama(list_models, loaded_models)
 
 
 def _setup_logging(logs: Path) -> None:
-    """Журнал в консоль и в logs/core.log (5 файлов по 1 МБ)."""
+    """Журнал в консоль и в logs/core.log (5 файлов по 1 МБ); токен из адресов спрятан."""
     logs.mkdir(parents=True, exist_ok=True)
     formatter = logging.Formatter(LOG_FORMAT)
     console = logging.StreamHandler()
@@ -78,6 +78,7 @@ def _setup_logging(logs: Path) -> None:
     root.setLevel(logging.INFO)
     for handler in (console, file):
         handler.setFormatter(formatter)
+        handler.addFilter(HideToken())
         root.addHandler(handler)
 
 
@@ -155,8 +156,9 @@ def main(
     """Точка входа: config.yaml → проверка видов → сервер → прогрев в фоне.
 
     После остановки по просьбе о перезапуске запускает себя заново через execv, иначе
-    выходит с кодом 0 через os._exit: потоки пула (например, зависшее скачивание) не
-    держат процесс дольше бюджета остановки.
+    выходит через os._exit: потоки пула (например, зависшее скачивание) не держат
+    процесс дольше бюджета остановки. Код выхода 0; исключение, вылетевшее из цикла
+    (например, uvicorn не занял порт: sys.exit(1)), — в журнал и его код.
     """
     args = _parse_args(argv)
     if args.openapi is not None:
@@ -172,15 +174,19 @@ def main(
     except (StartupError, ValueError) as error:
         logger.error("Ядро не запущено: %s", error)
         raise SystemExit(f"Ядро не запущено: {error}") from error
-    restart = False
+    restart, code = False, 0
     try:
         restart = run_loop(_serve(store, config, home, args.parent_watch))
     except KeyboardInterrupt:
         pass
+    except BaseException as error:  # noqa: BLE001 — процесс должен выйти через exit_process
+        code = exit_code(error)
+        if code:
+            logger.critical("Ядро упало", exc_info=error)
     logger.info("Ядро остановлено")
     if restart:
         logger.info("Перезапуск: %s -m smartesp %s", sys.executable, " ".join(sys.argv[1:]))
         _flush_logs()
         execv(sys.executable, [sys.executable, "-m", "smartesp", *sys.argv[1:]])
     _flush_logs()
-    exit_process(0)
+    exit_process(code)

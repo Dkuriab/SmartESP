@@ -114,7 +114,7 @@ class CorePort(Protocol):
         ...
 
     async def download_voice(self, kind: str, voice: str) -> ChangeResult:
-        """Запускает скачивание голоса в фоне и сразу отвечает accepted."""
+        """Запускает скачивание голоса в фоне и сразу отвечает accepted; голоса нет в каталоге — invalid."""
         ...
 
     async def preview(self, kind: str, voice: str, style: str, text: str) -> bytes:

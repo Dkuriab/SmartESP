@@ -11,8 +11,9 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Coroutine, Iterator
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -206,3 +207,42 @@ def test_sigterm_with_parent_alive_exits_zero(tmp_path: Path) -> None:
     assert "Fatal Python error" not in output
     assert "Остановка: готово" in output
     assert not (home / "run" / "core.json").exists()
+
+
+def test_token_in_query_is_hidden_in_log(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_core(home, monkeypatch)
+    calls: list[ExecCall] = []
+    thread = run_main([], calls)
+    run = wait_run_file(home)
+    token = (home / "token").read_text(encoding="utf-8").strip()
+    base = f"http://127.0.0.1:{run['port']}"
+    httpx.get(f"{base}/?token={token}&x=1")  # так интерфейс открывает приложение
+    logging.getLogger("uvicorn.error").info(
+        '%s - "WebSocket %s" [accepted]', "1.2.3.4:5", f"/e?token={token}"
+    )
+    httpx.post(f"{base}/api/v1/restart", headers={"Authorization": f"Bearer {token}"})
+    thread.join(10)
+    text = (home / "logs" / "core.log").read_text(encoding="utf-8")
+    assert token not in text
+    assert "/?token=***&x=1" in text and "/e?token=***" in text
+
+
+@pytest.mark.parametrize(
+    ("error", "code", "logged"),
+    [(SystemExit(1), 1, True), (RuntimeError("порт занят"), 1, True), (SystemExit(0), 0, False)],
+)
+def test_error_escaping_loop_still_ends_process(
+    home: Path, monkeypatch: pytest.MonkeyPatch, error: BaseException, code: int, logged: bool
+) -> None:
+    """Например, uvicorn не занял порт и сделал sys.exit(1): процесс всё равно выходит через os._exit."""
+    fake_core(home, monkeypatch)
+
+    def crash(work: Coroutine[Any, Any, bool]) -> bool:
+        work.close()
+        raise error
+
+    monkeypatch.setattr("smartesp.main.run_loop", crash)
+    codes: list[int] = []
+    main([], exit_process=codes.append)
+    assert codes == [code]
+    assert ("Ядро упало" in (home / "logs" / "core.log").read_text(encoding="utf-8")) is logged

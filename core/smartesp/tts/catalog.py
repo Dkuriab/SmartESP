@@ -64,3 +64,18 @@ def catalog(home: Path) -> list[VoiceInfo]:
     piper = [v for v in builtin if v.kind == "piper"]
     rest = [v for v in builtin if v.kind != "piper"]
     return piper + extra + rest
+
+
+def catalog_rows(home: Path, current: tuple[str, str] | None) -> list[dict[str, object]]:
+    """Каталог в форме API: {kind, voice, title, size_mb, downloaded, current}; current — (вид, голос)."""
+    return [
+        {
+            "kind": v.kind,
+            "voice": v.voice,
+            "title": v.title,
+            "size_mb": v.size_mb,
+            "downloaded": v.downloaded,
+            "current": (v.kind, v.voice) == current,
+        }
+        for v in catalog(home)
+    ]

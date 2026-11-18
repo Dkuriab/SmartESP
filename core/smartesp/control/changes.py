@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
-from collections.abc import Coroutine, Mapping
+from collections.abc import Callable, Coroutine, Mapping
 from typing import Any, cast
 
 from smartesp.contracts import ChangeResult, ConfigStore, EventSink, Section, VoicePort
@@ -43,6 +43,12 @@ class ChangeQueue:
 
     Разделы из RESTART_SECTIONS не собираются, а только записываются; после записи
     такой правки restart_required = True до перезапуска процесса.
+
+    Один и тот же Section под несколькими именами (исполнитель зависит и от
+    executors, и от stages) собирается, подменяется и освобождается один раз.
+    validate(настройки) проверяет правку целиком (например, известны ли виды
+    stt, tts, исполнителей) до постановки в очередь и ещё раз перед применением;
+    ValueError — правка неверна и не записывается.
     """
 
     def __init__(
@@ -52,8 +58,10 @@ class ChangeQueue:
         *,
         voices: VoicePort,
         events: EventSink,
+        validate: Callable[[Any], None] | None = None,
     ) -> None:
         self._store = store
+        self._validate = validate
         self._sections = dict(sections)
         self._voices = voices
         self._events = events
@@ -108,6 +116,8 @@ class ChangeQueue:
         """Старые и новые настройки и изменённые разделы; ValueError — правка неверна."""
         old = self._store.merge({})  # пустая правка — текущие записанные настройки
         new = self._store.merge(patch)
+        if self._validate is not None:
+            self._validate(new)
         changed = [
             name
             for name in self._store.effective()
@@ -147,8 +157,7 @@ class ChangeQueue:
         self._announce(change_id, changed, None)
 
     async def _apply_live(self, old: Any, new: Any, changed: list[str]) -> None:
-        live = [name for name in changed if name in self._sections and name not in _NOT_SECTIONS]
-        built = await self._build_all(new, live)
+        built = await self._build_all(new, self._live_names(changed))
         try:
             if TTS_SECTION in changed:
                 await self._open_voice(old, new)
@@ -157,6 +166,18 @@ class ChangeQueue:
             raise
         previous = {name: self._sections[name].swap(part) for name, part in built.items()}
         await self._release_all(previous)
+
+    def _live_names(self, changed: list[str]) -> list[str]:
+        """Изменившиеся разделы на лету; у общего Section — только первое имя."""
+        names: list[str] = []
+        seen: set[int] = set()
+        for name in changed:
+            section = self._sections.get(name)
+            if section is None or name in _NOT_SECTIONS or id(section) in seen:
+                continue
+            seen.add(id(section))
+            names.append(name)
+        return names
 
     async def _build_all(self, new: Any, names: list[str]) -> dict[str, object]:
         """Собирает части по очереди; сбой — освобождает уже собранные и пробрасывает."""

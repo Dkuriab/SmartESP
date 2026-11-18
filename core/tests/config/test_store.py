@@ -153,3 +153,26 @@ def test_non_dict_patch_is_value_error(tmp_path: Path, patch: object) -> None:
     store = _store(tmp_path)
     with pytest.raises(ValueError, match="словар"):
         store.merge(patch)  # type: ignore[arg-type]
+
+
+TYPO = (
+    "version: 3\nhistroy: {max_turns: 3}\ntts: {kidn: x, voice: baya}\ndevices:\n  A: {name: Зал, nmae: x}\n"
+)
+
+
+def test_unknown_key_in_file_does_not_block_patch(tmp_path: Path) -> None:
+    store = _store(tmp_path, TYPO)
+    config = store.merge({"tts": {"kind": "vosk", "voice": "female_1"}})
+    assert (config.tts.kind, config.tts.voice) == ("vosk", "female_1")
+    with pytest.raises(ValueError, match="неизвестный ключ настроек: tts.kidn"):
+        store.merge({"tts": {"kidn": "y"}})  # в самой правке опечатка — по-прежнему отказ
+
+
+def test_unknown_keys_in_file_are_warned_and_not_listed(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    store = _store(tmp_path, TYPO)
+    assert "histroy" in caplog.text and "tts.kidn" in caplog.text and "devices.A.nmae" in caplog.text
+    assert sorted(store.overridden()) == ["devices.A.name", "tts.voice"]
+    store.save(store.merge({}))
+    assert "histroy" not in (tmp_path / "config.yaml").read_text(encoding="utf-8")

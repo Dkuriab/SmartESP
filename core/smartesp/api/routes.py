@@ -100,11 +100,11 @@ def _add_voice_routes(secured: APIRouter, core: CorePort) -> None:
         "/voices/download",
         status_code=202,
         response_model=ChangeOut,
-        responses={503: {"model": ChangeOut}},
+        responses={422: {"model": ChangeOut}, 503: {"model": ChangeOut}},
     )
     async def download_voice(body: DownloadIn) -> JSONResponse:
         result = await core.download_voice(body.kind, body.voice)
-        return _change_response(result, {"stopping": 503, "accepted": 202})
+        return _change_response(result, {"stopping": 503, "accepted": 202, "invalid": 422})
 
     @secured.post(
         "/voices/preview",

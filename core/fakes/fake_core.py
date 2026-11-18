@@ -52,7 +52,7 @@ class FakeCore:
                     "device_id": "d1",
                     "name": "Кухня",
                     "connected": True,
-                    "remote": False,
+                    "remote": "10.0.0.5:1234",
                     "fw": "1.0",
                     "last_seen": 1.0,
                 }
@@ -92,7 +92,8 @@ class FakeCore:
         ]
 
     async def download_voice(self, kind: str, voice: str) -> ChangeResult:
-        return ChangeResult(7, self.download_status)
+        error = "Неизвестный голос" if self.download_status == "invalid" else ""
+        return ChangeResult(7, self.download_status, error)
 
     async def preview(self, kind: str, voice: str, style: str, text: str) -> bytes:
         self.previews.append((kind, voice, style, text))

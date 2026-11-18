@@ -138,3 +138,35 @@ async def test_startup_pair_is_used_when_nothing_changed() -> None:
     startup = FakeOllama([], "a")
     await setup.live.warm_startup(pair(startup), 10.0)
     assert setup.live.executor is startup and setup.installed == [startup] and startup.warmed == 1
+
+
+async def test_failed_build_of_live_model_does_not_unload_it() -> None:
+    class Failing(FakeOllama):
+        async def warm_up(self) -> None:
+            raise ExecutorError("сбой прогрева")
+
+    setup = Setup()
+    live = FakeOllama([], "a")
+    setup.live.use(pair(live))
+    failing = Failing([], "a")  # та же модель, что у живого (поменяли только промпт)
+    with pytest.raises(ExecutorError):
+        await setup.live.build(pair(failing), 1.0)
+    assert failing.unloaded == [] and live.unloaded == []
+    await setup.live.unload_all()
+    assert live.unloaded == [1.0] and failing.unloaded == []  # модель a выгружена один раз
+
+
+async def test_unload_all_unloads_models_concurrently() -> None:
+    class Slow(FakeOllama):
+        async def unload(self, timeout_s: float = 1.0) -> None:
+            await asyncio.sleep(0.3)
+            await super().unload(timeout_s)
+
+    setup = Setup()
+    old, new = Slow([], "a"), Slow([], "b")
+    setup.live.use(pair(old))
+    setup.live.use(pair(new))  # a — «в стороне», b — живая
+    started = asyncio.get_running_loop().time()
+    await setup.live.unload_all()
+    assert asyncio.get_running_loop().time() - started < 0.5
+    assert old.unloaded == [1.0] and new.unloaded == [1.0]

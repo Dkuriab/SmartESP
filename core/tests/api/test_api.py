@@ -83,6 +83,10 @@ async def test_voices_and_download(client: httpx.AsyncClient, core: FakeCore) ->
     core.download_status = "stopping"
     response = await client.post(f"{P}/voices/download", json=body, headers=HEADERS)
     assert response.status_code == 503
+    core.download_status = "invalid"
+    response = await client.post(f"{P}/voices/download", json=body, headers=HEADERS)
+    assert response.status_code == 422
+    assert response.json() == {"change_id": 7, "status": "invalid", "error": "Неизвестный голос"}
 
 
 async def test_preview(client: httpx.AsyncClient, core: FakeCore) -> None:
@@ -146,6 +150,7 @@ def test_openapi_declares_error_bodies(app: FastAPI) -> None:
     patch = paths[f"{P}/config"]["patch"]["responses"]
     assert {"401", "422", "503"} <= set(patch)
     assert "ChangeOut" in str(patch["422"]) and "ChangeOut" in str(patch["503"])
-    assert "ChangeOut" in str(paths[f"{P}/voices/download"]["post"]["responses"]["503"])
+    download = paths[f"{P}/voices/download"]["post"]["responses"]
+    assert "ChangeOut" in str(download["503"]) and "ChangeOut" in str(download["422"])
     assert "ErrorOut" in str(paths[f"{P}/models"]["get"]["responses"]["502"])
     assert "401" in paths[f"{P}/status"]["get"]["responses"]

@@ -8,8 +8,9 @@ from pathlib import Path
 from smartesp.contracts import EventSink, TextToSpeech, VoiceNotDownloadedError
 
 from ._fetcher import Download, SharedFetcher
+from ._outcome import result_of
 from ._preview import PreviewCache, render_wav
-from .catalog import catalog, is_downloaded, voice_path
+from .catalog import catalog, catalog_rows, is_downloaded, voice_path
 from .download import VoiceDownloadError, download_voice
 
 log = logging.getLogger(__name__)
@@ -17,17 +18,6 @@ log = logging.getLogger(__name__)
 Factory = Callable[[Path, str], TextToSpeech]
 OnReady = Callable[[TextToSpeech, str, str], None]
 Key = tuple[str, str]
-
-
-async def _result(fut: "asyncio.Future[bool]") -> bool:
-    """Ждёт итог, не отменяя его; отмена самого итога (не ждущего) — False."""
-    try:
-        return await asyncio.shield(fut)
-    except asyncio.CancelledError:
-        me = asyncio.current_task()
-        if me is not None and me.cancelling():
-            raise
-        return False
 
 
 class VoiceManager:
@@ -81,17 +71,7 @@ class VoiceManager:
 
         current — голос, которым сейчас говорит ядро (может быть запасным, а не нужным).
         """
-        return [
-            {
-                "kind": v.kind,
-                "voice": v.voice,
-                "title": v.title,
-                "size_mb": v.size_mb,
-                "downloaded": v.downloaded,
-                "current": (v.kind, v.voice) == self._current,
-            }
-            for v in catalog(self._home)
-        ]
+        return catalog_rows(self._home, self._current)
 
     async def open(self, kind: str, voice: str, *, retry: bool) -> bool:
         """Делает голос текущим; True — получилось, False — нет или открытие отменено.
@@ -114,16 +94,17 @@ class VoiceManager:
         elif retry:
             self._job_retry = True
         if retry:
-            return await _result(job)
+            return await result_of(job)
         # одна попытка ждёт только итог ближайшей попытки, а не всё открытие:
         # присоединившийся retry=True не держит её на повторах
         assert self._outcome is not None
-        return await _result(self._outcome)
+        return await result_of(self._outcome)
 
     async def download(self, kind: str, voice: str) -> None:
         """Скачивает голос с событиями voice_download и итоговым voice_ready, не меняя текущий.
 
-        Ошибка скачивания пробрасывается; отмена через aclose() — VoiceDownloadError.
+        Ошибка скачивания пробрасывается (неизвестный голос — ValueError), и в обоих
+        случаях voice_ready(ok=False); отмена через aclose() — VoiceDownloadError.
         """
         task = asyncio.create_task(self._download_reporting(kind, voice))
         self._tasks.add(task)
@@ -141,7 +122,10 @@ class VoiceManager:
 
         Не скачан (в том числе ещё качается) — VoiceNotDownloadedError; неизвестный
         голос — ValueError; модель не дала звука — RuntimeError.
-        Кроме текущего, в кеше держится один TTS — последний запрошенный.
+        Кроме текущего, в кеше держится один TTS — последний запрошенный; голос,
+        ставший текущим, пока собирался образец, из кеша убирается. Один экземпляр
+        TTS может синтезировать из двух потоков (образец текущим голосом во время
+        ответа): Piper, Silero и Vosk держат свой замок вокруг вызова модели.
         """
         key = (kind, voice)
         if not is_downloaded(kind, voice, self._home):
@@ -149,6 +133,9 @@ class VoiceManager:
         tts = self._current_tts if self._current == key else None
         if tts is None:
             tts = await self._previews.get(key, self._construct)
+        if self._current == key and self._current_tts is not None:  # стал текущим, пока собирали
+            self._previews.take(key)
+            tts = self._current_tts
         return await render_wav(tts, key, style, text)
 
     async def aclose(self) -> None:
@@ -269,6 +256,7 @@ class VoiceManager:
             raise asyncio.CancelledError  # открытие уже заменено новым
         self._on_ready(tts, *key)
         self._current, self._current_tts = key, tts
+        self._previews.take(key)  # образец мог собрать свой экземпляр, пока мы собирали этот
 
     async def _construct(self, key: Key) -> TextToSpeech:
         """Вызывает фабрику голоса в потоке: загрузка модели не блокирует цикл."""
@@ -278,12 +266,12 @@ class VoiceManager:
 
     async def _download_reporting(self, kind: str, voice: str) -> None:
         key = (kind, voice)
-        if not is_downloaded(kind, voice, self._home):
-            try:
+        try:
+            if not is_downloaded(kind, voice, self._home):  # неизвестный голос — ValueError
                 await self._fetcher.fetch(kind, voice)
-            except Exception as exc:
-                self._ready_event(key, ok=False, error=str(exc))
-                raise
+        except Exception as exc:
+            self._ready_event(key, ok=False, error=str(exc))
+            raise
         self._ready_event(key, ok=True, error=None)
 
     def _fail(self, key: Key, error: str) -> None:

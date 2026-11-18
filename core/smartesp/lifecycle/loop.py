@@ -29,3 +29,15 @@ def run_loop[T](main: Coroutine[Any, Any, T]) -> T:
         finally:
             asyncio.set_event_loop(None)
             loop.close()  # пул закрывается с wait=False
+
+
+def exit_code(error: BaseException) -> int:
+    """Код выхода процесса для исключения, вылетевшего из run_loop.
+
+    SystemExit — его код (None — 0, текст — 1); любое другое исключение — 1.
+    """
+    if not isinstance(error, SystemExit):
+        return 1
+    if error.code is None or isinstance(error.code, int):
+        return error.code or 0
+    return 1

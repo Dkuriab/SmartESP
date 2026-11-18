@@ -147,6 +147,15 @@ async def test_download_failure_raises(tmp_path: Path) -> None:
     await h.manager.aclose()
 
 
+async def test_download_of_unknown_voice_reports_failure(tmp_path: Path) -> None:
+    h = Harness(tmp_path, no_download)
+    with pytest.raises(ValueError, match="Неизвестный голос silero/nope"):
+        await h.manager.download("silero", "nope")
+    [ready] = h.kinds("voice_ready")
+    assert ready["voice"] == "nope" and ready["ok"] is False and "Неизвестный" in str(ready["error"])
+    await h.manager.aclose()
+
+
 async def test_catalog_marks_current(tmp_path: Path) -> None:
     put_irina(tmp_path)
     h = Harness(tmp_path, no_download)

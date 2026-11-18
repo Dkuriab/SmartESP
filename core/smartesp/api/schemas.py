@@ -20,7 +20,7 @@ class DeviceOut(BaseModel):
     device_id: str
     name: str
     connected: bool
-    remote: bool
+    remote: str  # адрес последней сессии «хост:порт»; колонку ещё не видели — ""
     fw: str
     last_seen: float | None = None
 

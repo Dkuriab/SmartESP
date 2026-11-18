@@ -66,7 +66,10 @@ class FakeVoices:
             "state": "ready",
             "error": None,
         }
-        self.voice_catalog: list[dict[str, object]] = []
+        self.voice_catalog: list[dict[str, object]] = [
+            {"kind": "silero", "voice": "xenia", "downloaded": True, "current": True},
+            {"kind": "vosk", "voice": "female_1", "downloaded": False, "current": False},
+        ]
         self.on_open: list[str] | None = None  # общий журнал вызовов, если задан
 
     def catalog(self) -> list[dict[str, object]]:

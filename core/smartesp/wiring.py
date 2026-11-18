@@ -76,6 +76,18 @@ def check_kinds(config: Config, kinds: Kinds) -> None:
         _pick(kinds.stages, stage.kind, "stage")
 
 
+def _kinds_validator(kinds: Kinds) -> Callable[[object], None]:
+    """Проверка правки настроек пультом: неизвестный вид — ValueError (правка invalid)."""
+
+    def validate(config: object) -> None:
+        try:
+            check_kinds(cast(Config, config), kinds)
+        except StartupError as error:
+            raise ValueError(str(error)) from error
+
+    return validate
+
+
 def with_stage_hints(prompt: str, stages: Sequence[Stage]) -> str:
     """Системный промпт входного исполнителя + правила включённых обработчиков."""
     hints = [stage.prompt_hint for stage in stages if stage.prompt_hint]
@@ -176,6 +188,7 @@ def assemble(
         loaded=ollama.loaded,
         devices=hub.devices,
         version=version,
+        validate=_kinds_validator(kinds),  # иначе после перезапуска ядро не стартует
     )
     run_file = RunFile(home / "run" / "core.json")
     parts = Assembly(

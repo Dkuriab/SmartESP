@@ -55,13 +55,20 @@ class LiveAnswering:
             await self.release(part)
 
     async def build(self, part: Answering, timeout_s: float) -> Answering:
-        """Греет пару для правки настроек; не прогрелась — выгружает и пробрасывает ошибку."""
+        """Греет пару для правки настроек; не прогрелась — пробрасывает ошибку.
+
+        Модель не прогревшегося исполнителя выгружается, если только у живого не
+        та же самая модель (тогда выгрузка оборвала бы живого).
+        """
         executor = part[1]
         self._set_aside(executor)
         try:
             await warm_strict(executor, timeout_s)
         except Exception:
-            await self._unload(executor)
+            if self._needs_unload(executor):
+                await self._unload(executor)
+            else:
+                self._forget(executor)
             raise
         return part
 
@@ -95,15 +102,24 @@ class LiveAnswering:
     async def unload_all(self) -> None:
         """Остановка: release больше не работает; выгружает модели живого и всех «в стороне».
 
-        Каждая модель выгружается один раз, каждая — не дольше unload_s.
+        Каждая модель выгружается один раз; разные модели — одновременно, каждая —
+        не дольше unload_s, поэтому вся выгрузка занимает около unload_s. Сбой
+        выгрузки одной модели только пишется в журнал.
         """
         self._closed = True
-        seen: set[str] = set()
+        models: dict[str, Unloads] = {}
         for executor in [self.executor, *self._aside]:
-            if isinstance(executor, Unloads) and executor.model not in seen:
-                seen.add(executor.model)
-                await executor.unload(self._unload_s)
-                _log.info("Остановка: модель %s выгружена", executor.model)
+            if isinstance(executor, Unloads):
+                models.setdefault(executor.model, executor)
+        await asyncio.gather(*(self._unload_on_stop(e) for e in models.values()))
+
+    async def _unload_on_stop(self, executor: Unloads) -> None:
+        try:
+            await executor.unload(self._unload_s)
+        except Exception:
+            _log.warning("Остановка: модель %s не выгружена", executor.model, exc_info=True)
+            return
+        _log.info("Остановка: модель %s выгружена", executor.model)
 
     def close(self) -> None:
         """Остановка началась: release больше ничего не ждёт и не выгружает."""
