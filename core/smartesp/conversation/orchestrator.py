@@ -28,7 +28,7 @@ from .sentences import clean_for_speech, is_meaningless, split_sentences
 _log = logging.getLogger(__name__)
 
 SPEECH_STYLE = "normal"  # стиль озвучки (выбор стиля моделью — позже)
-ERROR_TONE = "error"  # сигнал колонке «исполнитель недоступен»
+ERROR_TONE = "error"  # сигнал колонке «ответить не получилось»
 
 
 @asynccontextmanager
@@ -61,7 +61,9 @@ class _Turn:
     first_text_ms: float | None = None
     first_audio_ms: float | None = None
     completed: bool = False  # ответ отдан целиком, ход ещё актуален
-    failed: bool = False  # исполнитель упал
+    failed: bool = False  # ход сорвался из-за ошибки (исполнитель, TTS, STT…)
+    meaningless: bool = False  # распознан бессмысленный текст — ответ пустой
+    play_started: bool = False  # хабу уже отдан поток (он сам закончит ответ reply_end)
 
     def elapsed_ms(self) -> float:
         """Сколько миллисекунд прошло с прихода реплики."""
@@ -128,27 +130,47 @@ class Orchestrator:
         return self._devices.is_active(turn.utterance.device_id, turn.utterance.turn)
 
     async def _handle(self, utterance: Utterance, received_at: float) -> None:
-        """Один ход целиком: распознать, понять, ответить, записать в историю и журнал."""
+        """Один ход целиком; любая ошибка (кроме отмены) — сигнал ошибки, колонка не молчит."""
         turn = _Turn(utterance, self._devices.device_name(utterance.device_id), received_at)
-        turn.text = await self._stt.transcribe(utterance.pcm)
+        try:
+            await self._converse(turn)
+        except Exception:
+            _log.error("Колонка %s: ход %s упал", turn.device_name, utterance.turn, exc_info=True)
+            turn.failed = True
+            await self._recover(turn)
+        self._log_turn(turn)
+
+    async def _converse(self, turn: _Turn) -> None:
+        """Распознаёт, понимает, отвечает и записывает завершённый ход в историю."""
+        turn.text = await self._stt.transcribe(turn.utterance.pcm)
         turn.stt_ms = turn.elapsed_ms()
         if is_meaningless(turn.text):
-            _log.info("Колонка %s: бессмысленный текст %r — пустой ответ", turn.device_name, turn.text)
+            turn.meaningless = True
             await self._play(turn, _no_audio())
             return
         if not self._is_live(turn):
-            _log.info("Колонка %s: ход прерван до ответа (%r)", turn.device_name, turn.text)
             return
-        turn.annotations = await self._analyze(dataclasses.replace(utterance, text=turn.text))
+        turn.annotations = await self._analyze(dataclasses.replace(turn.utterance, text=turn.text))
         messages = build_messages(turn.annotations, self._history.messages(), turn.text, turn.device_name)
         await self._reply(turn, messages)
-        answer = "".join(turn.answer).strip()
+        answer = _answer(turn)
         if turn.completed and answer and self._is_live(turn):
             self._history.add(turn.text, answer)
-        self._log_turn(turn, answer)
+
+    async def _recover(self, turn: _Turn) -> None:
+        """После ошибки: сигнал ошибки и, если ответ ещё не начат, пустой ответ (reply_end)."""
+        await self._error_tone(turn)
+        if not turn.play_started:
+            await self._play(turn, _no_audio())
+
+    async def _error_tone(self, turn: _Turn) -> None:
+        """Сигнал ошибки колонке — только если ход ещё актуален (прерванному не пищим)."""
+        if self._is_live(turn):
+            await self._devices.send_tone(turn.utterance.device_id, ERROR_TONE)
 
     async def _play(self, turn: _Turn, audio: AsyncIterator[bytes]) -> None:
         """Отдаёт поток звука хабу в рамках хода; поток закрывается в любом случае."""
+        turn.play_started = True
         async with _closing(audio) as stream:
             await self._devices.play(turn.utterance.device_id, turn.utterance.turn, stream)
 
@@ -164,7 +186,7 @@ class Orchestrator:
             except ExecutorError as error:
                 _log.warning("Колонка %s: исполнитель недоступен: %s", turn.device_name, error)
                 turn.failed = True
-                await self._devices.send_tone(turn.utterance.device_id, ERROR_TONE)
+                await self._error_tone(turn)
                 await self._play(turn, _no_audio())
                 return
             turn.first_text_ms = turn.elapsed_ms()
@@ -174,7 +196,7 @@ class Orchestrator:
             ):
                 await self._play(turn, self._speak(turn, sentences))
         if turn.failed:
-            await self._devices.send_tone(turn.utterance.device_id, ERROR_TONE)
+            await self._error_tone(turn)
 
     async def _collect(
         self, turn: _Turn, first: ReplyPart | None, parts: AsyncIterator[ReplyPart]
@@ -191,8 +213,9 @@ class Orchestrator:
     async def _speak(self, turn: _Turn, sentences: AsyncIterator[str]) -> AsyncIterator[bytes]:
         """Озвучивает предложения по одному и отдаёт PCM; останавливается, как только ход неактуален.
 
-        Ошибка исполнителя посреди ответа заканчивает поток (колонка получит
-        reply_end) и помечает ход как упавший.
+        Ошибка исполнителя или TTS посреди ответа заканчивает поток штатно
+        (колонка получит reply_end, а не застрянет в «говорю») и помечает ход
+        как упавший; сигнал ошибки шлёт _reply после play.
         """
         try:
             async for sentence in sentences:
@@ -212,25 +235,42 @@ class Orchestrator:
             _log.warning("Колонка %s: исполнитель упал посреди ответа: %s", turn.device_name, error)
             turn.failed = True
             return
+        except Exception:
+            _log.error("Колонка %s: ошибка посреди ответа", turn.device_name, exc_info=True)
+            turn.failed = True
+            return
         turn.completed = self._is_live(turn)
 
-    def _log_turn(self, turn: _Turn, answer: str) -> None:
+    def _log_turn(self, turn: _Turn) -> None:
         """Пишет в журнал итог хода: вопрос, пометки, задержки и ответ."""
-        status = "ошибка" if turn.failed else ("готов" if turn.completed else "прерван")
         _log.info(
             "Колонка %s: ход %s; вопрос %r; пометки %s; "
             "stt_ms=%s first_text_ms=%s first_audio_ms=%s; ответ %r",
             turn.device_name,
-            status,
+            _status(turn),
             turn.text,
             [f"[{a.source}] {a.text}" for a in turn.annotations],
             _ms(turn.stt_ms),
             _ms(turn.first_text_ms),
             _ms(turn.first_audio_ms),
-            answer,
+            _answer(turn),
         )
 
 
 def _ms(value: float | None) -> str:
     """Задержка для журнала: целые миллисекунды или «—», если до этого этапа не дошли."""
     return "—" if value is None else str(round(value))
+
+
+def _answer(turn: _Turn) -> str:
+    """Полный текст ответа исполнителя (то, что успели получить)."""
+    return "".join(turn.answer).strip()
+
+
+def _status(turn: _Turn) -> str:
+    """Итог хода для журнала."""
+    if turn.failed:
+        return "ошибка"
+    if turn.meaningless:
+        return "бессмысленный вопрос, пустой ответ"
+    return "готов" if turn.completed else "прерван"

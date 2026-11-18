@@ -9,9 +9,11 @@ MIN_SENTENCE_CHARS = 20  # короче — склеиваем со следую
 
 # Конец предложения: знак, за которым пробел (конец куска ещё не конец текста — «3.5»), или перевод строки.
 _BOUNDARY = re.compile(r"[.!?…](?=\s)|\n")
+_MULTIPLY = re.compile(r"(?<=\d)[ \t]*\*[ \t]*(?=\d)")  # «2*3» — умножение, а не разметка
 _MARKUP = re.compile(r"[*_#`]")
 _LIST_MARKER = re.compile(r"^[ \t]*[-+•][ \t]+", re.MULTILINE)
-_LONE_HYPHEN = re.compile(r"(?<=\s)-(?=\s)")  # «Ответ: - один» — маркер списка внутри строки
+_HYPHEN_AFTER_COLON = re.compile(r"(?<=:)[ \t]*-[ \t]+")  # «Ответ: - один» — список, склеенный в строку
+_LEADING_JUNK = re.compile(r"^[\W_]+")  # пробелы, кавычки, многоточия в начале
 _SPACES = re.compile(r"[ \t]+")
 
 # Известные «галлюцинации» Whisper на тишине и шуме (сравниваем без учёта регистра).
@@ -55,10 +57,15 @@ async def split_sentences(parts: AsyncIterator[ReplyPart]) -> AsyncIterator[str]
 
 
 def clean_for_speech(text: str) -> str:
-    """Убирает разметку Markdown (* _ # `) и маркеры списков; возвращает текст для TTS."""
+    """Убирает разметку Markdown (* _ # `) и маркеры списков; возвращает текст для TTS.
+
+    Маркер списка — «-», «+», «•» в начале строки или «-» сразу после двоеточия;
+    тире и минус внутри фразы остаются. «*» между цифрами читается как «на».
+    """
+    text = _MULTIPLY.sub(" на ", text)
     text = _MARKUP.sub("", text)
     text = _LIST_MARKER.sub("", text)
-    text = _LONE_HYPHEN.sub("", text)
+    text = _HYPHEN_AFTER_COLON.sub(" ", text)
     lines = (_SPACES.sub(" ", line).strip() for line in text.split("\n"))
     return "\n".join(line for line in lines if line)
 
@@ -67,4 +74,4 @@ def is_meaningless(text: str) -> bool:
     """Возвращает True, если отвечать не на что: пусто, меньше 2 букв или галлюцинация Whisper."""
     if sum(ch.isalpha() for ch in text) < 2:
         return True
-    return text.strip().casefold().startswith(_HALLUCINATIONS)
+    return _LEADING_JUNK.sub("", text).casefold().startswith(_HALLUCINATIONS)

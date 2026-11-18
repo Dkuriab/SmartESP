@@ -50,9 +50,25 @@ def test_clean_for_speech() -> None:
     assert clean_for_speech("Минус -5 градусов") == "Минус -5 градусов"
 
 
+def test_clean_for_speech_keeps_dashes_and_reads_multiplication() -> None:
+    text = "Москва - столица России, 5 - 3 = 2, 2*3=6"
+    assert clean_for_speech(text) == "Москва - столица России, 5 - 3 = 2, 2 на 3=6"
+    assert clean_for_speech("Итого: 4 * 5 = 20") == "Итого: 4 на 5 = 20"
+
+
 @pytest.mark.parametrize(
     "text",
-    ["", "   ", "а", "Продолжение следует...", "субтитры сделал DimaTorzok", "Спасибо за просмотр!"],
+    [
+        "",
+        "   ",
+        "а",
+        "...",
+        "Продолжение следует...",
+        "...Продолжение следует",
+        "субтитры сделал DimaTorzok",
+        "«Субтитры сделал DimaTorzok»",
+        " - Спасибо за просмотр!",
+    ],
 )
 def test_meaningless(text: str) -> None:
     assert is_meaningless(text)
