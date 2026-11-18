@@ -24,7 +24,12 @@ core/
   smartesp/
     contracts/           ← только типы и протоколы (аналог Types.h)
     devices/ stt/ stages/ conversation/ executors/ tts/
-    tools/ people/ tasks/ notify/ config/ api/
+    tools/ people/ tasks/ notify/ config/
+    events/              ← шина событий: лента для интерфейса, у подписчика ограниченная очередь
+    control/             ← управление ядром: состояние, применение правок настроек на лету
+    api/                 ← HTTP/WebSocket API `/api/v1`, токен, раздача интерфейса
+    lifecycle/           ← цикл asyncio, честная остановка, файл запуска, слежение за родителем
+    wiring.py            ← сборка частей, прогрев и остановка (без своей логики)
     main.py              ← связка (аналог SmartEsp.ino)
   tests/
   fakes/                 ← поддельные реализации договоров
