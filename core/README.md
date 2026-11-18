@@ -91,6 +91,11 @@ uv run python -m smartesp
 Файл прежнего формата (все настройки целиком) ядро при первом старте переводит
 само: оставляет только ваши изменения, старый файл сохраняет как `config.yaml.bak`.
 
+Неизвестный ключ в `config.yaml` (опечатка вроде `histroy:` или ключ из более
+новой версии) ядру не мешает: оно его не использует, пишет предупреждение в
+журнал и не показывает в `overridden`; при первой записи настроек через API такой
+ключ из файла пропадает. Неизвестный ключ в самой правке `PATCH /config` — 422.
+
 ### Что меняется на лету
 
 Настройки, изменённые через `PATCH /api/v1/config`, ядро применяет без перезапуска
@@ -137,11 +142,11 @@ curl -X PATCH -H "Authorization: Bearer $(cat ~/SmartEsp/token)" \
 |---|---|
 | `GET /status` | версия, `uptime_s`, `state` (`warming`, `ready`, `stopping`), Ollama (`reachable`, `loaded`), колонки, голос (`state`: `ready`, `downloading`, `failed`, `missing`), `applying`, `restart_required` |
 | `GET /config` | `effective` — настройки целиком, `overridden` — изменённые ключи через точку (`tts.kind`), `restart_sections` |
-| `PATCH /config` | частичные настройки в форме `config.yaml`: словари сливаются вглубь, списки заменяются целиком, `null` сбрасывает ключ к умолчанию. Ответ `{change_id, status, error}`: `accepted` или `restart_required` — 200, `invalid` — 422, `stopping` — 503 |
+| `PATCH /config` | частичные настройки в форме `config.yaml`: словари сливаются вглубь, списки заменяются целиком, `null` сбрасывает ключ к умолчанию. Ответ `{change_id, status, error}`: `accepted` или `restart_required` — 200, `invalid` — 422 (неизвестный ключ, неверное значение, неизвестный вид `kind` у `stt`, `tts`, исполнителя или обработчика), `stopping` — 503 |
 | `GET /models` | модели Ollama: `{name, size_bytes}` (Ollama недоступна — 502) |
 | `GET /voices` | голоса: `{kind, voice, title, size_mb, downloaded, current}` |
-| `POST /voices/download` | `{kind, voice}` → 202, `{change_id, status: "accepted"}`; ход скачивания — события `voice_download`, `voice_ready` |
-| `POST /voices/preview` | `{kind, voice, style="normal", text=null}` → `audio/wav` (16 кГц, 16 бит, моно); голос не скачан — 409 |
+| `POST /voices/download` | `{kind, voice}` → 202, `{change_id, status: "accepted"}`; ход скачивания — события `voice_download`, `voice_ready`. Голоса нет в каталоге `GET /voices` — 422 (`status: "invalid"`, текст в `error`), ядро останавливается — 503 (`status: "stopping"`) |
+| `POST /voices/preview` | `{kind, voice, style="normal", text=null}` → `audio/wav` (16 кГц, 16 бит, моно); голос не скачан (или ещё качается) — 409, неизвестный голос — 404, модель не озвучила образец — 500; тело ошибки `{detail}` |
 | `GET /turns?limit=100` | последние ходы (данные `turn_finished`), от новых к старым; ядро хранит 100 последних в памяти |
 | `POST /restart` | перезапуск ядра, ответ 202 |
 | `WS /events?token=` | поток событий JSON `{"kind", "data", "at"}`: `core_state`, `device_connected`, `device_disconnected`, `wake`, `arbitration`, `turn_started`, `turn_heard`, `turn_finished`, `change_applied`, `voice_download`, `voice_ready` |
@@ -153,11 +158,12 @@ curl -X PATCH -H "Authorization: Bearer $(cat ~/SmartEsp/token)" \
 Остановка (Ctrl+C, SIGTERM, закрытый stdin при `--parent-watch` или
 `POST /restart`) идёт по порядку и занимает не дольше 15 с:
 
-1. состояние `stopping`; новые фразы, подключения колонок и правки настроек не
-   принимаются (колонка на фразу получает сигнал ошибки);
+1. состояние `stopping`; новые фразы и правки настроек не принимаются: колонка
+   на фразу получает отмену хода (`cancel_turn`), правка — ответ 503. Колонки
+   при этом могут подключаться, пока их не отключат на шаге 3;
 2. идущие ответы договариваются — до 10 с, потом обрываются;
 3. колонки отключаются;
-4. каждая загруженная модель выгружается из Ollama (ждём не дольше 1 с на модель);
+4. каждая загруженная модель выгружается из Ollama — все одновременно, не дольше 1 с;
 5. файл `run/core.json` удаляется, процесс выходит с кодом 0.
 
 Повторный Ctrl+C во время остановки — немедленный выход.
