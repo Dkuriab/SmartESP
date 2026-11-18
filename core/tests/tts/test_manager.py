@@ -4,67 +4,13 @@ import asyncio
 import io
 import threading
 import wave
-from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from manager_harness import IRINA, Harness, Progress, no_download, put_irina, put_silero, silero_download
 
-from fakes.fake_events import RecordingSink
-from fakes.fake_tts import FakeTTS
 from smartesp.contracts import TextToSpeech, VoiceNotDownloadedError
 from smartesp.tts import VoiceDownloadError, VoiceManager
-
-IRINA = "ru_RU-irina-medium"
-Progress = Callable[[int, int | None], None] | None
-
-
-def put_irina(home: Path) -> None:
-    (home / "voices").mkdir(parents=True, exist_ok=True)
-    (home / "voices" / f"{IRINA}.onnx").write_bytes(b"x")
-
-
-def put_silero(home: Path) -> None:
-    (home / "voices" / "silero").mkdir(parents=True, exist_ok=True)
-    (home / "voices" / "silero" / "v5_ru.pt").write_bytes(b"x")
-
-
-class Harness:
-    """Менеджер с поддельными фабриками; запоминает сборки и вызовы on_ready."""
-
-    def __init__(self, home: Path, download: Callable[..., None], **kwargs: object) -> None:
-        self.ready: list[tuple[str, str]] = []
-        self.built: list[tuple[str, str]] = []
-        self.sink = RecordingSink()
-        factories = {k: self._factory(k) for k in ("piper", "silero", "vosk")}
-        self.manager = VoiceManager(
-            home,
-            factories,
-            lambda tts, kind, voice: self.ready.append((kind, voice)),
-            events=self.sink,
-            download=download,
-            **kwargs,  # type: ignore[arg-type]
-        )
-
-    def _factory(self, kind: str) -> Callable[[Path, str], TextToSpeech]:
-        def build(path: Path, voice: str) -> TextToSpeech:
-            self.built.append((kind, voice))
-            return FakeTTS()
-
-        return build
-
-    def kinds(self, name: str) -> list[dict[str, object]]:
-        return [data for kind, data in self.sink.events if kind == name]
-
-
-def no_download(kind: str, voice: str, home: Path, *, progress: Progress = None) -> None:
-    raise AssertionError("скачивание не ожидалось")
-
-
-def silero_download(kind: str, voice: str, home: Path, *, progress: Progress = None) -> None:
-    assert progress is not None
-    for done in range(0, 1001, 10):
-        progress(done, 1000)
-    put_silero(home)
 
 
 async def test_downloaded_voice_is_ready_at_once(tmp_path: Path) -> None:
