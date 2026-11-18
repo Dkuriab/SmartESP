@@ -13,8 +13,10 @@ class FakeExecutor:
         self._parts = parts
         self._error = error
         self._delay = delay
+        self.calls: list[list[ChatMessage]] = []  # сообщения каждого вызова run
 
     async def run(self, messages: list[ChatMessage]) -> AsyncIterator[ReplyPart]:
+        self.calls.append(messages)
         if self._error is not None:
             raise self._error
         for part in self._parts:
