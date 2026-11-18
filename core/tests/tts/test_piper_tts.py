@@ -1,5 +1,6 @@
 """Тесты PiperTTS и ресемплинга."""
 
+import os
 import wave
 from pathlib import Path
 
@@ -8,7 +9,8 @@ import pytest
 from smartesp.contracts import TextToSpeech
 from smartesp.tts import PiperTTS, resample_s16
 
-VOICE = Path.home() / "SmartEsp" / "voices" / "ru_RU-irina-medium.onnx"
+HOME = Path(os.environ.get("SMARTESP_HOME") or Path.home() / "SmartEsp")
+VOICE = HOME / "voices" / "ru_RU-irina-medium.onnx"
 DATA = Path(__file__).parent.parent / "data"
 
 
@@ -31,8 +33,11 @@ async def test_synthesizes_russian() -> None:
     pcm = b"".join(chunks)
     assert len(pcm) > 0.3 * 16000 * 2
     assert all(len(c) % 2 == 0 for c in chunks)
+    target = DATA / "privet.wav"
+    if target.exists():
+        return
     DATA.mkdir(exist_ok=True)
-    with wave.open(str(DATA / "privet.wav"), "wb") as wav:
+    with wave.open(str(target), "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
         wav.setframerate(16000)

@@ -32,7 +32,8 @@ class PiperTTS:
         """
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[object] = asyncio.Queue()
-        worker = asyncio.create_task(asyncio.to_thread(self._run, text, loop, queue))
+        cancel = threading.Event()
+        worker = asyncio.create_task(asyncio.to_thread(self._run, text, loop, queue, cancel))
         try:
             while (item := await queue.get()) is not _DONE:
                 if isinstance(item, BaseException):
@@ -40,13 +41,22 @@ class PiperTTS:
                 assert isinstance(item, bytes)
                 yield item
         finally:
+            cancel.set()
             await worker
 
-    def _run(self, text: str, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue[object]) -> None:
+    def _run(
+        self,
+        text: str,
+        loop: asyncio.AbstractEventLoop,
+        queue: asyncio.Queue[object],
+        cancel: threading.Event,
+    ) -> None:
         """Рабочий поток: синтезирует и кладёт ресемплированные куски в очередь."""
         try:
             with self._lock:
                 for chunk in self._voice.synthesize(text):
+                    if cancel.is_set():
+                        break
                     pcm = resample_s16(chunk.audio_int16_bytes, chunk.sample_rate)
                     loop.call_soon_threadsafe(queue.put_nowait, pcm)
         except Exception as error:  # noqa: BLE001
