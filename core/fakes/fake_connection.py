@@ -15,6 +15,8 @@ class FakeConnection:
         self.sent: list[str | bytes] = []
         self.closed = False
         self._incoming: asyncio.Queue[object] = asyncio.Queue()
+        self._sends_open = asyncio.Event()  # сброшено — отправки висят (Wi-Fi пропал)
+        self._sends_open.set()
 
     def feed(self, frame: str | bytes) -> None:
         """Кладёт входящий кадр (текст или звук)."""
@@ -28,6 +30,14 @@ class FakeConnection:
         """Обрыв связи: дальше receive и отправка кидают ConnectionError."""
         self.closed = True
         self._incoming.put_nowait(_CLOSED)
+
+    def stall(self) -> None:
+        """Полуоткрытая связь: отправки висят, пока не вызван release()."""
+        self._sends_open.clear()
+
+    def release(self) -> None:
+        """Отправки снова проходят."""
+        self._sends_open.set()
 
     def sent_json(self) -> list[dict[str, Any]]:
         """Отправленные текстовые сообщения, разобранные из JSON."""
@@ -47,10 +57,12 @@ class FakeConnection:
         return frame
 
     async def send_text(self, text: str) -> None:
+        await self._sends_open.wait()
         self._check_open()
         self.sent.append(text)
 
     async def send_bytes(self, data: bytes) -> None:
+        await self._sends_open.wait()
         self._check_open()
         self.sent.append(data)
 

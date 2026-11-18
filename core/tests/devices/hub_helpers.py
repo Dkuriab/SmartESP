@@ -49,14 +49,17 @@ async def connect(
 
 
 async def accepted_turn(
-    hub: DeviceHub, clock: FakeClock, device_id: str, turn: int = 1
+    hub: DeviceHub, clock: FakeClock, device_id: str, turn: int = 1, turn_id: int = 1
 ) -> tuple[FakeConnection, asyncio.Task[None]]:
-    """Подключает колонку, шлёт wake и ждёт, пока арбитр примет ход."""
+    """Подключает колонку, шлёт wake хода колонки turn и ждёт, пока хаб примет его.
+
+    turn_id — ожидаемый номер хода в хабе: хаб выдаёт их по порядку принятия, с 1.
+    """
     conn, task = await connect(hub, device_id)
     conn.feed_json("wake", turn=turn, level=-30.0)
     await asyncio.sleep(0.01)
     clock.now += WINDOW_S + 0.1
-    await eventually(lambda: hub.is_active(device_id, turn))
+    await eventually(lambda: hub.is_active(device_id, turn_id))
     return conn, task
 
 

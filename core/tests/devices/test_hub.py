@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from hub_helpers import FRAME, WINDOW_S, FakeClock, accepted_turn, connect, eventually, make_hub
+from hub_helpers import FRAME, WINDOW_S, FakeClock, accepted_turn, chunks, connect, eventually, make_hub
 
 from fakes.fake_connection import FakeConnection
 from smartesp.contracts import DevicePort, Utterance
@@ -73,7 +73,7 @@ async def test_loser_gets_cancel_turn() -> None:
     clock.now += 0.4
     utterance = await asyncio.wait_for(hub.next_utterance(), 1)
     assert (utterance.device_id, len(utterance.pcm)) == ("B", 1024)
-    assert {"type": "cancel_turn", "turn": 1} in conn_a.sent_json()
+    await eventually(lambda: {"type": "cancel_turn", "turn": 1} in conn_a.sent_json())
     assert conn_b.sent_json() == []
     assert not hub.is_active("A", 1)
     await no_utterance(hub)
@@ -107,7 +107,8 @@ async def test_legacy_device_id_and_immediate_accept() -> None:
     conn.feed(FRAME)
     conn.feed_json("utterance_end", turn=2, reason="vad")
     utterance = await asyncio.wait_for(hub.next_utterance(), 1)
-    assert (utterance.device_id, utterance.turn, len(utterance.pcm)) == ("legacy:10.0.0.9:777", 2, 1024)
+    # turn — номер хода в хабе (первый принятый — 1), не номер колонки
+    assert (utterance.device_id, utterance.turn, len(utterance.pcm)) == ("legacy:10.0.0.9:777", 1, 1024)
     assert hub.device_name("legacy:10.0.0.9:777") == "legacy:10.0.0.9:777"
 
 
@@ -130,7 +131,7 @@ async def test_newer_turn_ends_previous() -> None:
     conn.feed_json("wake", turn=2, level=-20.0)
     await eventually(lambda: not hub.is_active("A", 1))
     clock.now += WINDOW_S + 0.1
-    await eventually(lambda: hub.is_active("A", 2))
+    await eventually(lambda: hub.is_active("A", 2))  # второй принятый ход хаба
 
 
 async def test_new_wake_elsewhere_cancels_active_turn() -> None:
@@ -142,9 +143,9 @@ async def test_new_wake_elsewhere_cancels_active_turn() -> None:
     conn_b.feed_json("wake", turn=1, level=-30.0)
     await asyncio.sleep(0.01)
     clock.now += WINDOW_S + 0.1
-    await eventually(lambda: hub.is_active("B", 1))
+    await eventually(lambda: hub.is_active("B", 2))  # второй принятый ход хаба
     assert not hub.is_active("A", 1)
-    assert {"type": "cancel_turn", "turn": 1} in conn_a.sent_json()
+    await eventually(lambda: {"type": "cancel_turn", "turn": 1} in conn_a.sent_json())
 
 
 async def test_reconnect_same_id_replaces_session() -> None:
@@ -182,3 +183,42 @@ async def test_cancel_to_dropped_connection_does_not_break_hub() -> None:
     assert not task_a.done()
     conn_b.feed_json("utterance_end", turn=1, reason="vad")
     assert (await asyncio.wait_for(hub.next_utterance(), 1)).device_id == "B"
+
+
+async def test_reconnect_after_reboot_gets_new_turn_id() -> None:
+    clock = FakeClock()
+    hub = make_hub(clock)
+    old, _ = await accepted_turn(hub, clock, "A")
+    old.feed_json("utterance_end", turn=1, reason="vad")
+    first = await asyncio.wait_for(hub.next_utterance(), 1)
+    clock.now += 5.0
+    new, _ = await accepted_turn(hub, clock, "A", turn=1, turn_id=2)  # после перезагрузки ESP снова с 1
+    new.feed_json("utterance_end", turn=1, reason="vad")
+    second = await asyncio.wait_for(hub.next_utterance(), 1)
+    assert (first.turn, second.turn) == (1, 2)
+    assert not hub.is_active("A", first.turn)
+    assert hub.is_active("A", second.turn)
+    await hub.play("A", first.turn, chunks(bytes(100)))
+    assert new.sent == []
+    await hub.play("A", second.turn, chunks(bytes(100)))
+    assert new.sent_json() == [{"type": "reply_start", "turn": 1}, {"type": "reply_end", "turn": 1}]
+
+
+async def test_stuck_speaker_does_not_stall_arbitration() -> None:
+    clock = FakeClock()
+    hub = make_hub(clock)
+    conn_a, _ = await accepted_turn(hub, clock, "A")
+    conn_a.stall()  # Wi-Fi пропал: отправка висит, замок отправки занят
+    play = asyncio.create_task(hub.play("A", 1, chunks(bytes(4096), bytes(4096))))
+    await asyncio.sleep(0.02)
+    clock.now += 5.0
+    conn_b, _ = await accepted_turn(hub, clock, "B", turn_id=2)  # cancel_turn для A повис в фоне
+    assert not hub.is_active("A", 1)
+    conn_b.feed_json("playback_done", turn=1)
+    clock.now += 5.0
+    await accepted_turn(hub, clock, "C", turn_id=3)
+    conn_a.release()
+    await asyncio.wait_for(play, 1)
+    await eventually(lambda: {"type": "cancel_turn", "turn": 1} in conn_a.sent_json())
+    assert conn_a.sent_audio() == b""  # повис reply_start; после отмены звук не шлётся
+    assert '{"type":"reply_end","turn":1}' not in conn_a.sent

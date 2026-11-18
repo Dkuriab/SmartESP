@@ -10,13 +10,21 @@ from .connection import DeviceConnection
 
 @dataclass
 class Recording:
-    """Звук вопроса одного хода, пока он не стал Utterance."""
+    """Звук вопроса одного хода колонки, пока он не стал Utterance."""
 
-    turn: int
+    esp_turn: int  # номер хода, выданный колонкой
     started_at: float  # clock() в момент wake
     pcm: bytearray = field(default_factory=bytearray)
-    accepted: bool = False  # арбитр принял ход
+    turn_id: int | None = None  # номер хода в хабе; задан, когда арбитр принял ход
     ended: bool = False  # пришёл utterance_end с речью
+
+
+@dataclass(frozen=True)
+class ActiveTurn:
+    """Принятый и ещё живой ход: номер в хабе и номер колонки."""
+
+    turn_id: int
+    esp_turn: int
 
 
 class Session:
@@ -26,24 +34,29 @@ class Session:
         self.device_id = device_id
         self.conn = conn
         self.recording: Recording | None = None
-        self.active_turn: int | None = None  # принятый и ещё живой ход
+        self.active: ActiveTurn | None = None
         self.closed = False
         self._send_lock = asyncio.Lock()
 
-    def is_live(self, turn: int) -> bool:
-        """Ход turn принят, не закончен, и соединение не закрыто."""
-        return not self.closed and self.active_turn == turn
+    def is_live(self, turn_id: int) -> bool:
+        """Ход хаба turn_id — активный ход этой сессии, и соединение не закрыто."""
+        return not self.closed and self.active is not None and self.active.turn_id == turn_id
 
-    async def send_text(self, text: str) -> None:
-        """Шлёт текст; ConnectionError, если соединение закрыто."""
-        async with self._send_lock:
-            if self.closed:
-                raise ConnectionError("session closed")
-            await self.conn.send_text(text)
+    async def send(self, frame: str | bytes, turn_id: int | None = None) -> bool:
+        """Шлёт кадр (текст или звук) по очереди с другими отправками.
 
-    async def send_bytes(self, data: bytes) -> None:
-        """Шлёт звук; ConnectionError, если соединение закрыто."""
+        turn_id задан — кадр уходит, только если этот ход ещё жив (проверка под замком,
+        после ожидания очереди). Возвращает False, если кадр не отправлен: сессия закрыта,
+        ход закончился или соединение оборвалось.
+        """
         async with self._send_lock:
-            if self.closed:
-                raise ConnectionError("session closed")
-            await self.conn.send_bytes(data)
+            if self.closed or (turn_id is not None and not self.is_live(turn_id)):
+                return False
+            try:
+                if isinstance(frame, str):
+                    await self.conn.send_text(frame)
+                else:
+                    await self.conn.send_bytes(frame)
+            except ConnectionError:
+                return False
+            return True
