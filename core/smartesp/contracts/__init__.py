@@ -2,6 +2,7 @@
 
 from .audio import SAMPLE_RATE, Utterance
 from .device import DevicePort
+from .events import CoreEvent, EventFeed, EventSink
 from .executor import ChatMessage, Executor, ExecutorError, ReplyPart
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
@@ -12,7 +13,10 @@ __all__ = [
     "Analyzer",
     "Annotation",
     "ChatMessage",
+    "CoreEvent",
     "DevicePort",
+    "EventFeed",
+    "EventSink",
     "Executor",
     "ExecutorError",
     "ReplyPart",
