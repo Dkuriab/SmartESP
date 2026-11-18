@@ -307,3 +307,108 @@ TEST(late_reply_after_timeout_ignored) {
   CHECK(drain(session).empty());
   CHECK(session.state() == SessionState::Idle);
 }
+
+TEST(wake_event_carries_level) {
+  Session session = connectedSession();
+  session.onVoiceEvent(VoiceEvent{VoiceEventType::WakeWord, -28.0f});
+  std::vector<Action> actions = drain(session);
+  bool found = false;
+  for (const Action& a : actions) {
+    if (a.type == ActionType::SendEvent) {
+      CHECK(a.event.type == ClientEventType::Wake);
+      CHECK(a.event.level == -28.0f);
+      found = true;
+    }
+  }
+  CHECK(found);
+}
+
+TEST(cancel_turn_in_listening) {
+  Session session = listeningSession();
+  session.onServerCommand(server(ServerCommandType::CancelTurn, 1));
+  CHECK(sameActions(drain(session), {simple(ActionType::StopCapture), setActiveTurn(0)}));
+  CHECK(session.state() == SessionState::Idle);
+}
+
+TEST(cancel_turn_in_speaking) {
+  Session session = speakingSession();
+  session.onServerCommand(server(ServerCommandType::CancelTurn, 1));
+  CHECK(sameActions(drain(session), {simple(ActionType::StopPlayback), setActiveTurn(0)}));
+  CHECK(session.state() == SessionState::Idle);
+  session.setPlaybackActive(false);
+  CHECK(drain(session).empty());
+}
+
+TEST(cancel_turn_in_waiting) {
+  Session session = waitingSession();
+  session.onServerCommand(server(ServerCommandType::CancelTurn, 1));
+  CHECK(sameActions(drain(session), {setActiveTurn(0)}));
+  CHECK(session.state() == SessionState::Idle);
+}
+
+TEST(cancel_turn_other_turn_ignored) {
+  Session session = waitingSession();
+  session.onServerCommand(server(ServerCommandType::CancelTurn, 99));
+  CHECK(drain(session).empty());
+  CHECK(session.state() == SessionState::Waiting);
+}
+
+TEST(announce_from_idle) {
+  Session session = connectedSession();
+  session.onServerCommand(server(ServerCommandType::Announce, 0x80000001u));
+  CHECK(sameActions(drain(session), {setActiveTurn(0x80000001u)}));
+  CHECK(session.state() == SessionState::Waiting);
+  session.onServerCommand(server(ServerCommandType::ReplyStart, 0x80000001u));
+  CHECK(session.state() == SessionState::Speaking);
+  session.setPlaybackActive(true);
+  session.onServerCommand(server(ServerCommandType::ReplyEnd, 0x80000001u));
+  session.setPlaybackActive(false);
+  CHECK(sameActions(drain(session), {sendEvent(ClientEventType::PlaybackDone, 0x80000001u)}));
+  CHECK(session.state() == SessionState::Idle);
+}
+
+TEST(announce_when_busy_ignored) {
+  Session session = listeningSession();
+  session.onServerCommand(server(ServerCommandType::Announce, 0x80000001u));
+  CHECK(drain(session).empty());
+  CHECK(session.state() == SessionState::Listening);
+}
+
+TEST(announce_when_disconnected_ignored) {
+  Session session;
+  session.begin(SessionConfig{});
+  session.onServerCommand(server(ServerCommandType::Announce, 0x80000001u));
+  CHECK(drain(session).empty());
+  CHECK(session.state() == SessionState::Idle);
+}
+
+TEST(wake_after_announce_uses_local_counter) {
+  Session session = speakingSession();
+  session.onServerCommand(server(ServerCommandType::ReplyEnd, 1));
+  session.loop(2000);
+  drain(session);
+  CHECK(session.state() == SessionState::Idle);
+  session.onServerCommand(server(ServerCommandType::Announce, 0x80000001u));
+  session.onServerCommand(server(ServerCommandType::ReplyStart, 0x80000001u));
+  session.onServerCommand(server(ServerCommandType::ReplyEnd, 0x80000001u));
+  session.loop(3000);
+  drain(session);
+  CHECK(session.state() == SessionState::Idle);
+  session.onVoiceEvent(voice(VoiceEventType::WakeWord));
+  CHECK(sameActions(drain(session), {playTone(Tone::Wake), setActiveTurn(2), sendEvent(ClientEventType::Wake, 2),
+                                     simple(ActionType::StartCapture)}));
+}
+
+TEST(thinking_extends_waiting) {
+  Session session = waitingSession(1000);  // Waiting с t=1000
+  session.loop(1000 + 14000);
+  ServerCommand thinking = server(ServerCommandType::PlayTone);
+  thinking.tone = Tone::Thinking;
+  session.onServerCommand(thinking);
+  drain(session);
+  session.loop(1000 + 28000);
+  CHECK(drain(session).empty());
+  CHECK(session.state() == SessionState::Waiting);
+  session.loop(1000 + 29100);
+  CHECK(sameActions(drain(session), {playTone(Tone::Error), setActiveTurn(0)}));
+}

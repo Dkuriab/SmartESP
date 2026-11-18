@@ -37,7 +37,7 @@ void Session::onVoiceEvent(const VoiceEvent& event) {
     case VoiceEventType::WakeWord:
       if (state_ == SessionState::Idle) {
         if (connected_) {
-          startTurn();
+          startTurn(event.level);
         } else {
           pushTone(Tone::Error);
         }
@@ -45,7 +45,7 @@ void Session::onVoiceEvent(const VoiceEvent& event) {
         // Перебивание: обрываем ответ, сообщаем серверу, начинаем новый ход.
         pushSimple(ActionType::StopPlayback);
         pushEvent(ClientEventType::BargeIn);
-        startTurn();
+        startTurn(event.level);
       }
       // В Listening слово игнорируется.
       break;
@@ -102,10 +102,35 @@ void Session::onServerCommand(const ServerCommand& command) {
       break;
     }
     case ServerCommandType::PlayTone:
+      if (command.tone == Tone::Thinking && state_ == SessionState::Waiting) {
+        // Сервер ещё думает: продлеваем ожидание ответа ещё на replyTimeoutMs.
+        stateSinceMs_ = nowMs_;
+      }
       pushTone(command.tone);
       break;
-    case ServerCommandType::CancelTurn:  // задача 2
-    case ServerCommandType::Announce:    // задача 2
+    case ServerCommandType::CancelTurn:
+      // Сервер отменил ход (например, ложное срабатывание): тихо возвращаемся в Idle.
+      if (currentTurn && state_ != SessionState::Idle) {
+        if (state_ == SessionState::Listening) {
+          pushSimple(ActionType::StopCapture);
+        } else if (state_ == SessionState::Speaking) {
+          pushSimple(ActionType::StopPlayback);
+        }
+        abandonTurn();
+        enter(SessionState::Idle);
+      }
+      break;
+    case ServerCommandType::Announce:
+      // Объявление по инициативе сервера: принимаем только в покое и при связи.
+      // Ход серверный; ждём reply_start, как после вопроса.
+      if (state_ == SessionState::Idle && connected_) {
+        turn_ = command.turn;
+        Action action{};
+        action.type = ActionType::SetActiveTurn;
+        action.turn = turn_;
+        push(action);
+        enter(SessionState::Waiting);
+      }
       break;
   }
 }
@@ -151,8 +176,9 @@ uint32_t Session::turn() const {
   return turn_;
 }
 
-void Session::startTurn() {
-  turn_++;
+void Session::startTurn(float level) {
+  turn_ = ++localTurn_;
+  pendingLevel_ = level;
   pushTone(Tone::Wake);
   Action action{};
   action.type = ActionType::SetActiveTurn;
@@ -210,7 +236,7 @@ void Session::pushSimple(ActionType type) {
 void Session::pushEvent(ClientEventType type, UtteranceEndReason reason) {
   Action action{};
   action.type = ActionType::SendEvent;
-  action.event = ClientEvent{type, turn_, reason, 0.0f};
+  action.event = ClientEvent{type, turn_, reason, type == ClientEventType::Wake ? pendingLevel_ : 0.0f};
   push(action);
 }
 

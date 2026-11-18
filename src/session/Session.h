@@ -2,6 +2,8 @@
 
 // session — сценарий колонки (дизайн, раздел 5): ожидание → слушаем вопрос →
 // ждём ответ → говорим, перебивание словом, таймауты.
+// Команды сервера: cancel_turn (тихий возврат в Idle), announce (из Idle сразу
+// в ожидание reply_start), thinking-тон в Waiting продлевает ожидание ответа.
 // Чистая логика: не трогает железо и сеть, только выдаёт «действия»,
 // которые SmartEsp.ino передаёт модулям. Время передаётся снаружи,
 // поэтому модуль тестируется на ноутбуке (tools/host_tests).
@@ -41,7 +43,7 @@ class Session {
   uint32_t turn() const;
 
  private:
-  void startTurn();
+  void startTurn(float level);
   void endUtterance(UtteranceEndReason reason, SessionState next);
   void abandonTurn();
   void enter(SessionState next);
@@ -54,7 +56,9 @@ class Session {
 
   SessionConfig config_{};
   SessionState state_ = SessionState::Idle;
-  uint32_t turn_ = 0;
+  uint32_t turn_ = 0;       // активный ход (свой или объявление ядра)
+  uint32_t localTurn_ = 0;  // счётчик собственных ходов (по слову)
+  float pendingLevel_ = 0;  // уровень слова для события wake, dBFS
   uint32_t nowMs_ = 0;
   uint32_t stateSinceMs_ = 0;
   bool speechStarted_ = false;
