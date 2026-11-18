@@ -18,6 +18,10 @@ class VoiceInfo:
     downloaded: bool
 
 
+class VoiceNotDownloadedError(Exception):
+    """Голос ещё не скачан, поэтому им нельзя говорить (API отвечает 409)."""
+
+
 class TextToSpeech(Protocol):
     """Текст и стиль в звук."""
 

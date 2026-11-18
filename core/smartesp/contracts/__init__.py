@@ -6,7 +6,7 @@ from .events import CoreEvent, EventFeed, EventSink, Subscription
 from .executor import ChatMessage, Executor, ExecutorError, ReplyPart
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
-from .tts import TextToSpeech, VoiceInfo
+from .tts import TextToSpeech, VoiceInfo, VoiceNotDownloadedError
 
 __all__ = [
     "SAMPLE_RATE",
@@ -27,4 +27,5 @@ __all__ = [
     "TextToSpeech",
     "Utterance",
     "VoiceInfo",
+    "VoiceNotDownloadedError",
 ]
