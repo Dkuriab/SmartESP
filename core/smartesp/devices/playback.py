@@ -12,7 +12,10 @@ from .session import Session
 
 CHUNK_BYTES = 4096  # размер звукового кадра к колонке
 AHEAD_S = 10.0  # не больше стольких секунд звука впереди воспроизведения
-PACE_STEP_S = 0.05  # как часто проверять темп и жив ли ход, пока ждём
+BURST_S = 1.0  # пока впереди меньше стольких секунд звука, шлём со скоростью сети
+BURST_RATE = 4.0  # дальше — не быстрее стольких секунд звука в секунду (сетевой буфер колонки — 2 с)
+PACE_STEP_S = 0.05  # как часто проверять темп и жив ли ход, пока ждём (не реже)
+PACE_MIN_S = 0.002  # самый короткий сон между проверками темпа
 BYTES_PER_S = SAMPLE_RATE * 2  # s16le, моно
 
 
@@ -23,8 +26,11 @@ def _pieces(chunk: bytes) -> Iterator[bytes]:
 
 
 class _Pacer:
-    """Модель воспроизведения на колонке: когда она доиграет всё отправленное.
+    """Модель воспроизведения на колонке и темп отправки.
 
+    Первую ~BURST_S секунду звука шлём сразу, дальше — не быстрее BURST_RATE× реального
+    времени (колонка не успевает перекладывать звук из сетевого буфера, лишнее
+    выбрасывает), а когда впереди AHEAD_S секунд — со скоростью воспроизведения.
     Если звук кончился раньше, чем пришёл следующий кусок (колонка молчала),
     пропущенное время не даёт «кредита»: новый звук начинает играть сейчас.
     """
@@ -32,14 +38,32 @@ class _Pacer:
     def __init__(self, clock: Callable[[], float]) -> None:
         self._clock = clock
         self._play_end = clock()  # момент (по clock), когда колонка доиграет отправленное
+        self._next_send = clock()  # раньше этого момента не слать, если впереди уже ≥ BURST_S
 
     def ahead(self) -> float:
         """Сколько секунд отправленного звука колонке ещё играть."""
         return self._play_end - self._clock()
 
+    def ready(self) -> bool:
+        """True, если следующий кадр можно слать сейчас."""
+        now = self._clock()
+        ahead = self._play_end - now
+        if ahead >= AHEAD_S:
+            return False
+        return ahead < BURST_S or now >= self._next_send
+
+    def wait_s(self) -> float:
+        """Сколько секунд (по clock) примерно ждать до готовности; 0 — уже пора проверить."""
+        now = self._clock()
+        return max(self._play_end - now - AHEAD_S, self._next_send - now, 0.0)
+
     def add(self, size: int) -> None:
         """Учитывает отправленный кадр размером size байт."""
-        self._play_end = max(self._play_end, self._clock()) + size / BYTES_PER_S
+        now = self._clock()
+        duration = size / BYTES_PER_S
+        self._play_end = max(self._play_end, now) + duration
+        if self._play_end - now > BURST_S:
+            self._next_send = max(self._next_send, now) + duration / BURST_RATE
 
 
 async def send_reply(
@@ -67,9 +91,9 @@ async def send_reply(
 
 
 async def _send_piece(session: Session, turn_id: int, piece: bytes, pacer: _Pacer) -> bool:
-    """Ждёт, пока звук впереди не станет меньше AHEAD_S, и шлёт кадр. False — пора прекращать."""
-    while session.is_live(turn_id) and pacer.ahead() >= AHEAD_S:
-        await asyncio.sleep(PACE_STEP_S)
+    """Ждёт, пока темп позволит (см. _Pacer), и шлёт кадр. False — пора прекращать."""
+    while session.is_live(turn_id) and not pacer.ready():
+        await asyncio.sleep(min(max(pacer.wait_s(), PACE_MIN_S), PACE_STEP_S))
     if not await session.send(piece, turn_id):
         return False
     pacer.add(len(piece))

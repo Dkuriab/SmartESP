@@ -88,7 +88,7 @@ KITCHEN = "AA:BB:CC:DD:EE:01"
 BEDROOM = "AA:BB:CC:DD:EE:02"
 
 
-def make_client(executor: Executor) -> TestClient:
+def make_client(executor: Executor, tts: FakeTTS | None = None) -> TestClient:
     config = Config(
         devices={
             "kitchen": DeviceConfig(name="Кухня"),
@@ -96,7 +96,7 @@ def make_client(executor: Executor) -> TestClient:
             BEDROOM: DeviceConfig(name="Спальня"),
         }
     )
-    app = build_app(config, FakeSTT("сколько времени"), FakeTTS(), executor, [])
+    app = build_app(config, FakeSTT("сколько времени"), tts or FakeTTS(), executor, [])
     return TestClient(app)
 
 
@@ -119,7 +119,8 @@ def test_disconnect_mid_reply_is_quiet(caplog: pytest.LogCaptureFixture) -> None
     caplog.set_level(logging.INFO)
     long_answer = [f"Предложение номер {i}. " for i in range(40)]
     executor = FakeExecutor(long_answer, delay=0.02)
-    with make_client(executor) as client:
+    # короткий звук: ответ длится ~0,8 с из-за исполнителя, а не из-за темпа отправки
+    with make_client(executor, FakeTTS(bytes_per_char=32)) as client:
         app = client.app
         with client.websocket_connect("/device") as ws:
             ws.send_json(HELLO)

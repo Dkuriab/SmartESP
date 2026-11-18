@@ -51,7 +51,8 @@ async def test_play_inactive_turn_sends_nothing() -> None:
     assert conn.sent == []
 
 
-async def test_play_paced_10s_ahead() -> None:
+async def test_play_frozen_clock_sends_only_burst() -> None:
+    # время стоит: со скоростью сети уходит только первая ~1 с, дальше темп (см. test_pacer)
     clock = FakeClock()
     hub = make_hub(clock)
     conn, _ = await accepted_turn(hub, clock, "A")
@@ -59,7 +60,7 @@ async def test_play_paced_10s_ahead() -> None:
     with pytest.raises(TimeoutError):
         await asyncio.wait_for(hub.play("A", 1, audio), 0.2)
     sent = len(conn.sent_audio())
-    assert 10 * SECOND - 4096 <= sent <= 10 * SECOND + 4096
+    assert SECOND <= sent <= SECOND + 4096
     assert '{"type":"reply_end","turn":1}' not in conn.sent
 
 
@@ -67,17 +68,15 @@ async def test_play_resumes_as_time_passes() -> None:
     clock = FakeClock()
     hub = make_hub(clock)
     conn, _ = await accepted_turn(hub, clock, "A")
-    task = asyncio.create_task(hub.play("A", 1, chunks(*[bytes(SECOND)] * 30)))
-    await eventually(lambda: len(conn.sent_audio()) >= 10 * SECOND - 4096)
-    clock.now += 5.0
-    await eventually(lambda: len(conn.sent_audio()) >= 15 * SECOND - 4096)
-    assert len(conn.sent_audio()) <= 15 * SECOND + 4096
-    clock.now += 100.0  # колонка доиграла и молчала: дальше снова не больше 10 с вперёд
-    await eventually(lambda: len(conn.sent_audio()) >= 25 * SECOND - 4096)
-    assert len(conn.sent_audio()) <= 25 * SECOND + 4096
-    clock.now += 100.0
+    task = asyncio.create_task(hub.play("A", 1, chunks(*[bytes(SECOND)] * 5)))
+    for _ in range(10):
+        before = len(conn.sent_audio())
+        clock.now += 1.0
+        await eventually(lambda before=before: len(conn.sent_audio()) > before or task.done())
+        if task.done():
+            break
     await asyncio.wait_for(task, 1)
-    assert len(conn.sent_audio()) == 30 * SECOND
+    assert len(conn.sent_audio()) == 5 * SECOND
     assert conn.sent[-1] == '{"type":"reply_end","turn":1}'
 
 
@@ -157,9 +156,9 @@ async def test_late_first_chunk_gives_no_credit() -> None:
     await asyncio.sleep(0.02)
     clock.now += 25.0
     gate.set()
-    await eventually(lambda: len(conn.sent_audio()) >= 10 * SECOND - 4096)
+    await eventually(lambda: len(conn.sent_audio()) >= SECOND)
     await asyncio.sleep(0.1)
-    assert len(conn.sent_audio()) <= 10 * SECOND + 4096
+    assert len(conn.sent_audio()) <= SECOND + 4096  # только первая секунда, без «накопленного»
     task.cancel()
 
 
@@ -168,21 +167,21 @@ async def test_mid_stream_gap_gives_no_credit() -> None:
     hub = make_hub(clock)
     conn, _ = await accepted_turn(hub, clock, "A")
     gate = asyncio.Event()
+    half = SECOND // 2
 
     async def audio() -> AsyncIterator[bytes]:
-        for _ in range(5):
-            yield bytes(SECOND)
+        yield bytes(half)
         await gate.wait()  # пауза посреди ответа длиннее уже отправленного звука
         for _ in range(60):
             yield bytes(SECOND)
 
     task = asyncio.create_task(hub.play("A", 1, audio()))
-    await eventually(lambda: len(conn.sent_audio()) == 5 * SECOND)
+    await eventually(lambda: len(conn.sent_audio()) == half)
     clock.now += 20.0
     gate.set()
-    await eventually(lambda: len(conn.sent_audio()) >= 15 * SECOND - 4096)
+    await eventually(lambda: len(conn.sent_audio()) >= half + SECOND)
     await asyncio.sleep(0.1)
-    assert len(conn.sent_audio()) <= 15 * SECOND + 4096
+    assert len(conn.sent_audio()) <= half + SECOND + 4096
     task.cancel()
 
 
