@@ -21,9 +21,10 @@ def _spell_digits(digits: str) -> str:
     return " ".join(num2words(int(d), lang="ru") for d in digits if d.isdigit())
 
 
-def _words(value: int | float, raw: str) -> str:
-    """Число словами через num2words; при любой ошибке — по одной цифре."""
+def _words(raw: str) -> str:
+    """Число (строкой) словами через num2words; при любой ошибке — по одной цифре."""
     try:
+        value = float(raw.replace(",", ".")) if re.search(r"[.,]", raw) else int(raw)
         return num2words(value, lang="ru")
     except Exception:
         sign = "минус " if raw.startswith("-") else ""
@@ -32,12 +33,12 @@ def _words(value: int | float, raw: str) -> str:
 
 def _time_to_words(hours: str, minutes: str) -> str:
     """«8:05» → «восемь ноль пять»: ведущий ноль минут читается как «ноль»."""
-    minute_words = _words(int(minutes), minutes)
+    minute_words = _words(minutes)
     if minutes.startswith("0") and int(minutes) != 0:
         minute_words = "ноль " + minute_words
     elif int(minutes) == 0:
         minute_words = "ноль ноль"
-    return f"{_words(int(hours), hours)} {minute_words}"
+    return f"{_words(hours)} {minute_words}"
 
 
 def _replace_number(match: re.Match[str]) -> str:
@@ -46,9 +47,9 @@ def _replace_number(match: re.Match[str]) -> str:
         return _time_to_words(match.group("hh"), match.group("mm"))
     if match.group("dec"):
         raw = match.group("dec")
-        return _words(float(raw.replace(",", ".")), raw)
+        return _words(raw)
     raw = match.group("int")
-    result = _words(int(raw), raw)
+    result = _words(raw)
     return result + " процентов" if match.group("pct") else result
 
 

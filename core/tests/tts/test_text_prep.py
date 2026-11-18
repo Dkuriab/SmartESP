@@ -46,3 +46,7 @@ def test_scale_volume_and_float_to_s16() -> None:
     assert np.frombuffer(pcm, "<i2").tolist() == [0, 16383, -32767, 32767]
     quiet = np.frombuffer(scale_volume(pcm, 0.5), "<i2").tolist()
     assert quiet == [0, 8191, -16383, 16383]
+
+
+def test_enormous_digit_run_does_not_raise() -> None:
+    assert numbers_to_words("9" * 5000) == " ".join(["девять"] * 5000)
