@@ -1,6 +1,7 @@
 """Договоры ядра: только типы и протоколы, без логики."""
 
 from .audio import SAMPLE_RATE, Utterance
+from .control import ChangeResult, ConfigStore, CorePort, Section, VoicePort
 from .device import DeviceInfo, DevicePort
 from .events import CoreEvent, EventFeed, EventSink, Subscription
 from .executor import ChatMessage, Executor, ExecutorError, ReplyPart
@@ -12,7 +13,10 @@ __all__ = [
     "SAMPLE_RATE",
     "Analyzer",
     "Annotation",
+    "ChangeResult",
     "ChatMessage",
+    "ConfigStore",
+    "CorePort",
     "CoreEvent",
     "DeviceInfo",
     "DevicePort",
@@ -21,6 +25,7 @@ __all__ = [
     "Executor",
     "ExecutorError",
     "ReplyPart",
+    "Section",
     "SpeechToText",
     "Stage",
     "Subscription",
@@ -28,4 +33,5 @@ __all__ = [
     "Utterance",
     "VoiceInfo",
     "VoiceNotDownloadedError",
+    "VoicePort",
 ]
