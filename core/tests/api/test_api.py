@@ -114,6 +114,7 @@ async def test_turns(client: httpx.AsyncClient) -> None:
     response = await client.get(f"{P}/turns?limit=2", headers=HEADERS)
     assert [t["turn_id"] for t in response.json()] == [3, 2]
     assert response.json()[0]["first_audio_ms"] is None
+    assert response.json()[0]["at"] == 1700000000.5
 
 
 async def test_restart(client: httpx.AsyncClient, core: FakeCore) -> None:

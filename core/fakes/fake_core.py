@@ -18,6 +18,7 @@ def make_turn(turn_id: int) -> dict[str, object]:
         "style": "normal",
         "answer": "Здравствуйте",
         "status": "ok",
+        "at": 1700000000.5,
         "stt_ms": 120.0,
         "first_text_ms": None,
         "first_audio_ms": None,

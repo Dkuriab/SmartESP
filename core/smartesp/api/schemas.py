@@ -105,6 +105,7 @@ class TurnOut(BaseModel):
     style: str
     answer: str
     status: Literal["ok", "error", "interrupted", "meaningless"]
+    at: float
     stt_ms: float | None = None
     first_text_ms: float | None = None
     first_audio_ms: float | None = None

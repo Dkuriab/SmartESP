@@ -29,7 +29,8 @@ async def test_turn_events_sequence() -> None:
     assert heard["turn_id"] == 7
     assert heard["text"] == "Какая погода?"
     assert is_delay(heard["stt_ms"])
-    assert {k: v for k, v in finished.items() if not k.endswith("_ms")} == {
+    assert isinstance(finished["at"], float)
+    assert {k: v for k, v in finished.items() if not k.endswith("_ms") and k != "at"} == {
         "turn_id": 7,
         "device_id": "kitchen",
         "device_name": "Кухня",

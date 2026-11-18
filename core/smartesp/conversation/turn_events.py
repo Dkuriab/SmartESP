@@ -1,5 +1,7 @@
 """Данные событий хода (turn_started, turn_heard, turn_finished) для ленты событий."""
 
+import time
+
 from .turn import Turn, answer_text
 
 
@@ -32,9 +34,10 @@ def heard_data(turn: Turn) -> dict[str, object]:
 
 
 def finished_data(turn: Turn) -> dict[str, object]:
-    """Данные turn_finished: вопрос, пометки, ответ, итог и задержки хода."""
+    """Данные turn_finished: время завершения, вопрос, пометки, ответ, итог и задержки хода."""
     return {
         **started_data(turn),
+        "at": time.time(),
         "text": turn.text,
         "annotations": [{"source": a.source, "text": a.text} for a in turn.annotations],
         "style": turn.style,
