@@ -9,9 +9,9 @@ JSON_DIR="${ARDUINOJSON_DIR:-$HOME/Documents/Arduino/libraries/ArduinoJson/src}"
 OUT="${TMPDIR:-/tmp}/smartesp_tests"
 
 cd "$ROOT"
-clang++ -std=c++17 -Wall -Werror -I src -I "$JSON_DIR" \
+clang++ -std=c++17 -Wall -Werror -I firmware/SmartEsp/src -I "$JSON_DIR" \
   tools/host_tests/*.cpp \
-  src/server_link/Protocol.cpp src/server_link/ReplyGate.cpp \
-  src/session/Session.cpp src/voice_frontend/SpeechTracker.cpp \
+  firmware/SmartEsp/src/server_link/Protocol.cpp firmware/SmartEsp/src/server_link/ReplyGate.cpp \
+  firmware/SmartEsp/src/session/Session.cpp firmware/SmartEsp/src/voice_frontend/SpeechTracker.cpp \
   -o "$OUT"
 "$OUT"

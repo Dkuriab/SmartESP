@@ -46,8 +46,8 @@
    ```bash
    uv run --project core python tools/fake_device.py --wav core/tests/data/privet.wav
    ```
-7. Плата: `cp secrets.example.h secrets.h` (файл не в git — на новом компьютере
-   его нет), вписать Wi-Fi и `SERVER_HOST` = IP этого Mac
+7. Плата: в `firmware/SmartEsp/` выполнить `cp secrets.example.h secrets.h`
+   (файл не в git — на новом компьютере его нет), вписать Wi-Fi и `SERVER_HOST` = IP этого Mac
    (`ipconfig getifaddr en0`), собрать и прошить — см. «Сборка в Arduino IDE».
 
 ## Подключение
@@ -60,6 +60,9 @@
 Модуль: ESP32-S3-WROOM **N16R8** (16 МБ флеша, 8 МБ PSRAM).
 
 ## Сборка в Arduino IDE
+
+Скетч — `firmware/SmartEsp/SmartEsp.ino` (открывать его, а не корень репозитория:
+в корне лежит ядро, и Arduino IDE на нём спотыкается).
 
 Ядро: **esp32 by Espressif 3.3.12** (Boards Manager).
 
@@ -80,8 +83,8 @@ Tools:
 | PSRAM | OPI PSRAM |
 | USB CDC On Boot | Enabled — если подключены к порту «USB», а не «UART» |
 
-Перед первой сборкой скопируйте `secrets.example.h` в `secrets.h` и
-заполните Wi-Fi и адрес сервера.
+Перед первой сборкой скопируйте `firmware/SmartEsp/secrets.example.h` в
+`firmware/SmartEsp/secrets.h` и заполните Wi-Fi и адрес сервера.
 
 ## Сборка из командной строки
 
@@ -96,7 +99,7 @@ tools/build.sh
 
 1. На ноутбуке запустите тестовый сервер (`tools/test_server/README.md`)
    или настоящий сервер с нейросетью.
-2. В `secrets.h` — Wi-Fi и IP ноутбука, прошейте плату.
+2. В `firmware/SmartEsp/secrets.h` — Wi-Fi и IP ноутбука, прошейте плату.
 3. Скажите **«Hi, ESP»** → короткий сигнал → задайте вопрос.
    Конец вопроса — 0,5 с тишины. С тестовым сервером колонка повторит
    вопрос вашим же голосом.
