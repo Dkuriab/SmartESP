@@ -23,8 +23,8 @@ RECEIVE_TIMEOUT_S = 5.0  # больше любого шага теста: тес
 MAX_FRAMES = 200  # ответ из теста заведомо короче
 
 
-def receive(ws: WebSocketTestSession, timeout: float = RECEIVE_TIMEOUT_S) -> dict[str, Any]:
-    """Ждёт кадр от ядра не дольше timeout (receive TestClient'а сам по себе ждёт вечно)."""
+def _read(ws: WebSocketTestSession, timeout: float) -> dict[str, Any] | None:
+    """Кадр от ядра или None, если за timeout ничего не пришло (receive TestClient'а ждёт вечно)."""
     box: dict[str, Any] = {}
 
     def worker() -> None:
@@ -37,10 +37,25 @@ def receive(ws: WebSocketTestSession, timeout: float = RECEIVE_TIMEOUT_S) -> dic
     thread.start()
     thread.join(timeout)
     if thread.is_alive():
-        pytest.fail(f"ядро ничего не прислало за {timeout} с")
+        return None  # поток дочитает при закрытии сессии и завершится
     if "error" in box:
         raise box["error"]
     return box["message"]
+
+
+def receive(ws: WebSocketTestSession, timeout: float = RECEIVE_TIMEOUT_S) -> dict[str, Any]:
+    """Ждёт кадр от ядра не дольше timeout; не пришёл — тест падает."""
+    message = _read(ws, timeout)
+    if message is None:
+        pytest.fail(f"ядро ничего не прислало за {timeout} с")
+    return message
+
+
+def receive_json(ws: WebSocketTestSession) -> dict[str, Any]:
+    """Ждёт текстовое сообщение протокола и разбирает его."""
+    message = receive(ws)
+    assert message.get("text") is not None, message
+    return json.loads(message["text"])
 
 
 def receive_reply(ws: WebSocketTestSession, turn: int) -> tuple[list[dict[str, Any]], bytes]:
@@ -69,8 +84,18 @@ def ask(ws: WebSocketTestSession, turn: int) -> None:
     ws.send_json({"type": "utterance_end", "turn": turn, "reason": "vad"})
 
 
+KITCHEN = "AA:BB:CC:DD:EE:01"
+BEDROOM = "AA:BB:CC:DD:EE:02"
+
+
 def make_client(executor: Executor) -> TestClient:
-    config = Config(devices={"kitchen": DeviceConfig(name="Кухня")})
+    config = Config(
+        devices={
+            "kitchen": DeviceConfig(name="Кухня"),
+            KITCHEN: DeviceConfig(name="Кухня"),
+            BEDROOM: DeviceConfig(name="Спальня"),
+        }
+    )
     app = build_app(config, FakeSTT("сколько времени"), FakeTTS(), executor, [])
     return TestClient(app)
 
@@ -118,3 +143,36 @@ def test_disconnect_mid_reply_is_quiet(caplog: pytest.LogCaptureFixture) -> None
     errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
     assert errors == []
     assert any("disconnected" in r.getMessage() for r in caplog.records)
+
+
+def hello(device_id: str) -> dict[str, Any]:
+    return {"type": "hello", "device_id": device_id, "fw": "2.0", "protocol": 2}
+
+
+def test_two_speakers_louder_one_answers() -> None:
+    # номера ходов колонок (5 и 9) не совпадают с номерами хаба (1, 2…): путаница номеров видна
+    executor = FakeExecutor(["Сейчас полдень."])
+    with (
+        make_client(executor) as client,
+        client.websocket_connect("/device") as quiet,
+        client.websocket_connect("/device") as loud,
+    ):
+        quiet.send_json(hello(KITCHEN))
+        loud.send_json(hello(BEDROOM))
+        quiet.send_json({"type": "wake", "turn": 5, "level": -40})
+        loud.send_json({"type": "wake", "turn": 9, "level": -25})
+        for _ in range(10):
+            quiet.send_bytes(FRAME)
+            loud.send_bytes(FRAME)
+        time.sleep(0.35)  # дольше окна арбитра
+        quiet.send_json({"type": "utterance_end", "turn": 5, "reason": "vad"})
+        loud.send_json({"type": "utterance_end", "turn": 9, "reason": "vad"})
+
+        assert receive_json(quiet) == {"type": "cancel_turn", "turn": 5}
+        texts, audio = receive_reply(loud, 9)
+        assert texts == [{"type": "reply_start", "turn": 9}, {"type": "reply_end", "turn": 9}]
+        assert len(audio) > 0
+        assert _read(quiet, 0.3) is None  # тихой колонке больше ничего: ни reply_start, ни звука
+
+    assert len(executor.calls) == 1
+    assert "Колонка: Спальня" in executor.calls[0][-1].content
