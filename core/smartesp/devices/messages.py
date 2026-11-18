@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -66,7 +67,13 @@ def _level(data: dict[str, Any]) -> tuple[bool, float | None]:
     level = data["level"]
     if isinstance(level, bool) or not isinstance(level, int | float):
         return False, None
-    return True, float(level)
+    try:
+        value = float(level)
+    except OverflowError:  # огромное целое не влезает в float
+        return False, None
+    if not math.isfinite(value):  # NaN и бесконечности ломают арбитраж
+        return False, None
+    return True, value
 
 
 def _parse_hello(data: dict[str, Any]) -> Hello | None:
@@ -121,7 +128,7 @@ def parse_message(text: str) -> DeviceMessage | None:
     """Разбирает текстовый кадр колонки. Мусор и неизвестный type дают None, не исключение."""
     try:
         data = json.loads(text)
-    except ValueError:
+    except (ValueError, RecursionError):  # мусор и слишком глубокая вложенность
         return None
     if not isinstance(data, dict):
         return None

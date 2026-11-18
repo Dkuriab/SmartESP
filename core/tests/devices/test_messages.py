@@ -68,3 +68,18 @@ def test_encoders_are_compact_json() -> None:
     assert reply_end(2) == '{"type":"reply_end","turn":2}'
     assert tone("ok") == '{"type":"tone","name":"ok"}'
     assert stop_playback() == '{"type":"stop_playback"}'
+
+
+def test_parse_rejects_non_finite_level() -> None:
+    for raw in ("NaN", "Infinity", "-Infinity"):
+        assert parse_message('{"type":"wake","turn":1,"level":' + raw + "}") is None
+
+
+def test_parse_huge_level_does_not_raise() -> None:
+    assert parse_message('{"type":"wake","turn":1,"level":' + "9" * 400 + "}") is None
+    assert parse_message('{"type":"wake","turn":1,"level":1e999}') is None
+
+
+def test_parse_deep_nesting_does_not_raise() -> None:
+    assert parse_message("[" * 100000) is None
+    assert parse_message('{"type":"wake","turn":1,"x":' + "[" * 100000) is None
