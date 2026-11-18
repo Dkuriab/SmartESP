@@ -10,11 +10,13 @@ from .download import (
 from .pcm import QUIET_VOLUME, float_to_s16, scale_volume
 from .piper_tts import PiperTTS
 from .resample import resample_s16
+from .silero_tts import SileroTTS
 from .text_prep import keep_speakable, numbers_to_words
 
 __all__ = [
     "QUIET_VOLUME",
     "PiperTTS",
+    "SileroTTS",
     "VoiceDownloadError",
     "VoiceUnavailableError",
     "catalog",

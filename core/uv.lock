@@ -1006,6 +1006,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "soxr" },
     { name = "starlette" },
+    { name = "torch" },
     { name = "uvicorn" },
     { name = "websockets" },
 ]
@@ -1031,6 +1032,7 @@ requires-dist = [
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "soxr", specifier = "==1.1.0" },
     { name = "starlette", specifier = "==1.10.0" },
+    { name = "torch", specifier = "==2.15.0" },
     { name = "uvicorn", specifier = "==0.54.0" },
     { name = "websockets", specifier = "==17.4" },
 ]

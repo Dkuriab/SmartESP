@@ -17,6 +17,7 @@ dependencies = [
     "starlette==1.10.0",
     "httpx==0.28.1",
     "num2words==0.5.14",
+    "torch==2.15.0",
 ]
 
 [dependency-groups]
