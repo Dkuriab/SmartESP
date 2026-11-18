@@ -16,6 +16,7 @@ dependencies = [
     "websockets==17.4",
     "starlette==1.10.0",
     "httpx==0.28.1",
+    "num2words==0.5.14",
 ]
 
 [dependency-groups]
