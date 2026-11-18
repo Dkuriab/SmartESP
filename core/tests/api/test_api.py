@@ -39,6 +39,14 @@ async def test_status(client: httpx.AsyncClient, core: FakeCore) -> None:
     assert response.json() == await core.status()
 
 
+async def test_status_voice_before_open_and_without_error(client: httpx.AsyncClient, core: FakeCore) -> None:
+    # так отдаёт состояние настоящий VoiceManager: до open() вида нет, ошибки нет — None
+    core.voice_state = {"kind": None, "voice": None, "state": "missing", "error": None}
+    response = await client.get(f"{P}/status", headers=HEADERS)
+    assert response.status_code == 200
+    assert response.json()["voice"] == core.voice_state
+
+
 async def test_config_and_patch(client: httpx.AsyncClient, core: FakeCore) -> None:
     assert (await client.get(f"{P}/config", headers=HEADERS)).json() == core.config()
     response = await client.patch(f"{P}/config", json={"tts": {"kind": "silero"}}, headers=HEADERS)

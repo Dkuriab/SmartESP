@@ -26,12 +26,12 @@ class DeviceOut(BaseModel):
 
 
 class VoiceStateOut(BaseModel):
-    """Состояние нужного голоса."""
+    """Состояние нужного голоса; до первого открытия вида и голоса нет (null)."""
 
-    kind: str
-    voice: str
+    kind: str | None
+    voice: str | None
     state: Literal["ready", "downloading", "failed", "missing"]
-    error: str = ""
+    error: str | None = None
 
 
 class StatusOut(BaseModel):

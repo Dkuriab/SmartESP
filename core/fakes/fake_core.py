@@ -28,6 +28,12 @@ class FakeCore:
     def __init__(self) -> None:
         self.patches: list[dict[str, Any]] = []
         self.restarts = 0
+        self.voice_state: dict[str, object] = {
+            "kind": "piper",
+            "voice": "irina",
+            "state": "ready",
+            "error": None,
+        }
         self.patch_status = "accepted"
         self.download_status = "accepted"
         self.preview_error: Exception | None = None
@@ -51,7 +57,7 @@ class FakeCore:
                     "last_seen": 1.0,
                 }
             ],
-            "voice": {"kind": "piper", "voice": "irina", "state": "ready", "error": ""},
+            "voice": self.voice_state,
             "applying": False,
             "restart_required": False,
         }
