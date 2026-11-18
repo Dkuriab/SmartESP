@@ -4,7 +4,10 @@ import asyncio
 
 from control_harness import Harness
 
+from fakes.fake_control import FakeConfigStore, FakeVoices
+from fakes.fake_events import RecordingSink
 from smartesp.contracts import ChangeResult
+from smartesp.control.changes import ChangeQueue
 
 
 async def test_change_is_accepted_then_built_swapped_released_saved_announced() -> None:
@@ -248,3 +251,35 @@ async def test_failing_event_sink_does_not_stop_queue() -> None:
     assert len(h.store.saved) == 2
     assert (await h.core.status())["applying"] is False
     await h.core.aclose()
+
+
+class LatestOpenWins(FakeVoices):
+    """Как VoiceManager: open другого голоса перебивает прежний; голос bad не открывается."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.wanted: tuple[str, str] | None = None
+
+    async def open(self, kind: str, voice: str, *, retry: bool) -> bool:
+        self.opened.append((kind, voice, retry))
+        self.wanted = (kind, voice)
+        await asyncio.sleep(0.01)
+        return self.wanted == (kind, voice) and voice != "bad"
+
+
+async def test_restore_after_failed_voice_does_not_cancel_next_voice_change() -> None:
+    store = FakeConfigStore({"tts": {"kind": "silero", "voice": "xenia"}})
+    voices = LatestOpenWins()
+    events = RecordingSink()
+    queue = ChangeQueue(store, {}, voices=voices, events=events)
+    queue.submit(1, {"tts": {"voice": "bad"}})
+    queue.submit(2, {"tts": {"voice": "good"}})
+    async with asyncio.timeout(1):
+        while len(events.events) < 2:
+            await asyncio.sleep(0)
+    await asyncio.sleep(0.05)  # запоздалый возврат успел бы перебить good
+    assert [data["ok"] for _, data in events.events] == [False, True]
+    assert store.saved == [{"tts": {"kind": "silero", "voice": "good"}}]
+    assert voices.opened == [("silero", "bad", False), ("silero", "good", False)]  # без возврата xenia
+    assert voices.wanted == ("silero", "good")
+    await queue.aclose()

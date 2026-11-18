@@ -32,7 +32,8 @@ class ChangeQueue:
     Сбой на шагах 1–3 — ничего не подменено, собранные части освобождаются, файл не
     трогается, change_applied(ok=False, error). tts открывается последним, после
     всех сборок. Если голос не открылся, в фоне снова открывается прежний голос
-    (retry=True), чтобы менеджер голосов вернулся к записанным настройкам.
+    (retry=True), чтобы менеджер голосов вернулся к записанным настройкам; следующая
+    правка tts сначала отменяет этот возврат, чтобы он не перебил новый голос.
     Сбой swap (договор: не падает) оставляет уже подменённые части подменёнными,
     файл не трогается. Сбой release только пишется в журнал: изменение уже применено.
     Сбой save после подмены — части уже новые, а файл старый: громкая запись в
@@ -59,6 +60,7 @@ class ChangeQueue:
         self._queue: asyncio.Queue[tuple[int, dict[str, Any]]] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
         self._background: set[asyncio.Task[None]] = set()
+        self._restore: asyncio.Task[None] | None = None  # возврат прежнего голоса после сбоя
         self._busy = False
         self.closed = False
         self.restart_required = False
@@ -168,11 +170,12 @@ class ChangeQueue:
         return built
 
     async def _open_voice(self, old: Any, new: Any) -> None:
+        await self._cancel_restore()  # иначе запоздалый возврат перебьёт этот голос
         kind, voice = self._voice(new)
         if await self._voices.open(kind, voice, retry=False):
             return
         error = self._voices.state().get("error")
-        self._spawn(self._restore_voice(*self._voice(old)))
+        self._restore = self._spawn(self._restore_voice(*self._voice(old)))
         raise RuntimeError(str(error) if error else f"Голос {kind}/{voice} не включился")
 
     def _voice(self, config: Any) -> tuple[str, str]:
@@ -187,10 +190,22 @@ class ChangeQueue:
         except Exception:
             _log.warning("Прежний голос %s/%s не вернулся", kind, voice, exc_info=True)
 
-    def _spawn(self, work: Coroutine[Any, Any, None]) -> None:
+    async def _cancel_restore(self) -> None:
+        """Отменяет ещё идущий возврат прежнего голоса и ждёт его.
+
+        Не начавшийся возврат не зовёт open вовсе; начавшийся перебивается
+        следующим open другого голоса в менеджере голосов.
+        """
+        restore, self._restore = self._restore, None
+        if restore is not None and not restore.done():
+            restore.cancel()
+            await asyncio.gather(restore, return_exceptions=True)
+
+    def _spawn(self, work: Coroutine[Any, Any, None]) -> asyncio.Task[None]:
         task = asyncio.create_task(work)
         self._background.add(task)
         task.add_done_callback(self._background.discard)
+        return task
 
     async def _release_all(self, parts: Mapping[str, object | None]) -> None:
         """Освобождает части разделов; сбой одной только пишется в журнал."""
