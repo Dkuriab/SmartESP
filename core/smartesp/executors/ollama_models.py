@@ -1,5 +1,6 @@
 """Список моделей Ollama: установленные и загруженные в память."""
 
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import httpx
@@ -25,14 +26,26 @@ def _name(item: Any) -> str:
     return str(_field(item, "model") or _field(item, "name") or "")
 
 
-def _client(client: Any) -> Any:
-    """Клиент по умолчанию — локальный ollama.AsyncClient с коротким таймаутом."""
-    return client if client is not None else ollama.AsyncClient(timeout=LIST_TIMEOUT_S)
-
-
 def _wrap(exc: Exception) -> ExecutorError:
     """Превращает ошибку ollama/сети в ExecutorError."""
     return ExecutorError(f"Не удалось получить список моделей Ollama: {exc!r}")
+
+
+async def _call(client: Any, method: str) -> Any:
+    """Вызывает метод клиента; свой клиент (если не передан) закрывает после вызова.
+
+    Переданный снаружи клиент не закрывается.
+    """
+    own = client is None
+    c: Any = ollama.AsyncClient(timeout=LIST_TIMEOUT_S) if own else client
+    try:
+        call: Callable[[], Awaitable[Any]] = getattr(c, method)
+        return await call()
+    except (httpx.HTTPError, ConnectionError, ollama.ResponseError) as exc:
+        raise _wrap(exc) from exc
+    finally:
+        if own:
+            await c.close()
 
 
 async def list_models(client: Any = None) -> list[tuple[str, int]]:
@@ -40,10 +53,7 @@ async def list_models(client: Any = None) -> list[tuple[str, int]]:
 
     Кидает ExecutorError, если Ollama недоступна.
     """
-    try:
-        response = await _client(client).list()
-    except (httpx.HTTPError, ConnectionError, ollama.ResponseError) as exc:
-        raise _wrap(exc) from exc
+    response = await _call(client, "list")
     return [(_name(m), int(_field(m, "size") or 0)) for m in _items(response)]
 
 
@@ -52,8 +62,5 @@ async def loaded_models(client: Any = None) -> list[str]:
 
     Кидает ExecutorError, если Ollama недоступна.
     """
-    try:
-        response = await _client(client).ps()
-    except (httpx.HTTPError, ConnectionError, ollama.ResponseError) as exc:
-        raise _wrap(exc) from exc
+    response = await _call(client, "ps")
     return [_name(m) for m in _items(response)]

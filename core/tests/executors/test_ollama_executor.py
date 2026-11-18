@@ -1,5 +1,6 @@
 """Тесты OllamaExecutor."""
 
+import asyncio
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -151,9 +152,7 @@ async def test_unload_swallows_error(caplog: pytest.LogCaptureFixture) -> None:
     assert "выгрузить" in caplog.text
 
 
-async def test_unload_times_out_on_hang() -> None:
-    import asyncio
-
+async def test_unload_times_out_on_hang(caplog: pytest.LogCaptureFixture) -> None:
     class Hanging(FakeClient):
         async def generate(self, **kwargs: Any) -> None:
             await asyncio.sleep(10)
@@ -161,3 +160,4 @@ async def test_unload_times_out_on_hang() -> None:
     start = time.monotonic()
     await make(Hanging()).unload(timeout_s=0.1)
     assert time.monotonic() - start < 1.0
+    assert any(r.levelname == "WARNING" for r in caplog.records)

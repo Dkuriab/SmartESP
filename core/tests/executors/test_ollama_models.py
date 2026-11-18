@@ -53,3 +53,43 @@ async def test_errors_become_executor_error(error: Exception) -> None:
         await list_models(FakeClient(error=error))
     with pytest.raises(ExecutorError):
         await loaded_models(FakeClient(error=error))
+
+
+class ClosableClient(FakeClient):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.closed = 0
+
+    async def close(self) -> None:
+        self.closed += 1
+
+
+@pytest.mark.parametrize("fail", [False, True])
+async def test_own_client_is_closed(monkeypatch: pytest.MonkeyPatch, fail: bool) -> None:
+    created: list[ClosableClient] = []
+
+    def factory(**_: Any) -> ClosableClient:
+        c = ClosableClient(
+            listed={"models": []},
+            running={"models": []},
+            error=httpx.ConnectError("x") if fail else None,
+        )
+        created.append(c)
+        return c
+
+    monkeypatch.setattr(ollama, "AsyncClient", factory)
+    for fn in (list_models, loaded_models):
+        if fail:
+            with pytest.raises(ExecutorError):
+                await fn()
+        else:
+            await fn()
+    assert len(created) == 2
+    assert [c.closed for c in created] == [1, 1]
+
+
+async def test_injected_client_not_closed() -> None:
+    c = ClosableClient(listed={"models": []}, running={"models": []})
+    await list_models(c)
+    await loaded_models(c)
+    assert c.closed == 0
