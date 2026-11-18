@@ -1,6 +1,8 @@
-"""Колонки: сообщения протокола и арбитраж слов пробуждения."""
+"""Колонки: протокол, арбитраж слов пробуждения, хаб соединений."""
 
 from .arbiter import Arbiter, Decision
+from .connection import DeviceConnection
+from .hub import DeviceHub
 from .messages import (
     BargeIn,
     DeviceMessage,
@@ -20,6 +22,8 @@ __all__ = [
     "Arbiter",
     "BargeIn",
     "Decision",
+    "DeviceConnection",
+    "DeviceHub",
     "DeviceMessage",
     "Hello",
     "PlaybackDone",
