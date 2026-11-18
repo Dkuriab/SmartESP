@@ -41,7 +41,7 @@ class VoiceFrontend {
   static void fetchTaskEntry(void* self);
   void feedTask();
   void fetchTask();
-  void pushEvent(VoiceEventType type);
+  void pushEvent(VoiceEventType type, float level = 0.0f);
   void drainClean();
 
   // Интерфейс AFE (const esp_afe_sr_iface_t*). В заголовке — void*, потому что
@@ -60,6 +60,10 @@ class VoiceFrontend {
   SpeechTracker speech_;  // используется только в задаче выборки
   volatile bool capture_ = false;
   volatile uint32_t captureGeneration_ = 0;  // меняется при каждом setCapture
+  // Громкость последних кадров (дБFS): кольцо на ~1 с, только в задаче выборки.
+  static constexpr int LEVEL_FRAMES = 32;
+  float levels_[LEVEL_FRAMES];  // заполняется тишиной в begin()
+  int levelPos_ = 0;
   uint32_t droppedFrames_ = 0;
   uint32_t lastDropLogMs_ = 0;
 };

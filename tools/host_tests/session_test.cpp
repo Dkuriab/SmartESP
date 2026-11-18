@@ -78,7 +78,7 @@ bool sameActions(const std::vector<Action>& actual, const std::vector<Expect>& e
 }
 
 VoiceEvent voice(VoiceEventType type) {
-  return VoiceEvent{type};
+  return VoiceEvent{type, 0.0f};
 }
 
 ServerCommand server(ServerCommandType type, uint32_t turn = 0) {

@@ -11,7 +11,7 @@
 #include "src/server_link/ServerLink.h"
 #include "src/session/Session.h"
 
-constexpr const char* FW_VERSION = "0.1.0";
+constexpr const char* FW_VERSION = "0.2.0";
 constexpr size_t AUDIO_BLOCK = 512;  // 32 мс
 
 AudioOut audioOut;

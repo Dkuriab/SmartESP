@@ -18,6 +18,7 @@ enum class VoiceEventType : uint8_t {
 
 struct VoiceEvent {
   VoiceEventType type;
+  float level;  // дБFS, только для WakeWord
 };
 
 // ---------- встроенные звуки audio_out ----------
@@ -49,6 +50,7 @@ struct ClientEvent {
   ClientEventType type;
   uint32_t turn;              // номер хода
   UtteranceEndReason reason;  // только для UtteranceEnd
+  float level;                // дБFS, только для Wake
 };
 
 // ---------- команды сервер → ESP ----------
@@ -60,11 +62,13 @@ enum class ServerCommandType : uint8_t {
   StopPlayback,
   Volume,
   PlayTone,
+  CancelTurn,  // ядро отменило ход
+  Announce,    // ядро само начинает ответ
 };
 
 struct ServerCommand {
   ServerCommandType type;
-  uint32_t turn;  // для StopListening, ReplyStart, ReplyEnd; иначе 0
+  uint32_t turn;  // для StopListening, ReplyStart, ReplyEnd, CancelTurn, Announce; иначе 0
   float volume;   // для Volume, 0..1
   Tone tone;      // для PlayTone
 };

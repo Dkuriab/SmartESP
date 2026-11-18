@@ -1,11 +1,13 @@
 #include "Protocol.h"
 
 #include <ArduinoJson.h>
+#include <math.h>
 #include <string.h>
 
 namespace {
 
 constexpr int SAMPLE_RATE = 16000;
+constexpr int PROTOCOL_VERSION = 2;
 
 const char* eventTypeName(ClientEventType type) {
   switch (type) {
@@ -59,10 +61,12 @@ bool readTone(const char* name, Tone& tone) {
 
 }  // namespace
 
-size_t encodeHello(const char* fwVersion, char* out, size_t capacity) {
+size_t encodeHello(const char* fwVersion, const char* deviceId, char* out, size_t capacity) {
   JsonDocument doc;
   doc["type"] = "hello";
   doc["fw"] = fwVersion;
+  doc["device_id"] = deviceId;
+  doc["protocol"] = PROTOCOL_VERSION;
   doc["sample_rate"] = SAMPLE_RATE;
   doc["format"] = "pcm_s16le";
   doc["channels"] = 1;
@@ -75,6 +79,9 @@ size_t encodeClientEvent(const ClientEvent& event, char* out, size_t capacity) {
   doc["turn"] = event.turn;
   if (event.type == ClientEventType::UtteranceEnd) {
     doc["reason"] = reasonName(event.reason);
+  }
+  if (event.type == ClientEventType::Wake) {
+    doc["level"] = roundf(event.level * 10.0f) / 10.0f;  // дБFS, одна цифра после запятой
   }
   return serializeInto(doc, out, capacity);
 }
@@ -98,6 +105,12 @@ bool decodeServerCommand(const char* json, size_t length, ServerCommand& out) {
     if (!readTurn(doc, cmd.turn)) return false;
   } else if (strcmp(type, "reply_end") == 0) {
     cmd.type = ServerCommandType::ReplyEnd;
+    if (!readTurn(doc, cmd.turn)) return false;
+  } else if (strcmp(type, "cancel_turn") == 0) {
+    cmd.type = ServerCommandType::CancelTurn;
+    if (!readTurn(doc, cmd.turn)) return false;
+  } else if (strcmp(type, "announce") == 0) {
+    cmd.type = ServerCommandType::Announce;
     if (!readTurn(doc, cmd.turn)) return false;
   } else if (strcmp(type, "stop_playback") == 0) {
     cmd.type = ServerCommandType::StopPlayback;

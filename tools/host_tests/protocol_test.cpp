@@ -38,7 +38,7 @@ ServerCommand command(ServerCommandType type, uint32_t turn) {
 
 TEST(encode_hello) {
   char buffer[256];
-  const size_t length = encodeHello("0.1.0", buffer, sizeof(buffer));
+  const size_t length = encodeHello("0.1.0", "AA:BB", buffer, sizeof(buffer));
   CHECK(length > 0);
   JsonDocument doc;
   CHECK(!deserializeJson(doc, buffer, length));
@@ -50,7 +50,7 @@ TEST(encode_hello) {
 }
 
 TEST(encode_wake) {
-  JsonDocument doc = encodeAndParse({ClientEventType::Wake, 3, UtteranceEndReason::Vad});
+  JsonDocument doc = encodeAndParse({ClientEventType::Wake, 3, UtteranceEndReason::Vad, 0.0f});
   CHECK_EQ(std::string(doc["type"] | ""), "wake");
   CHECK_EQ(doc["turn"].as<int>(), 3);
 }
@@ -88,7 +88,7 @@ TEST(encode_playback_done) {
 TEST(encode_too_small_buffer) {
   char buffer[8];
   CHECK_EQ(encodeClientEvent({ClientEventType::Wake, 1, UtteranceEndReason::Vad}, buffer, sizeof(buffer)), 0u);
-  CHECK_EQ(encodeHello("0.1.0", buffer, sizeof(buffer)), 0u);
+  CHECK_EQ(encodeHello("0.1.0", "AA:BB", buffer, sizeof(buffer)), 0u);
 }
 
 // ---------- разбор сервер → ESP ----------
@@ -196,4 +196,54 @@ TEST(gate_closes_on_turn_change) {
   gate.onCommand(command(ServerCommandType::ReplyStart, 2));
   gate.setActiveTurn(3);
   CHECK(!gate.isOpen());
+}
+
+// ---------- протокол v2 ----------
+
+TEST(hello_has_device_id_and_protocol) {
+  char buffer[192];
+  const size_t length = encodeHello("0.2.0", "AA:BB:CC:DD:EE:FF", buffer, 192);
+  CHECK(length > 0);
+  const std::string json(buffer, length);
+  CHECK(json.find("\"device_id\":\"AA:BB:CC:DD:EE:FF\"") != std::string::npos);
+  CHECK(json.find("\"protocol\":2") != std::string::npos);
+  JsonDocument doc;
+  CHECK(!deserializeJson(doc, buffer, length));
+  CHECK_EQ(std::string(doc["type"] | ""), "hello");
+  CHECK_EQ(std::string(doc["fw"] | ""), "0.2.0");
+  CHECK_EQ(doc["sample_rate"].as<int>(), 16000);
+  CHECK_EQ(std::string(doc["format"] | ""), "pcm_s16le");
+  CHECK_EQ(doc["channels"].as<int>(), 1);
+}
+
+TEST(wake_has_level) {
+  char buffer[128];
+  const ClientEvent wake{ClientEventType::Wake, 3, UtteranceEndReason::Vad, -31.25f};
+  const size_t length = encodeClientEvent(wake, buffer, sizeof(buffer));
+  CHECK_EQ(std::string(buffer, length), "{\"type\":\"wake\",\"turn\":3,\"level\":-31.3}");
+}
+
+TEST(non_wake_events_have_no_level) {
+  const ClientEventType types[] = {ClientEventType::UtteranceEnd, ClientEventType::BargeIn,
+                                   ClientEventType::PlaybackDone};
+  for (const ClientEventType type : types) {
+    JsonDocument doc = encodeAndParse({type, 3, UtteranceEndReason::Vad, -20.0f});
+    CHECK(doc["level"].isNull());
+  }
+}
+
+TEST(decode_cancel_turn) {
+  ServerCommand cmd{};
+  CHECK(decode("{\"type\":\"cancel_turn\",\"turn\":7}", cmd));
+  CHECK(cmd.type == ServerCommandType::CancelTurn);
+  CHECK_EQ(cmd.turn, 7u);
+  CHECK(!decode("{\"type\":\"cancel_turn\"}", cmd));
+}
+
+TEST(decode_announce) {
+  ServerCommand cmd{};
+  CHECK(decode("{\"type\":\"announce\",\"turn\":2147483649}", cmd));
+  CHECK(cmd.type == ServerCommandType::Announce);
+  CHECK_EQ(cmd.turn, 0x80000001u);
+  CHECK(!decode("{\"type\":\"announce\"}", cmd));
 }

@@ -61,6 +61,9 @@ bool VoiceFrontend::begin(const VoiceFrontendConfig& config) {
   frame_ = (int16_t*)heap_caps_calloc(chunk_ * channels_, sizeof(int16_t), MALLOC_CAP_INTERNAL);
   feedQueue_ = xStreamBufferCreateWithCaps(frameBytes * FEED_QUEUE_FRAMES, frameBytes, MALLOC_CAP_SPIRAM);
   cleanQueue_ = xStreamBufferCreateWithCaps(CLEAN_QUEUE_SAMPLES * sizeof(int16_t), 1, MALLOC_CAP_SPIRAM);
+  for (float& level : levels_) {
+    level = -100.0f;  // тишина, чтобы нули не выдавали себя за 0 дБFS
+  }
   events_ = xQueueCreate(EVENT_QUEUE_LENGTH, sizeof(VoiceEvent));
   if (!frame_ || !feedQueue_ || !cleanQueue_ || !events_) {
     Serial.println("voice_frontend: нет памяти под буферы");
@@ -123,8 +126,8 @@ void VoiceFrontend::drainClean() {
   }
 }
 
-void VoiceFrontend::pushEvent(VoiceEventType type) {
-  const VoiceEvent event{type};
+void VoiceFrontend::pushEvent(VoiceEventType type, float level) {
+  const VoiceEvent event{type, level};
   if (xQueueSend(events_, &event, 0) != pdTRUE) {
     Serial.println("voice_frontend: очередь событий полна");
   }
@@ -156,8 +159,16 @@ void VoiceFrontend::fetchTask() {
       continue;
     }
 
+    levels_[levelPos_] = res->data_volume;
+    levelPos_ = (levelPos_ + 1) % LEVEL_FRAMES;
+
     if (res->wakeup_state == WAKENET_DETECTED) {
-      pushEvent(VoiceEventType::WakeWord);
+      // Слово произнесено чуть раньше срабатывания: берём максимум за последнюю секунду.
+      float level = levels_[0];
+      for (int i = 1; i < LEVEL_FRAMES; i++) {
+        if (levels_[i] > level) level = levels_[i];
+      }
+      pushEvent(VoiceEventType::WakeWord, level);
     }
 
     if (generation != captureGeneration_) {

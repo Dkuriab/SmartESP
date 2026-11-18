@@ -104,6 +104,9 @@ void Session::onServerCommand(const ServerCommand& command) {
     case ServerCommandType::PlayTone:
       pushTone(command.tone);
       break;
+    case ServerCommandType::CancelTurn:  // задача 2
+    case ServerCommandType::Announce:    // задача 2
+      break;
   }
 }
 
@@ -207,7 +210,7 @@ void Session::pushSimple(ActionType type) {
 void Session::pushEvent(ClientEventType type, UtteranceEndReason reason) {
   Action action{};
   action.type = ActionType::SendEvent;
-  action.event = ClientEvent{type, turn_, reason};
+  action.event = ClientEvent{type, turn_, reason, 0.0f};
   push(action);
 }
 

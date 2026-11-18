@@ -159,7 +159,7 @@ void ServerLink::onSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       Serial.println("server_link: connected");
       connected_ = true;
       char json[JSON_BUFFER];
-      const size_t n = encodeHello(fwVersion_, json, sizeof(json));
+      const size_t n = encodeHello(fwVersion_, WiFi.macAddress().c_str(), json, sizeof(json));
       if (n > 0) {
         socket_.sendTXT(json, n);
       }
