@@ -1,0 +1,64 @@
+/* Узлы и связи схемы. */
+.node {
+  width: 200px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.node-cap {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+}
+.node-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.node-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+.node.lit {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.node-stage.lit {
+  border-color: var(--purple);
+  background: var(--purple-bg);
+}
+.node.offline {
+  border-style: dashed;
+  color: var(--muted);
+}
+.node.disabled {
+  opacity: 0.5;
+  border-style: dashed;
+  color: var(--faint);
+}
+.node.picked {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.node-hint {
+  cursor: default;
+  border-style: dashed;
+  color: var(--muted);
+  white-space: normal;
+}
+.schema .react-flow {
+  background: transparent;
+}
+.schema .react-flow__handle {
+  opacity: 0;
+  pointer-events: none;
+}
+.schema .react-flow__attribution {
+  display: none;
+}
