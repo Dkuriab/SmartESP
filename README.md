@@ -27,17 +27,17 @@
    ```bash
    ollama pull fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive
    ```
-4. Ядро и голос (`uv sync` в первый раз долгий — ставится torch):
+4. Ядро (`uv sync` в первый раз долгий — ставится torch):
    ```bash
    uv python install 3.12
    (cd core && uv sync)
-   tools/download_voice.sh
    ```
 5. Запуск:
    ```bash
    cd core && uv run python -m smartesp
    ```
-   Первый старт долгий: скачивается модель распознавания (~1,6 ГБ) и создаётся
+   Первый старт долгий: скачиваются модель распознавания (~1,6 ГБ) и голос
+   по умолчанию Silero (~145 МБ), создаётся
    `~/SmartEsp/config.yaml`. Готово, когда в журнале «Запускаю сервер на
    ws://0.0.0.0:8765/device». Если macOS спросит про входящие подключения —
    разрешить, иначе колонка не достучится.

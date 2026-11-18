@@ -98,3 +98,28 @@ def test_current_file_is_not_rewritten(tmp_path: Path) -> None:
     path.write_text(text, "utf-8")
     assert load_config(path).history.max_turns == 4
     assert path.read_text("utf-8") == text
+
+
+def test_legacy_default_tts_is_dropped(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    write(path, legacy_dump())
+    config = load_config(path)
+    assert "tts" not in read(path)  # type: ignore[operator]
+    assert config.tts.kind == "silero"
+
+
+def test_legacy_custom_tts_is_kept(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    data = legacy_dump()
+    data["tts"] = {"kind": "piper", "voice": "ru_RU-denis-medium"}
+    write(path, data)
+    config = load_config(path)
+    assert config.tts == Config().tts.model_copy(update={"kind": "piper", "voice": "ru_RU-denis-medium"})
+    assert read(path) == {"version": 2, "tts": {"kind": "piper", "voice": "ru_RU-denis-medium"}}
+
+
+def test_current_file_with_explicit_piper_is_kept(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    write(path, {"version": 2, "tts": {"kind": "piper"}})
+    assert load_config(path).tts.kind == "piper"
+    assert read(path) == {"version": 2, "tts": {"kind": "piper"}}

@@ -89,6 +89,8 @@ def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
     raw = dict(raw)
     if raw.get("stages") == []:
         del raw["stages"]  # прежнее умолчание «без обработчиков», а не выбор владельца
+    if raw.get("tts") == {"kind": "piper", "voice": "ru_RU-irina-medium"}:
+        del raw["tts"]  # прежнее умолчание-голос, а не выбор владельца
     if _is_legacy_executors(raw.get("executors")):
         del raw["executors"]
     return _prune(raw, Config().model_dump())

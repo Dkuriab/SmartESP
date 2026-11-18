@@ -41,8 +41,8 @@ class SttConfig(BaseModel):
 class TtsConfig(BaseModel):
     """Синтез речи."""
 
-    kind: str = "piper"
-    voice: str = "ru_RU-irina-medium"
+    kind: str = "silero"
+    voice: str = "xenia"
 
 
 class ExecutorConfig(BaseModel):

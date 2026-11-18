@@ -33,7 +33,14 @@ from smartesp.devices import DeviceHub, WebSocketConnection
 from smartesp.executors import OllamaExecutor
 from smartesp.stages import WhisperDetect, run_stages
 from smartesp.stt import MlxWhisperSTT
-from smartesp.tts import PiperTTS
+from smartesp.tts import (
+    PiperTTS,
+    SileroTTS,
+    VoiceUnavailableError,
+    VoskTTS,
+    ensure_voice,
+    voice_path,
+)
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 LOG_MAX_BYTES = 1_000_000
@@ -48,19 +55,13 @@ class StartupError(Exception):
     """Ядро не может стартовать: понятное сообщение для человека."""
 
 
-def _piper(config: TtsConfig, home: Path) -> TextToSpeech:
-    """Голос Piper из <data_dir>/voices/<voice>.onnx."""
-    path = home / "voices" / f"{config.voice}.onnx"
-    if not path.exists():
-        raise StartupError(f"Нет голоса Piper: {path}. Скачайте его: tools/download_voice.sh {config.voice}")
-    return PiperTTS(path)
-
-
 STT_KINDS: dict[str, Callable[[SttConfig], SpeechToText]] = {
     "mlx_whisper": lambda c: MlxWhisperSTT(c.model, c.language),
 }
 TTS_KINDS: dict[str, Callable[[TtsConfig, Path], TextToSpeech]] = {
-    "piper": _piper,
+    "piper": lambda c, home: PiperTTS(voice_path("piper", c.voice, home)),
+    "silero": lambda c, home: SileroTTS(voice_path("silero", c.voice, home), c.voice),
+    "vosk": lambda c, home: VoskTTS(voice_path("vosk", c.voice, home), c.voice),
 }
 EXECUTOR_KINDS: dict[str, Callable[[ExecutorConfig], Executor]] = {
     "ollama": lambda c: OllamaExecutor(c.model, c.system_prompt, c.keep_alive),
@@ -157,7 +158,12 @@ def _create(
 ) -> tuple[SpeechToText, TextToSpeech, Executor, list[tuple[Stage, float]]]:
     """Создаёт реализации, выбранные в настройках, через реестры."""
     stt = _pick(STT_KINDS, config.stt.kind, "stt")(config.stt)
-    tts = _pick(TTS_KINDS, config.tts.kind, "tts")(config.tts, home)
+    _pick(TTS_KINDS, config.tts.kind, "tts")  # вид проверяем до скачивания голоса
+    try:
+        kind, voice = ensure_voice(config.tts.kind, config.tts.voice, home)
+    except VoiceUnavailableError as error:
+        raise StartupError(str(error)) from error
+    tts = TTS_KINDS[kind](config.tts.model_copy(update={"kind": kind, "voice": voice}), home)
     stages = [(_pick(STAGE_KINDS, s.kind, "stage")(s), s.timeout_ms / 1000) for s in config.stages]
     entry = config.entry_executor()
     prompt = with_stage_hints(entry.system_prompt, [stage for stage, _ in stages])
@@ -167,9 +173,12 @@ def _create(
 
 
 async def _warm_up(
-    stt: SpeechToText, executor: Executor, executor_timeout_s: float = WARM_UP_TIMEOUT_S
+    stt: SpeechToText,
+    executor: Executor,
+    tts: TextToSpeech,
+    executor_timeout_s: float = WARM_UP_TIMEOUT_S,
 ) -> None:
-    """Загружает модели заранее, чтобы первый вопрос не ждал. Сбой — предупреждение, не остановка.
+    """Загружает модели (STT, исполнитель, TTS) заранее. Сбой — предупреждение, не остановка.
 
     Прогрев исполнителя ограничен executor_timeout_s секундами.
     """
@@ -189,6 +198,13 @@ async def _warm_up(
         logger.info("STT прогрет за %.1f с", time.monotonic() - started)
     except Exception:
         logger.error("STT не прогрелся: распознавание, скорее всего, не работает", exc_info=True)
+    if isinstance(tts, _WarmsUp):
+        started = time.monotonic()
+        try:
+            await tts.warm_up()
+            logger.info("TTS прогрет за %.1f с", time.monotonic() - started)
+        except Exception:
+            logger.error("TTS не прогрелся: первая фраза может быть медленной", exc_info=True)
 
 
 async def _serve(
@@ -199,7 +215,7 @@ async def _serve(
     stages: list[tuple[Stage, float]],
 ) -> None:
     """Прогрев и запуск uvicorn до Ctrl+C."""
-    await _warm_up(stt, executor)
+    await _warm_up(stt, executor, tts)
     app = build_app(config, stt, tts, executor, stages)
     host, port = config.server.host, config.server.port
     # log_config=None: uvicorn пишет через корневой журнал (консоль + core.log)
