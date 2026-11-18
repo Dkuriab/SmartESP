@@ -31,7 +31,7 @@ from smartesp.contracts import Executor, ExecutorError, SpeechToText, Stage, Tex
 from smartesp.conversation import History, Orchestrator
 from smartesp.devices import DeviceHub, WebSocketConnection
 from smartesp.executors import OllamaExecutor
-from smartesp.stages import run_stages
+from smartesp.stages import WhisperDetect, run_stages
 from smartesp.stt import MlxWhisperSTT
 from smartesp.tts import PiperTTS
 
@@ -65,7 +65,9 @@ TTS_KINDS: dict[str, Callable[[TtsConfig, Path], TextToSpeech]] = {
 EXECUTOR_KINDS: dict[str, Callable[[ExecutorConfig], Executor]] = {
     "ollama": lambda c: OllamaExecutor(c.model, c.system_prompt, c.keep_alive),
 }
-STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {}  # обработчики появятся на этапе 2
+STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
+    "whisper_detect": lambda c: WhisperDetect(),
+}
 
 
 @runtime_checkable

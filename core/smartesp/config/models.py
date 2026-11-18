@@ -4,7 +4,9 @@ from pydantic import BaseModel, Field, model_validator
 
 DEFAULT_SYSTEM_PROMPT = (
     "Ты голосовой помощник умной колонки. Отвечай по-русски, коротко, 1–3 предложения, "
-    "без разметки, списков и эмодзи — ответ будет озвучен."
+    "без разметки, списков и эмодзи — ответ будет озвучен. "
+    "Если в сообщении есть пометка, что человек шепчет, начни ответ точно с [style:quiet]. "
+    "Во всех остальных случаях никаких меток не пиши."
 )
 DEFAULT_MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
 
@@ -91,7 +93,7 @@ class Config(BaseModel):
     stt: SttConfig = Field(default_factory=SttConfig)
     tts: TtsConfig = Field(default_factory=TtsConfig)
     executors: list[ExecutorConfig] = Field(default_factory=_default_executors)
-    stages: list[StageConfig] = Field(default_factory=list)
+    stages: list[StageConfig] = Field(default_factory=lambda: [StageConfig(kind="whisper_detect")])
     history: HistoryConfig = Field(default_factory=HistoryConfig)
 
     @model_validator(mode="after")

@@ -5,11 +5,15 @@ import threading
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from piper import PiperVoice
+from piper import PiperVoice, SynthesisConfig
 
 from .resample import resample_s16
 
-_STYLES = ["normal"]
+# Стиль → настройки синтеза; quiet — заметно тише и чуть медленнее.
+_STYLES: dict[str, SynthesisConfig | None] = {
+    "normal": None,
+    "quiet": SynthesisConfig(volume=0.35, length_scale=1.15),
+}
 _DONE = object()
 
 
@@ -33,7 +37,8 @@ class PiperTTS:
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[object] = asyncio.Queue()
         cancel = threading.Event()
-        worker = asyncio.create_task(asyncio.to_thread(self._run, text, loop, queue, cancel))
+        config = _STYLES.get(style)
+        worker = asyncio.create_task(asyncio.to_thread(self._run, text, config, loop, queue, cancel))
         try:
             while (item := await queue.get()) is not _DONE:
                 if isinstance(item, BaseException):
@@ -47,6 +52,7 @@ class PiperTTS:
     def _run(
         self,
         text: str,
+        config: SynthesisConfig | None,
         loop: asyncio.AbstractEventLoop,
         queue: asyncio.Queue[object],
         cancel: threading.Event,
@@ -54,7 +60,7 @@ class PiperTTS:
         """Рабочий поток: синтезирует и кладёт ресемплированные куски в очередь."""
         try:
             with self._lock:
-                for chunk in self._voice.synthesize(text):
+                for chunk in self._voice.synthesize(text, syn_config=config):
                     if cancel.is_set():
                         break
                     pcm = resample_s16(chunk.audio_int16_bytes, chunk.sample_rate)

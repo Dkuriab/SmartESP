@@ -15,6 +15,9 @@ _LIST_MARKER = re.compile(r"^[ \t]*[-+•][ \t]+", re.MULTILINE)
 _HYPHEN_AFTER_COLON = re.compile(r"(?<=:)[ \t]*-[ \t]+")  # «Ответ: - один» — список, склеенный в строку
 _LEADING_JUNK = re.compile(r"^[\W_]+")  # пробелы, кавычки, многоточия в начале
 _SPACES = re.compile(r"[ \t]+")
+_STYLE_TAG = re.compile(r"^\s*\[\s*style\s*:\s*([\w-]+)\s*\]\s*", re.IGNORECASE)  # «[style:quiet]»
+
+DEFAULT_STYLE = "normal"
 
 # Известные «галлюцинации» Whisper на тишине и шуме (сравниваем без учёта регистра).
 _HALLUCINATIONS = (
@@ -75,3 +78,23 @@ def is_meaningless(text: str) -> bool:
     if sum(ch.isalpha() for ch in text) < 2:
         return True
     return _LEADING_JUNK.sub("", text).casefold().startswith(_HALLUCINATIONS)
+
+
+def strip_style_tag(text: str) -> tuple[str | None, str]:
+    """Снимает метку стиля «[style:имя]» с начала текста.
+
+    Возвращает (имя в нижнем регистре или None, текст без метки).
+    """
+    match = _STYLE_TAG.match(text)
+    if not match:
+        return None, text
+    return match.group(1).lower(), text[match.end() :]
+
+
+def take_style(text: str, styles: list[str]) -> tuple[str, str]:
+    """Стиль озвучки, выбранный моделью меткой в начале ответа, и текст без метки.
+
+    Нет метки или стиль неизвестен озвучке — DEFAULT_STYLE (метка всё равно снимается).
+    """
+    name, rest = strip_style_tag(text)
+    return (name if name in styles else DEFAULT_STYLE), rest

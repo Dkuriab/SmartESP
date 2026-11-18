@@ -30,11 +30,11 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     root.setLevel(level)
 
 
-def test_registries_have_stage1_kinds() -> None:
+def test_registries_have_known_kinds() -> None:
     assert set(STT_KINDS) == {"mlx_whisper"}
     assert set(TTS_KINDS) == {"piper"}
     assert set(EXECUTOR_KINDS) == {"ollama"}
-    assert STAGE_KINDS == {}
+    assert set(STAGE_KINDS) == {"whisper_detect"}
 
 
 def test_missing_voice_tells_how_to_download(tmp_path: Path) -> None:

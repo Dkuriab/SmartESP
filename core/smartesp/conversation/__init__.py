@@ -3,7 +3,7 @@
 from .history import History
 from .orchestrator import Orchestrator
 from .prompt import build_messages
-from .sentences import clean_for_speech, is_meaningless, split_sentences
+from .sentences import clean_for_speech, is_meaningless, split_sentences, take_style
 
 __all__ = [
     "History",
@@ -12,4 +12,5 @@ __all__ = [
     "clean_for_speech",
     "is_meaningless",
     "split_sentences",
+    "take_style",
 ]

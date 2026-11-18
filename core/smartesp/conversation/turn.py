@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 
 from smartesp.contracts import Annotation, Utterance
 
+from .sentences import DEFAULT_STYLE, strip_style_tag
+
 
 @dataclass
 class Turn:
@@ -23,6 +25,7 @@ class Turn:
     failed: bool = False  # ход сорвался из-за ошибки (исполнитель, TTS, STT…)
     meaningless: bool = False  # распознан бессмысленный текст — ответ пустой
     play_started: bool = False  # хабу уже отдан поток (он сам закончит ответ reply_end)
+    style: str = DEFAULT_STYLE  # стиль озвучки, выбранный моделью
 
     def elapsed_ms(self) -> float:
         """Сколько миллисекунд прошло с прихода реплики."""
@@ -35,8 +38,8 @@ def format_ms(value: float | None) -> str:
 
 
 def answer_text(turn: Turn) -> str:
-    """Полный текст ответа исполнителя (то, что успели получить)."""
-    return "".join(turn.answer).strip()
+    """Полный текст ответа исполнителя без метки стиля (то, что успели получить)."""
+    return strip_style_tag("".join(turn.answer))[1].strip()
 
 
 def status(turn: Turn) -> str:

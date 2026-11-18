@@ -21,13 +21,12 @@ from smartesp.contracts import (
 
 from .history import History
 from .prompt import build_messages
-from .sentences import clean_for_speech, is_meaningless, split_sentences
+from .sentences import clean_for_speech, is_meaningless, split_sentences, take_style
 from .streams import closing, first_part, next_part, no_audio
 from .turn import Turn, answer_text, format_ms, status
 
 _log = logging.getLogger(__name__)
 
-SPEECH_STYLE = "normal"  # стиль озвучки (выбор стиля моделью — позже)
 ERROR_TONE = "error"  # сигнал колонке «ответить не получилось»
 THINKING_TONE = "thinking"  # сигнал «думаю»: колонка продлевает ожидание ответа (у неё 15 с)
 THINKING_INTERVAL_S = 8.0  # как часто слать «думаю», пока нет первого куска ответа
@@ -219,14 +218,18 @@ class Orchestrator:
         (колонка получит reply_end, а не застрянет в «говорю») и помечает ход
         как упавший; сигнал ошибки (если звука не было) шлёт _finish_reply.
         """
+        first = True
         try:
             async for sentence in sentences:
                 if not self._is_live(turn):
                     return
+                if first:  # метка стиля — только в начале ответа
+                    turn.style, sentence = take_style(sentence, self._tts.styles())
+                    first = False
                 text = clean_for_speech(sentence)
                 if not text:
                     continue
-                async with closing(self._tts.synthesize(text, SPEECH_STYLE)) as audio:
+                async with closing(self._tts.synthesize(text, turn.style)) as audio:
                     async for chunk in audio:
                         if not self._is_live(turn):
                             return
@@ -246,12 +249,13 @@ class Orchestrator:
     def _log_turn(self, turn: Turn) -> None:
         """Пишет в журнал итог хода: вопрос, пометки, задержки и ответ."""
         _log.info(
-            "Колонка %s: ход %s; вопрос %r; пометки %s; "
+            "Колонка %s: ход %s; вопрос %r; пометки %s; стиль %s; "
             "stt_ms=%s first_text_ms=%s first_audio_ms=%s; ответ %r",
             turn.device_name,
             status(turn),
             turn.text,
             [f"[{a.source}] {a.text}" for a in turn.annotations],
+            turn.style,
             format_ms(turn.stt_ms),
             format_ms(turn.first_text_ms),
             format_ms(turn.first_audio_ms),
