@@ -45,12 +45,32 @@ async function fetchResource(client: Client, dispatch: Dispatch, resource: Resou
   }
 }
 
-/** Загружает ресурсы параллельно; каждый готовый сразу попадает в состояние. */
-export async function loadResources(client: Client, dispatch: Dispatch, resources: Resource[]): Promise<void> {
-  await Promise.all(
-    resources.map(async (resource) => {
+export type Loader = (resources: Resource[]) => void
+
+/**
+ * Загрузчик: ресурсы грузятся параллельно, каждый готовый сразу попадает
+ * в состояние (с временем запроса). Если ресурс уже грузится, второй запрос
+ * не начинается — по окончании текущего ресурс перечитывается один раз.
+ */
+export function createLoader(client: Client, dispatch: Dispatch, now: () => number = Date.now): Loader {
+  const running = new Set<Resource>()
+  const again = new Set<Resource>()
+
+  async function run(resource: Resource) {
+    running.add(resource)
+    do {
+      again.delete(resource)
+      const requestedAt = now()
       const loaded = await fetchResource(client, dispatch, resource)
-      if (loaded) dispatch({ type: 'loaded', ...loaded })
-    }),
-  )
+      if (loaded) dispatch({ type: 'loaded', requestedAt, ...loaded })
+    } while (again.has(resource))
+    running.delete(resource)
+  }
+
+  return (resources) => {
+    for (const resource of resources) {
+      if (running.has(resource)) again.add(resource)
+      else void run(resource)
+    }
+  }
 }

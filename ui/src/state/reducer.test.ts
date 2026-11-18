@@ -156,7 +156,7 @@ describe('reduce: голоса', () => {
 
 describe('reduce: изменения настроек', () => {
   it('change_applied ok убирает из pending и даёт «Применено»', () => {
-    let s = reduce(initialState(), { type: 'changeSent', changeId: 7, description: 'Голос' })
+    let s = reduce(initialState(), { type: 'changeSent', changeId: 7, description: 'Голос', at: 1 })
     expect(s.pending).toEqual({ 7: 'Голос' })
     s = apply(s, ev('change_applied', { change_id: 7, ok: true, error: null, sections: ['tts'] }))
     expect(s.pending).toEqual({})
@@ -164,7 +164,7 @@ describe('reduce: изменения настроек', () => {
   })
 
   it('change_applied с ошибкой даёт её текст', () => {
-    let s = reduce(initialState(), { type: 'changeSent', changeId: 8, description: 'Модель' })
+    let s = reduce(initialState(), { type: 'changeSent', changeId: 8, description: 'Модель', at: 1 })
     s = apply(s, ev('change_applied', { change_id: 8, ok: false, error: 'нет модели', sections: [] }))
     expect(s.pending).toEqual({})
     expect(s.notice).toEqual({ text: 'нет модели', tone: 'error' })
@@ -172,7 +172,7 @@ describe('reduce: изменения настроек', () => {
 
   it('change_applied раньше ответа PATCH: pending не залипает', () => {
     let s = apply(initialState(), ev('change_applied', { change_id: 9, ok: true, error: '', sections: [] }))
-    s = reduce(s, { type: 'changeSent', changeId: 9, description: 'Имя' })
+    s = reduce(s, { type: 'changeSent', changeId: 9, description: 'Имя', at: 1 })
     expect(s.pending).toEqual({})
   })
 })
@@ -205,5 +205,79 @@ describe('reduce: прочее', () => {
   it('неизвестное событие не меняет состояние', () => {
     const s = initialState()
     expect(apply(s, ev('wake', { device_id: 'x', level: 3 }))).toBe(s)
+  })
+})
+
+describe('reduce: перезапуск ядра (id начинаются заново)', () => {
+  const loadTurns = (s: CoreState, ids: number[]) =>
+    reduce(s, { type: 'loaded', resource: 'turns', data: ids.map((i) => turn(i)) })
+  const range = (from: number, to: number) => Array.from({ length: from - to + 1 }, (_, i) => from - i)
+  const sent = (s: CoreState, changeId: number, at: number) =>
+    reduce(s, { type: 'changeSent', changeId, description: `правка ${changeId}`, at })
+
+  it('после opened тот же change_id снова ждёт применения', () => {
+    let s = apply(initialState(), ev('change_applied', { change_id: 1, ok: true, error: null, sections: [] }))
+    s = reduce(s, { type: 'opened' })
+    s = sent(s, 1, 10)
+    expect(s.connection).toBe('online')
+    expect(s.pending).toEqual({ 1: 'правка 1' })
+  })
+
+  it('opened снимает pending, итог которого потерялся при обрыве', () => {
+    let s = sent(initialState(), 5, 10)
+    s = reduce(s, { type: 'connection', connection: 'offline' })
+    s = reduce(s, { type: 'opened' })
+    expect(s.pending).toEqual({})
+  })
+
+  it('status applying=false снимает только изменения, отправленные до запроса status', () => {
+    let s = sent(sent(initialState(), 1, 100), 2, 300)
+    s = reduce(s, { type: 'loaded', resource: 'status', data: status(), requestedAt: 200 })
+    expect(s.pending).toEqual({ 2: 'правка 2' })
+  })
+
+  it('status applying=true pending не трогает', () => {
+    let s = sent(initialState(), 1, 100)
+    s = reduce(s, { type: 'loaded', resource: 'status', data: { ...status(), applying: true }, requestedAt: 200 })
+    expect(s.pending).toEqual({ 1: 'правка 1' })
+  })
+
+  it('лента [50..1], перезапуск, загрузка [3,2,1] → [3,2,1]', () => {
+    let s = loadTurns(initialState(), range(50, 1))
+    s = reduce(s, { type: 'opened' })
+    s = loadTurns(s, [3, 2, 1])
+    expect(s.turns.map((t) => t.turn_id)).toEqual([3, 2, 1])
+  })
+
+  it('живой ход после opened, которого нет в загрузке, остаётся сверху', () => {
+    let s = loadTurns(initialState(), range(50, 1))
+    s = reduce(s, { type: 'opened' })
+    s = apply(s, ev('turn_finished', { ...turn(4) }))
+    s = loadTurns(s, [3, 2, 1])
+    expect(s.turns.map((t) => t.turn_id)).toEqual([4, 3, 2, 1])
+  })
+
+  it('пустая загрузка после перезапуска → только живые ходы этого подключения', () => {
+    let s = loadTurns(initialState(), range(50, 1))
+    s = reduce(s, { type: 'opened' })
+    expect(loadTurns(s, []).turns).toEqual([])
+    s = apply(s, ev('turn_finished', { ...turn(1, 'новый') }))
+    expect(loadTurns(s, []).turns.map((t) => t.text)).toEqual(['новый'])
+  })
+
+  it('новый ход с id старого процесса идёт наверх, старый убирается', () => {
+    let s = loadTurns(initialState(), [3, 2, 1])
+    s = reduce(s, { type: 'opened' })
+    s = apply(s, ev('turn_finished', { ...turn(2, 'новый') }))
+    expect(s.turns.map((t) => [t.turn_id, t.text])).toEqual([
+      [2, 'новый'],
+      [3, 'вопрос 3'],
+      [1, 'вопрос 1'],
+    ])
+  })
+
+  it('change_applied без числового change_id пропускается', () => {
+    const s = sent(initialState(), 1, 10)
+    expect(apply(s, ev('change_applied', { change_id: '1', ok: true, error: null }))).toBe(s)
   })
 })

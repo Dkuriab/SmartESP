@@ -71,16 +71,24 @@ function voiceReady(state: CoreState, data: Data): CoreState {
 
 /** Итог изменения: ok — «Применено», иначе текст ошибки (null и "" — нет ошибки). */
 function changeApplied(state: CoreState, data: Data): CoreState {
-  const id = typeof data.change_id === 'number' ? data.change_id : NaN
+  const id = data.change_id
+  if (typeof id !== 'number') return state
   const pending = { ...state.pending }
   delete pending[id]
+  const pendingSince = { ...state.pendingSince }
+  delete pendingSince[id]
   const applied = [...state.applied, id].slice(-MAX_APPLIED)
   const error = str(data.error)
   const notice =
     data.ok === true
       ? { text: 'Применено', tone: 'ok' as const }
       : { text: error || 'Не удалось применить изменение', tone: 'error' as const }
-  return { ...state, pending, applied, notice }
+  return { ...state, pending, pendingSince, applied, notice }
+}
+
+function turnFinished(state: CoreState, turn: Turn): CoreState {
+  const feed = addTurn({ turns: state.turns, currentIds: state.currentTurnIds }, turn)
+  return { ...state, turns: feed.turns, currentTurnIds: feed.currentIds }
 }
 
 function coreState(state: CoreState, data: Data): CoreState {
@@ -93,7 +101,7 @@ function coreState(state: CoreState, data: Data): CoreState {
 export function applyEvent(state: CoreState, e: CoreEvent): CoreState {
   switch (e.kind) {
     case 'turn_finished':
-      return { ...state, turns: addTurn(state.turns, e.data as unknown as Turn) }
+      return turnFinished(state, e.data as unknown as Turn)
     case 'device_connected':
     case 'device_disconnected':
       return deviceEvent(state, e)

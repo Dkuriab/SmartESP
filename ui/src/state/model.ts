@@ -38,11 +38,20 @@ export type CoreState = {
   pending: Record<number, string>
   notice: Notice | null
   // --- служебное, компоненты не читают ---
-  /** Лента уже загружалась хотя бы раз (для слияния с живыми ходами). */
-  turnsLoaded: boolean
+  /**
+   * turn_id ходов, полученных при текущем подключении (событием или загрузкой).
+   * Ядро нумерует ходы заново в каждом процессе, поэтому id из прежних
+   * подключений с новыми не сравниваются.
+   */
+  currentTurnIds: Array<number | string>
+  /** change_id → когда пришёл ответ PATCH (мс); для сверки со status.applying. */
+  pendingSince: Record<number, number>
   /** Голоса ("kind/voice"), о неудаче которых уже сообщили. */
   voiceFailures: Record<string, true>
-  /** Недавно применённые change_id: событие может прийти раньше ответа PATCH. */
+  /**
+   * change_id, применённые при текущем подключении: событие может прийти
+   * раньше ответа PATCH. Ядро нумерует изменения заново в каждом процессе.
+   */
   applied: number[]
 }
 
@@ -55,12 +64,16 @@ export type Loaded =
   | { resource: 'turns'; data: Turn[] }
 
 export type Action =
-  | ({ type: 'loaded' } & Loaded)
+  /** requestedAt — когда ушёл запрос (мс); нужен для status. */
+  | ({ type: 'loaded'; requestedAt?: number } & Loaded)
+  /** WebSocket (пере)подключился: связь есть, ядро могло смениться. */
+  | { type: 'opened' }
   | { type: 'event'; event: CoreEvent }
   | { type: 'connection'; connection: Connection }
   | { type: 'select'; selected: Selection | null }
   | { type: 'selectTurn'; turnId: number | string | null }
-  | { type: 'changeSent'; changeId: number; description: string }
+  /** at — когда пришёл ответ PATCH (мс). */
+  | { type: 'changeSent'; changeId: number; description: string; at: number }
   | { type: 'notice'; notice: Notice }
   | { type: 'dismissNotice' }
 
@@ -82,7 +95,8 @@ export function initialState(connection: Connection = 'connecting'): CoreState {
     downloads: {},
     pending: {},
     notice: null,
-    turnsLoaded: false,
+    currentTurnIds: [],
+    pendingSince: {},
     voiceFailures: {},
     applied: [],
   }

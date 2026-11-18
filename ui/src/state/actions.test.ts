@@ -35,6 +35,7 @@ function setup(current: Config | null = null) {
     dispatch: (a) => dispatched.push(a),
     getConfig: () => current,
     onToken,
+    now: () => 42,
   })
   return { client, dispatched, actions, onToken }
 }
@@ -54,7 +55,15 @@ describe('actions', () => {
         ],
       },
     })
-    expect(dispatched).toContainEqual({ type: 'changeSent', changeId: 3, description: expect.any(String) })
+    expect(dispatched).toContainEqual({ type: 'changeSent', changeId: 3, description: expect.any(String), at: 42 })
+  })
+
+  it('setDispatcher: поле undefined не затирает текущее значение', async () => {
+    const { client, actions } = setup(config())
+    client.PATCH.mockResolvedValue(ok(accepted))
+    await actions.setDispatcher({ model: 'x', system_prompt: undefined })
+    const body = (client.PATCH.mock.calls[0]?.[1] as { body: { executors: unknown[] } }).body
+    expect(body.executors[0]).toMatchObject({ model: 'x', system_prompt: 'p' })
   })
 
   it('setDispatcher без загруженных настроек — notice, без запроса', async () => {

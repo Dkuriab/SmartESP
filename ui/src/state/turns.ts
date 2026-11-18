@@ -1,25 +1,35 @@
-// Лента ходов: добавление живого хода и слияние с загруженной лентой.
+// Лента ходов: живой ход и слияние с загруженной лентой.
+// Ядро нумерует ходы заново в каждом процессе, поэтому turn_id сравниваются
+// только среди ходов текущего подключения (currentIds).
 import type { Turn } from './model'
 import { MAX_TURNS } from './model'
 
-/** Живой ход: в начало ленты; уже известный — заменяется на месте. */
-export function addTurn(turns: Turn[], turn: Turn): Turn[] {
-  const index = turns.findIndex((t) => t.turn_id === turn.turn_id)
-  if (index >= 0) return turns.map((t, i) => (i === index ? turn : t))
-  return [turn, ...turns].slice(0, MAX_TURNS)
+type TurnId = Turn['turn_id']
+
+export type Feed = { turns: Turn[]; currentIds: TurnId[] }
+
+/**
+ * Живой ход. Уже известный при этом подключении — заменяется на месте;
+ * иначе — в начало ленты (ход с тем же id из прежнего процесса убирается).
+ */
+export function addTurn(feed: Feed, turn: Turn): Feed {
+  const id = turn.turn_id
+  if (feed.currentIds.includes(id)) {
+    return { ...feed, turns: feed.turns.map((t) => (t.turn_id === id ? turn : t)) }
+  }
+  const turns = [turn, ...feed.turns.filter((t) => t.turn_id !== id)].slice(0, MAX_TURNS)
+  return { turns, currentIds: [id, ...feed.currentIds].slice(0, MAX_TURNS) }
 }
 
 /**
- * Сливает загруженную ленту (от новых к старым) с уже известными ходами.
- * Известные ходы до первого общего с загрузкой — новее загрузки и идут первыми.
- * При первой загрузке все известные ходы пришли событиями — тоже новее.
- * Остальные известные заменяет загрузка: она и есть свежая лента ядра.
+ * Загруженная лента (от новых к старым) — главная. Сверху остаются только ходы,
+ * пришедшие событиями при текущем подключении, которых в загрузке нет.
+ * Ходы прежних подключений отбрасываются.
  */
-export function mergeTurns(current: Turn[], loaded: Turn[], firstLoad: boolean): Turn[] {
+export function mergeTurns(feed: Feed, loaded: Turn[]): Feed {
   const loadedIds = new Set(loaded.map((t) => t.turn_id))
-  const overlap = current.findIndex((t) => loadedIds.has(t.turn_id))
-  let newer: Turn[]
-  if (overlap >= 0) newer = current.slice(0, overlap)
-  else newer = firstLoad ? current : []
-  return [...newer, ...loaded].slice(0, MAX_TURNS)
+  const current = new Set(feed.currentIds)
+  const live = feed.turns.filter((t) => current.has(t.turn_id) && !loadedIds.has(t.turn_id))
+  const turns = [...live, ...loaded].slice(0, MAX_TURNS)
+  return { turns, currentIds: turns.map((t) => t.turn_id) }
 }

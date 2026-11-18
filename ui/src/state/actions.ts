@@ -35,6 +35,8 @@ export type ActionDeps = {
   getConfig: () => Config | null
   /** Новый токен: сохранить и переподключиться. */
   onToken: (token: string) => void
+  /** Часы, мс (в тестах — поддельные). */
+  now?: () => number
 }
 
 type Executor = Record<string, unknown> & { entry?: unknown }
@@ -45,14 +47,18 @@ function patchedExecutors(config: Config | null, patch: DispatcherPatch): Execut
   if (!Array.isArray(list)) return null
   const executors = list.filter((e): e is Executor => typeof e === 'object' && e !== null)
   if (!executors.some((e) => e.entry === true)) return null
-  return executors.map((e) => (e.entry === true ? { ...e, ...patch } : e))
+  // не переданные поля (undefined) не затирают текущие значения
+  const changes = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined))
+  return executors.map((e) => (e.entry === true ? { ...e, ...changes } : e))
 }
 
 /** Создаёт действия поверх клиента; в тестах клиент поддельный. */
-export function createActions({ client, dispatch, getConfig, onToken }: ActionDeps): CoreActions {
+export function createActions(deps: ActionDeps): CoreActions {
+  const { client, dispatch, getConfig, onToken, now = Date.now } = deps
   async function patchConfig(patch: Record<string, unknown>, description: string) {
     const outcome = await sendNotify(dispatch, () => client.PATCH('/api/v1/config', { body: patch }))
-    if (outcome.ok) dispatch({ type: 'changeSent', changeId: outcome.data.change_id, description })
+    if (!outcome.ok) return
+    dispatch({ type: 'changeSent', changeId: outcome.data.change_id, description, at: now() })
   }
 
   async function previewVoice(kind: string, voice: string, style: string): Promise<Blob> {

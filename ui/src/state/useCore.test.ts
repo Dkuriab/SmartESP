@@ -6,6 +6,7 @@ import { useCore } from './useCore'
 const sockets: EventHandlers[] = []
 const closeSocket = vi.fn()
 const GET = vi.fn()
+const POST = vi.fn()
 
 vi.mock('../api/events', () => ({
   connectEvents: (_token: string, handlers: EventHandlers) => {
@@ -13,7 +14,7 @@ vi.mock('../api/events', () => ({
     return { close: closeSocket }
   },
 }))
-vi.mock('../api/client', () => ({ createClient: () => ({ GET, POST: vi.fn(), PATCH: vi.fn() }) }))
+vi.mock('../api/client', () => ({ createClient: () => ({ GET, POST, PATCH: vi.fn() }) }))
 
 function socket(): EventHandlers {
   const last = sockets.at(-1)
@@ -44,6 +45,7 @@ beforeEach(() => {
   vi.stubGlobal('localStorage', memoryStorage())
   sockets.length = 0
   GET.mockReset()
+  POST.mockReset()
   GET.mockResolvedValue({ data: [], response: { status: 200 } })
   localStorage.setItem('smartesp.token', 'tok')
 })
@@ -57,15 +59,21 @@ describe('useCore', () => {
     expect(sockets).toHaveLength(0)
   })
 
-  it('при подключении — online и загрузка всех ресурсов', async () => {
+  it('грузит всё сразу, ещё до подключения событий', async () => {
     const { result } = renderHook(() => useCore())
     expect(result.current[0].connection).toBe('connecting')
-    act(() => socket().onOpen())
-    expect(result.current[0].connection).toBe('online')
     await waitFor(() => expect(GET).toHaveBeenCalledTimes(5))
     expect(paths().sort()).toEqual(
       ['/api/v1/config', '/api/v1/models', '/api/v1/status', '/api/v1/turns', '/api/v1/voices'],
     )
+  })
+
+  it('при подключении — online и загрузка всех ресурсов ещё раз', async () => {
+    const { result } = renderHook(() => useCore())
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(5))
+    act(() => socket().onOpen())
+    expect(result.current[0].connection).toBe('online')
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(10))
   })
 
   it('обрыв — offline с данными, переподключение — всё заново', async () => {
@@ -74,15 +82,17 @@ describe('useCore', () => {
     act(() => socket().onClose(1006))
     expect(result.current[0].connection).toBe('offline')
     expect(result.current[0].turns).toHaveLength(1)
-    act(() => socket().onOpen())
     await waitFor(() => expect(GET).toHaveBeenCalledTimes(5))
+    act(() => socket().onOpen())
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(10))
   })
 
   it('change_applied — перечитывает config, status, voices', async () => {
     renderHook(() => useCore())
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(5))
     act(() => socket().onEvent({ kind: 'change_applied', data: { change_id: 1, ok: true }, at: 1 }))
-    await waitFor(() => expect(GET).toHaveBeenCalledTimes(3))
-    expect(paths().sort()).toEqual(['/api/v1/config', '/api/v1/status', '/api/v1/voices'])
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(8))
+    expect(paths().slice(5).sort()).toEqual(['/api/v1/config', '/api/v1/status', '/api/v1/voices'])
   })
 
   it('4401 — unauthorized; setToken подключается заново', () => {
@@ -94,5 +104,21 @@ describe('useCore', () => {
     expect(closeSocket).toHaveBeenCalled()
     expect(sockets).toHaveLength(2)
     expect(localStorage.getItem('smartesp.token')).toBe('new')
+  })
+
+  it('ответ старого клиента после смены токена состояние не меняет', async () => {
+    let reply: (r: unknown) => void = () => {}
+    POST.mockReturnValue(new Promise((resolve) => (reply = resolve)))
+    const { result } = renderHook(() => useCore())
+    let pending: Promise<void> = Promise.resolve()
+    act(() => {
+      pending = result.current[1].restart()
+    })
+    act(() => result.current[1].setToken('new'))
+    await act(async () => {
+      reply({ error: { detail: 'Неверный токен' }, response: { status: 401 } })
+      await pending
+    })
+    expect(result.current[0].connection).toBe('connecting')
   })
 })
