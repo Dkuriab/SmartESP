@@ -22,7 +22,7 @@ def _outbound_address() -> list[str]:
 
 
 def lan_addresses() -> list[str]:
-    """IPv4-адреса Mac без loopback, `0.*`, link-local `169.254.*` и повторов; сбой источника даёт пропуск источника."""
+    """IPv4-адреса Mac без loopback, `0.*`, link-local `169.254.*` и повторов; сбойный источник пропускается."""
     found: list[str] = []
     for source in (_hostname_addresses, _outbound_address):
         try:
