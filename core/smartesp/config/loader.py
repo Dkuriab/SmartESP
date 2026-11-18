@@ -64,6 +64,8 @@ def load_config(path: Path) -> Config:
         return Config()
     raw = _read(path)
     version = raw.get("version")
+    if version is not None and (isinstance(version, bool) or version not in (2, CONFIG_VERSION)):
+        raise ValueError(f"файл настроек от более новой версии ядра: {path} (version: {version!r})")
     if version != CONFIG_VERSION:
         shutil.copyfile(path, path.with_name(path.name + ".bak"))
         raw = _migrate(raw) if version is None else _migrate_v2(raw)
@@ -138,10 +140,16 @@ def _prune(raw: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
 
 
 def _write_overrides(path: Path, overrides: dict[str, Any]) -> None:
-    """Пишет config.yaml: версия формата и изменения владельца."""
+    """Пишет config.yaml атомарно (временный файл рядом и replace): версия формата и изменения владельца."""
     body = yaml.safe_dump({"version": CONFIG_VERSION, **overrides}, allow_unicode=True, sort_keys=False)
     example = "" if "devices" in overrides else DEVICES_EXAMPLE
-    path.write_text(HEADER + body + example, encoding="utf-8")
+    text = HEADER + body + example
+    temp = path.with_name(path.name + ".tmp")
+    try:
+        temp.write_text(text, encoding="utf-8")
+        os.replace(temp, path)  # атомарно: читатель видит старый файл целиком или новый целиком
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 def _write_defaults(path: Path) -> None:

@@ -12,10 +12,12 @@ from .models import (
     SttConfig,
     TtsConfig,
 )
+from .store import ConfigFile
 
 __all__ = [
     "ArbitrationConfig",
     "Config",
+    "ConfigFile",
     "DeviceConfig",
     "ExecutorConfig",
     "HistoryConfig",

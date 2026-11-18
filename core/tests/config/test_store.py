@@ -1,0 +1,101 @@
+from pathlib import Path
+
+import pytest
+import yaml
+
+from smartesp.config import Config, ConfigFile, load_config
+
+MAC = "AA:BB:CC:DD:EE:FF"
+
+
+def _store(tmp_path: Path, text: str | None = None) -> ConfigFile:
+    path = tmp_path / "config.yaml"
+    if text is not None:
+        path.write_text(text, encoding="utf-8")
+    store = ConfigFile(path)
+    store.load()
+    return store
+
+
+def test_merge_deep_keeps_other_columns(tmp_path: Path) -> None:
+    store = _store(tmp_path, f'version: 3\ndevices:\n  "{MAC}":\n    name: Старое\n    volume: 7\n')
+    config = store.merge({"devices": {MAC: {"name": "Кухня"}}})
+    assert config.devices[MAC].name == "Кухня"
+
+
+def test_merge_keeps_other_devices(tmp_path: Path) -> None:
+    store = _store(tmp_path, 'version: 3\ndevices:\n  "11:11":\n    name: Один\n')
+    config = store.merge({"devices": {MAC: {"name": "Кухня"}}})
+    assert config.devices["11:11"].name == "Один"
+    assert config.devices[MAC].name == "Кухня"
+
+
+def test_merge_list_replaced_whole(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    assert store.merge({"stages": []}).stages == []
+    one = {"id": "a", "name": "A", "model": "m", "entry": True}
+    assert [e.id for e in store.merge({"executors": [one]}).executors] == ["a"]
+
+
+def test_null_resets_to_default(tmp_path: Path) -> None:
+    store = _store(tmp_path, "version: 3\ntts:\n  kind: piper\n  voice: x\n")
+    config = store.merge({"tts": None})
+    store.save(config)
+    assert "tts" not in yaml.safe_load((tmp_path / "config.yaml").read_text(encoding="utf-8"))
+    assert store.config.tts == Config().tts
+
+
+def test_invalid_value_raises_and_file_untouched(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    before = (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="port"):
+        store.merge({"server": {"port": "x"}})
+    assert (tmp_path / "config.yaml").read_text(encoding="utf-8") == before
+
+
+def test_overridden_after_save(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    assert store.overridden() == []
+    store.save(store.merge({"tts": {"kind": "piper"}}))
+    assert store.overridden() == ["tts.kind"]
+    assert ConfigFile(tmp_path / "config.yaml").load() == store.config
+
+
+def test_overridden_device_and_lists(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    store.save(store.merge({"devices": {MAC: {"name": "Кухня"}}, "stages": []}))
+    keys = _store(tmp_path).overridden()
+    assert f"devices.{MAC}.name" in keys
+    store.save(store.merge({"executors": [{"id": "a", "name": "A", "model": "m", "entry": True}]}))
+    assert "executors" in store.overridden()
+
+
+def test_save_is_atomic_and_roundtrips(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    config = store.merge({"tts": {"kind": "piper"}, "history": {}})
+    store.save(config)
+    assert sorted(p.name for p in tmp_path.iterdir() if "tmp" in p.name) == []
+    assert (tmp_path / "config.yaml").read_text(encoding="utf-8").startswith("# Настройки ядра")
+    assert ConfigFile(tmp_path / "config.yaml").load() == config
+    assert store.effective() == config.model_dump(mode="json")
+
+
+def test_section(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    assert ConfigFile.section(store.config, "server") == store.effective()["server"]
+
+
+def test_config_before_load_raises(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError):
+        ConfigFile(tmp_path / "config.yaml").config  # noqa: B018
+
+
+@pytest.mark.parametrize("version", ["99", "4", "abc", "true", "3.5", "1"])
+def test_unknown_version_rejected_untouched(tmp_path: Path, version: str) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(f"version: {version}\ntts:\n  kind: piper\n", encoding="utf-8")
+    before = path.read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="более новой версии"):
+        load_config(path)
+    assert path.read_text(encoding="utf-8") == before
+    assert not path.with_name("config.yaml.bak").exists()
