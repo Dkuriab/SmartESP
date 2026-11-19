@@ -1,5 +1,6 @@
 /* Узлы и связи схемы. */
 .node {
+  position: relative;
   width: 200px;
   padding: 10px 12px;
   background: var(--panel);
@@ -77,4 +78,66 @@
 }
 .node-executor {
   min-height: 52px;
+}
+.node-connector {
+  padding: 7px 12px;
+}
+.node-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.node-row .node-sub {
+  flex-shrink: 0;
+}
+.node-label {
+  width: 200px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 600;
+  cursor: default;
+}
+.node-mem {
+  color: var(--green);
+}
+/* Работает прямо сейчас: пульсирующее зелёное кольцо и подпись под узлом.
+   Отдельно от пути выбранного хода (синий): оба могут быть сразу. */
+.node.live {
+  border-color: var(--green);
+  animation: node-pulse 1.6s ease-in-out infinite;
+}
+.node-live {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 3px);
+  overflow: hidden;
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@keyframes node-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--green-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 7px var(--green-glow-end), 0 0 18px 2px var(--green-glow);
+  }
+}
+/* Без движения: постоянное кольцо вместо пульса. */
+@media (prefers-reduced-motion: reduce) {
+  .node.live {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--green-glow);
+  }
+  .schema .react-flow__edge.animated path {
+    animation: none;
+  }
 }

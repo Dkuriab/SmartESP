@@ -32,3 +32,41 @@ describe('SchemaView', () => {
     expect(screen.getByTitle(when).style.transform).toContain('translate(10px, 20px)')
   })
 })
+
+describe('SchemaView: живая подсветка', () => {
+  const connectors = [{ id: 'calc', name: 'Калькулятор', command: 'uv', enabled: true }]
+  const live = {
+    executors: { dispatcher: { state: 'thinking' as const, turn: 'a#1' } },
+    connectors: { calc: { tool: 'calc_add', executor: 'dispatcher', turn: 'a#1' } },
+  }
+
+  function draw(over = {}) {
+    const status = makeStatus({
+      ollama: { reachable: true, loaded: ['qwen3:latest'] },
+      connectors: [{ id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add'], error: '' }],
+    })
+    const state = makeState({ config: makeConfig({ connectors }), status, ...over })
+    render(<div style={{ width: 800, height: 600 }}><SchemaView state={state} actions={makeActions()} /></div>)
+  }
+
+  it('работающие узлы пульсируют с подписью', () => {
+    draw({ live })
+    const thinking = screen.getByText('думает…')
+    expect(thinking.closest('.node')).toHaveClass('live')
+    expect(screen.getByText('calc_add…').closest('.node')).toHaveClass('live')
+  })
+
+  it('без работы подписей нет; модель в памяти отмечена', () => {
+    draw()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByText('· в памяти', { exact: false })).toBeInTheDocument()
+  })
+
+  it('клик по коннектору выбирает его', () => {
+    const actions = makeActions()
+    const state = makeState({ config: makeConfig({ connectors }) })
+    render(<div style={{ width: 800, height: 600 }}><SchemaView state={state} actions={actions} /></div>)
+    fireEvent.click(screen.getByText('Калькулятор'))
+    expect(actions.select).toHaveBeenCalledWith({ kind: 'connector', id: 'calc' })
+  })
+})

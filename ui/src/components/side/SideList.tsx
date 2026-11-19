@@ -1,6 +1,8 @@
-// Левая панель: колонки, обработчики, исполнители и голос; клик выбирает блок.
+// Левая панель: колонки, обработчики, исполнители, голос и коннекторы; клик выбирает блок.
+// Работающее сейчас отмечено пульсирующей точкой с подписью (на узком экране схема мелкая).
 import type { ReactNode } from 'react'
 import { isApplying, listDevices, listExecutors, listStages, stagesLocked, stagesWith, voiceLabel } from '../../schema/blocks'
+import { connectorsLocked, connectorsWith, listConnectors } from '../../schema/connectors'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState, Selection } from '../../state/model'
 import AccessInfo from '../common/AccessInfo'
@@ -8,10 +10,10 @@ import './side.css'
 
 type Props = { state: CoreState; actions: CoreActions }
 
-type RowProps = { icon: string; label: string; sub?: ReactNode; target: Selection; props: Props; extra?: ReactNode }
+type RowProps = { icon: string; label: string; sub?: ReactNode; target: Selection; props: Props; extra?: ReactNode; live?: string }
 
-/** Строка списка: кнопка выбора блока и, возможно, свой элемент справа. */
-function Row({ icon, label, sub, target, props, extra }: RowProps) {
+/** Строка списка: кнопка выбора блока, отметка «работает сейчас» и, возможно, свой элемент справа. */
+function Row({ icon, label, sub, target, props, extra, live }: RowProps) {
   const { selected } = props.state
   const on = selected?.kind === target.kind && selected.id === target.id
   return (
@@ -19,6 +21,7 @@ function Row({ icon, label, sub, target, props, extra }: RowProps) {
       <button type="button" className="row-main" aria-pressed={on} onClick={() => props.actions.select(target)}>
         <span className="ico">{icon}</span>
         <span className="row-label" title={label}>{label}</span>
+        {live && <span className="live-dot" role="img" aria-label={live} title={live} />}
         {sub !== undefined && <span className="sub">{sub}</span>}
       </button>
       {extra}
@@ -80,12 +83,42 @@ function Executors(props: Props) {
   }
   return (
     <Section title="Исполнители">
-      {listExecutors(state).map((e) => (
-        <Row key={e.id} icon={e.entry ? '⚡️' : '🧠'} label={e.name || e.id} sub={e.model || '—'} target={{ kind: 'executor', id: e.id }} props={props} />
-      ))}
+      {listExecutors(state).map((e) => {
+        const now = state.live.executors[e.id]?.state
+        const live = now === 'thinking' ? 'думает…' : now === 'speaking' ? 'говорит' : undefined
+        return <Row key={e.id} icon={e.entry ? '⚡️' : '🧠'} label={e.name || e.id} sub={e.model || '—'} target={{ kind: 'executor', id: e.id }} props={props} live={live} />
+      })}
       <button type="button" className="btn small side-add" disabled={isApplying(state) || state.config === null} onClick={() => void add()}>
         Добавить
       </button>
+    </Section>
+  )
+}
+
+/** Коннекторы с переключателем; упавший — красная точка. */
+function Connectors(props: Props) {
+  const { state, actions } = props
+  const list = listConnectors(state)
+  if (list.length === 0) return null
+  const locked = connectorsLocked(state)
+  return (
+    <Section title="Коннекторы">
+      {list.map((c) => {
+        const toggle = (
+          <input
+            type="checkbox"
+            role="switch"
+            className="switch"
+            aria-label={c.name}
+            checked={c.enabled}
+            disabled={locked}
+            onChange={(e) => void actions.setConnectors(connectorsWith(state, c.id, e.target.checked), `${c.name}: ${e.target.checked ? 'включён' : 'выключен'}`)}
+          />
+        )
+        const now = state.live.connectors[c.id]
+        const sub = c.state === 'failed' ? <span role="img" className="dotr" aria-label="ошибка" /> : undefined
+        return <Row key={c.id} icon="🧩" label={c.name} sub={sub} target={{ kind: 'connector', id: c.id }} props={props} extra={toggle} live={now ? `${now.tool}…` : undefined} />
+      })}
     </Section>
   )
 }
@@ -100,6 +133,7 @@ export default function SideList(props: Props) {
       <Section title="Голос">
         <Row icon="🔈" label="Голос" sub={voiceLabel(state) ?? '—'} target={{ kind: 'voice', id: 'voice' }} props={props} />
       </Section>
+      <Connectors {...props} />
       <AccessInfo loadAccess={actions.loadAccess} online={state.connection === 'online'} />
     </>
   )

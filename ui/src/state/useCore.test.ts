@@ -103,7 +103,7 @@ describe('useCore', () => {
     expect(paths().slice(5).sort()).toEqual(['/api/v1/config', '/api/v1/status', '/api/v1/voices'])
   })
 
-  it('на связи status перечитывается каждые 10 с; без связи — нет', async () => {
+  it('на связи status перечитывается каждые 5 с (модели в памяти Ollama); без связи — нет', async () => {
     // поддельный только setInterval: ожидание ответов идёт на настоящих таймерах
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     const flush = () => act(() => new Promise((r) => setTimeout(r, 0)))
@@ -113,7 +113,7 @@ describe('useCore', () => {
       act(() => socket().onOpen())
       await flush()
       expect(GET).toHaveBeenCalledTimes(10)
-      vi.advanceTimersByTime(10_000)
+      vi.advanceTimersByTime(5_000)
       await flush()
       expect(paths().slice(10)).toEqual(['/api/v1/status'])
       act(() => socket().onClose(1006))
@@ -121,7 +121,7 @@ describe('useCore', () => {
       expect(GET).toHaveBeenCalledTimes(11)
       act(() => socket().onOpen())
       await flush()
-      vi.advanceTimersByTime(10_000)
+      vi.advanceTimersByTime(5_000)
       await flush()
       expect(GET).toHaveBeenCalledTimes(17)
       unmount()

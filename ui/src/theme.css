@@ -11,6 +11,9 @@
   --accent: #3d8bfd;
   --accent-bg: #1d3355;
   --green: #32d74b;
+  --green-bg: #173a20;
+  --green-glow: rgba(50, 215, 75, 0.45);
+  --green-glow-end: rgba(50, 215, 75, 0);
   --orange: #ff9f0a;
   --purple: #bf5af2;
   --purple-bg: #3a2350;

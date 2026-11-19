@@ -124,3 +124,26 @@ describe('Feed', () => {
     expect(screen.getByText('ответ на вопрос Кузи')).toBeInTheDocument()
   })
 })
+
+describe('Feed: инструменты', () => {
+  const tools = [
+    { executor: 'dispatcher', connector: 'calc', tool: 'calc_add', ok: true },
+    { executor: 'dispatcher', connector: 'calc', tool: 'calc_add', ok: true },
+    { executor: 'big', connector: 'notes', tool: 'note_add', ok: false },
+  ]
+
+  it('строка хода показывает вызванные инструменты без повторов, неудачный — ошибкой', () => {
+    setup([makeTurn(1, { tools })])
+    const add = screen.getAllByText('🧩 calc_add')
+    expect(add).toHaveLength(1)
+    expect(add[0]).toHaveAttribute('title', 'calc · удался')
+    expect(screen.getByText('🧩 note_add')).toHaveClass('err')
+  })
+
+  it('карточка хода перечисляет все вызовы', () => {
+    render(<Feed turns={[makeTurn(1, { tools })]} executors={executors} selectedId={1} onSelect={vi.fn()} />)
+    const card = screen.getByRole('dialog', { name: 'Ход' })
+    expect(within(card).getByText('Инструменты')).toBeInTheDocument()
+    expect(within(card).getAllByText(/🧩/)).toHaveLength(3)
+  })
+})

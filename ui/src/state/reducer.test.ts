@@ -17,6 +17,7 @@ function turn(id: number | string, text = `вопрос ${id}`): Turn {
     at: 1700000000,
     path: [],
     delegations: [],
+    tools: [],
     stt_ms: 100,
     first_text_ms: null,
     first_audio_ms: null,

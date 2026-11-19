@@ -1,4 +1,5 @@
-// Живая схема: колонки → обработчики → исполнители → голос, путь хода подсвечен.
+// Живая схема: колонки → обработчики → исполнители → голос и коннекторы; путь хода подсвечен,
+// работающее сейчас пульсирует.
 import { Background, BackgroundVariant, ReactFlow } from '@xyflow/react'
 import type { Edge, NodeMouseHandler } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -16,12 +17,19 @@ const edgeTypes = { default: LinkEdge, smoothstep: LinkEdge }
 
 /** Меньше умолчания React Flow (0,5): на узком экране схема в четыре столбца целиком. */
 const MIN_ZOOM = 0.2
+/** Узлы-подписи: не выбираются. */
+const PASSIVE = new Set(['hint', 'label'])
 
-/** Цвет связи: не на пути — линия, на пути — акцент, через пометку обработчика — фиолетовый. */
+type EdgeFlags = { lit?: boolean; strong?: boolean; inactive?: boolean; live?: boolean }
+
+/**
+ * Цвет связи: не на пути — линия, на пути — акцент, через пометку обработчика — фиолетовый,
+ * идущий сейчас вызов инструмента — зелёный.
+ */
 function styled(edge: Edge): Edge {
-  const { lit, strong, inactive } = (edge.data ?? {}) as { lit?: boolean; strong?: boolean; inactive?: boolean }
-  const stroke = strong ? 'var(--purple)' : lit ? 'var(--accent)' : 'var(--line)'
-  const style = { stroke, strokeWidth: strong ? 3 : lit ? 2.5 : 1.5, ...(inactive ? { strokeDasharray: '6 4' } : {}) }
+  const { lit, strong, inactive, live } = (edge.data ?? {}) as EdgeFlags
+  const stroke = live ? 'var(--green)' : strong ? 'var(--purple)' : lit ? 'var(--accent)' : 'var(--line)'
+  const style = { stroke, strokeWidth: strong || live ? 3 : lit ? 2.5 : 1.5, ...(inactive ? { strokeDasharray: '6 4' } : {}) }
   return { ...edge, style }
 }
 
@@ -31,13 +39,13 @@ export default function SchemaView({ state, actions }: Props) {
   const nodes = useMemo(
     () => graph.nodes.map((n) => ({
         ...n,
-        selected: n.type !== 'hint' && selected?.kind === n.data.kind && selected?.id === n.data.id,
+        selected: !PASSIVE.has(n.type ?? '') && selected?.kind === n.data.kind && selected?.id === n.data.id,
       })),
     [graph, selected],
   )
   const edges = useMemo(() => graph.edges.map(styled), [graph])
   const onClick: NodeMouseHandler = (_, node) => {
-    if (node.type === 'hint') return
+    if (PASSIVE.has(node.type ?? '')) return
     actions.select({ kind: node.data.kind, id: node.data.id } as Selection)
   }
   return (

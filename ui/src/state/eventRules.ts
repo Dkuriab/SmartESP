@@ -2,6 +2,7 @@
 import type { CoreEvent } from '../api/events'
 import type { CoreState, Device, Status, Turn } from './model'
 import { MAX_APPLIED } from './model'
+import { applyLive } from './live'
 import { addTurn } from './turns'
 
 type Data = Record<string, unknown>
@@ -89,7 +90,8 @@ function changeApplied(state: CoreState, data: Data): CoreState {
 }
 
 function turnFinished(state: CoreState, turn: Turn): CoreState {
-  const feed = addTurn({ turns: state.turns, currentIds: state.currentTurnIds }, turn)
+  // ядро до живой подсветки не шлёт tools
+  const feed = addTurn({ turns: state.turns, currentIds: state.currentTurnIds }, { ...turn, tools: turn.tools ?? [] })
   return { ...state, turns: feed.turns, currentTurnIds: feed.currentIds }
 }
 
@@ -103,7 +105,10 @@ function coreState(state: CoreState, data: Data): CoreState {
 export function applyEvent(state: CoreState, e: CoreEvent): CoreState {
   switch (e.kind) {
     case 'turn_finished':
-      return turnFinished(state, e.data as unknown as Turn)
+      return turnFinished({ ...state, live: applyLive(state.live, e) }, e.data as unknown as Turn)
+    case 'executor_active':
+    case 'tool_call':
+      return { ...state, live: applyLive(state.live, e) }
     case 'device_connected':
     case 'device_disconnected':
       return deviceEvent(state, e)

@@ -1,8 +1,9 @@
-// Построение схемы «колонки → обработчики → исполнители → голос» из данных ядра.
+// Построение схемы «колонки → обработчики → исполнители → голос и коннекторы» из данных ядра.
 import type { Edge, Node } from '@xyflow/react'
 import type { CoreState, Turn } from '../state/model'
 import type { ExecutorItem } from './blocks'
 import { KNOWN_STAGES, asList, executorUnavailable, listDevices, listExecutors, modelWithoutTools, voiceLabel } from './blocks'
+import { CONNECTOR_STATES, listConnectors, modelInMemory } from './connectors'
 
 export type Graph = { nodes: Node[]; edges: Edge[] }
 
@@ -13,6 +14,11 @@ const X_3 = 780
 const GAP = 84
 const EXEC_GAP = 150
 const WHEN_LIMIT = 40
+/** Коннекторы — в столбце голоса, ниже него, под заголовком; компактнее остальных узлов. */
+const CONNECTORS_TOP = 110
+const CONNECTOR_GAP = 56
+/** Подписи живой подсветки исполнителя. */
+const EXECUTOR_LIVE = { thinking: 'думает…', speaking: 'говорит' } as const
 const HINT = 'Колонок пока нет: включите колонку, она появится сама'
 
 function pickTurn(state: CoreState): Turn | undefined {
@@ -129,14 +135,20 @@ function buildEdges(state: CoreState, configured: string[], executors: ExecutorI
   return [...edges, ...executorEdges(executors, path, noTools)]
 }
 
-/** Узлы исполнителей: имя, модель, «не умеет передавать» без supports_tools, «модель недоступна» после прогрева. */
+/**
+ * Узлы исполнителей: имя, модель, «не умеет передавать» без supports_tools, «модель недоступна»
+ * после прогрева, «в памяти» — модель загружена в Ollama; live — подпись, если работает сейчас.
+ */
 function executorNodes(state: CoreState, executors: ExecutorItem[], path: string[]): Node[] {
   return executors.map((e, i) => {
+    const now = state.live.executors[e.id]
     const data = {
       label: e.name || e.id,
       model: e.model,
       noTools: modelWithoutTools(state, e.model),
       unavailable: executorUnavailable(state, e.id),
+      inMemory: modelInMemory(state, e.model),
+      live: now ? EXECUTOR_LIVE[now.state] : undefined,
       lit: path.includes(e.id),
       kind: 'executor',
       id: e.id,
@@ -145,7 +157,50 @@ function executorNodes(state: CoreState, executors: ExecutorItem[], path: string
   })
 }
 
-/** Чистая функция: узлы и связи схемы, путь выбранного хода подсвечен (data.lit). */
+/** Узлы коннекторов под голосом: состояние; инструменты выбранного хода — lit; работающий — live. */
+function connectorNodes(state: CoreState, turn?: Turn): Node[] {
+  const used = new Set((turn?.tools ?? []).map((t) => t.connector))
+  return listConnectors(state).map((c, i) => {
+    const now = state.live.connectors[c.id]
+    const data = {
+      label: c.name,
+      enabled: c.enabled,
+      connectorState: c.enabled ? CONNECTOR_STATES[c.state] : undefined,
+      warn: c.state === 'failed',
+      live: now ? `${now.tool}…` : undefined,
+      lit: used.has(c.id),
+      kind: 'connector',
+      id: c.id,
+    }
+    return { id: `connector:${c.id}`, type: 'connector', position: { x: X_3, y: CONNECTORS_TOP + i * CONNECTOR_GAP }, data }
+  })
+}
+
+/** Заголовок столбца коннекторов (если они есть). */
+function connectorsHead(count: number): Node[] {
+  if (count === 0) return []
+  return [{ id: 'connectors', type: 'label', position: { x: X_3, y: CONNECTORS_TOP - 26 }, data: { label: 'Коннекторы', kind: 'label', id: 'connectors' } }]
+}
+
+/**
+ * Стрелки исполнитель → коннектор: вызовы выбранного хода (lit) и идущие сейчас (live).
+ * Постоянных стрелок нет: инструменты есть у всех исполнителей, чья модель их умеет.
+ */
+function toolEdges(state: CoreState, turn?: Turn): Edge[] {
+  const edges = new Map<string, Edge>()
+  const add = (executor: string, connector: string, live: boolean) => {
+    if (!executor || !connector) return
+    const id = `${execId(executor)}->connector:${connector}`
+    const data = { lit: true, strong: false, live }
+    edges.set(id, { id, source: execId(executor), target: `connector:${connector}`, sourceHandle: 'out-right', data, animated: true })
+  }
+  for (const t of turn?.tools ?? []) add(t.executor, t.connector, false)
+  for (const [connector, now] of Object.entries(state.live.connectors)) add(now.executor, connector, true)
+  const known = new Set([...listExecutors(state).map((e) => execId(e.id)), ...listConnectors(state).map((c) => `connector:${c.id}`)])
+  return [...edges.values()].filter((e) => known.has(e.source) && known.has(e.target))
+}
+
+/** Чистая функция: узлы и связи схемы, путь выбранного хода подсвечен (data.lit), работающее сейчас — data.live. */
 export function buildGraph(state: CoreState): Graph {
   const turn = pickTurn(state)
   const eff = state.config?.effective
@@ -155,5 +210,7 @@ export function buildGraph(state: CoreState): Graph {
   const path = turnPath(turn, executors[0]?.entry ? executors[0] : undefined)
   const nodes = [...leftNodes(state, kinds, configured, turn), ...executorNodes(state, executors, path)]
   nodes.push({ id: 'voice', type: 'voice', position: column(1, X_3, 0), data: { label: voiceLabel(state) ?? '—', voiceState: state.status?.voice?.state, lit: !!turn, kind: 'voice', id: 'voice' } })
-  return { nodes, edges: buildEdges(state, configured, executors, path, turn) }
+  const connectors = connectorNodes(state, turn)
+  nodes.push(...connectorsHead(connectors.length), ...connectors)
+  return { nodes, edges: [...buildEdges(state, configured, executors, path, turn), ...toolEdges(state, turn)] }
 }

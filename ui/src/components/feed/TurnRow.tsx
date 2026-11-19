@@ -1,9 +1,10 @@
-// Строка хода: колонка, вопрос, пометки, передачи, ответ, стиль, задержки, ошибка.
+// Строка хода: колонка, вопрос, пометки, передачи, инструменты, ответ, стиль, задержки, ошибка.
 import type { Turn } from '../../state/model'
 import './feed.css'
 import type { ExecutorName } from './names'
 import { executorName } from './names'
 import { formatTime } from './time'
+import { ToolTag, usedTools } from './tools'
 
 type Props = { turn: Turn; executors: ExecutorName[]; selected: boolean; onSelect: (id: Turn['turn_id']) => void }
 
@@ -51,6 +52,9 @@ export default function TurnRow({ turn, executors, selected, onSelect }: Props) 
           ))}
           {targets(turn).map((to) => (
             <span key={to} className="tag handoff">{`→ ${executorName(executors, to)}`}</span>
+          ))}
+          {usedTools(turn).map((t) => (
+            <ToolTag key={`${t.tool}/${String(t.ok)}`} used={t} />
           ))}
           {turn.style === 'quiet' && <span className="tag p">тихо</span>}
           {turn.status === 'error' && <span className="tag err">ошибка</span>}

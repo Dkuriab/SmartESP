@@ -22,6 +22,8 @@ export type CoreActions = ExecutorActions & {
   selectVoice(kind: string, voice: string): Promise<void>
   renameDevice(id: string, name: string): Promise<void>
   setStages(list: StageEntry[]): Promise<void>
+  /** Весь список connectors (форма config.yaml); description — что меняется. */
+  setConnectors(list: Record<string, unknown>[], description: string): Promise<void>
   restart(): Promise<void>
   /** Адреса для входа из сети; ошибка — пустой список. */
   loadAccess(): Promise<string[]>
@@ -99,6 +101,7 @@ export function createActions(deps: ActionDeps): CoreActions {
     selectVoice: (kind, voice) => patch({ tts: { kind, voice } }, `Голос ${voice}`),
     renameDevice: (id, name) => patch({ devices: { [id]: { name } } }, `Имя колонки: ${name}`),
     setStages: (list) => patch({ stages: list }, 'Обработчики'),
+    setConnectors: (list, description) => patch({ connectors: list }, description),
     restart: () => restartCore(client, dispatch),
     setToken: onToken,
     select: (selected) => dispatch({ type: 'select', selected }),

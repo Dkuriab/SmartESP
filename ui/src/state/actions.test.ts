@@ -138,6 +138,15 @@ describe('actions', () => {
     ])
   })
 
+  it('setConnectors шлёт весь список connectors с описанием правки', async () => {
+    const { client, actions, dispatched } = setup()
+    client.PATCH.mockResolvedValue(ok(accepted))
+    const list = [{ id: 'calc', name: 'Калькулятор', command: 'uv', enabled: false }]
+    await actions.setConnectors(list, 'Калькулятор: выключен')
+    expect((client.PATCH.mock.calls[0]?.[1] as { body: unknown }).body).toEqual({ connectors: list })
+    expect(dispatched).toContainEqual(expect.objectContaining({ type: 'changeSent', description: 'Калькулятор: выключен' }))
+  })
+
   it('previewVoice отдаёт Blob', async () => {
     const { client, actions } = setup()
     const blob = new Blob(['wav'])

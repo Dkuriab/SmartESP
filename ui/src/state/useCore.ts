@@ -18,8 +18,11 @@ import { createSentExecutors } from './sentExecutors'
 const AUTH_FAILED = 4401
 /** После этих событий заново читаем config, status, voices. */
 const REFRESH_ON = new Set(['change_applied', 'voice_ready', 'core_state'])
-/** Пока связь есть, status перечитывается так часто (Ollama и applying без событий). */
-const STATUS_POLL_MS = 10_000
+/**
+ * Пока связь есть, status перечитывается так часто: модели в памяти Ollama, коннекторы
+ * и applying приходят без событий.
+ */
+const STATUS_POLL_MS = 5_000
 
 function storage(): Storage | null {
   try {

@@ -94,3 +94,45 @@ describe('SideList', () => {
     expect(await screen.findByText('Адрес в сети не найден')).toBeInTheDocument()
   })
 })
+
+describe('SideList: коннекторы и живая подсветка', () => {
+  const connectors = [
+    { id: 'calc', name: 'Калькулятор', command: 'uv', enabled: true },
+    { id: 'notes', name: 'Заметки', command: 'uv', enabled: true },
+  ]
+  const status = makeStatus({
+    connectors: [
+      { id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add'], error: '' },
+      { id: 'notes', name: 'Заметки', state: 'failed', tools: [], error: 'упал' },
+    ],
+  })
+
+  function draw(over: Partial<CoreState> = {}) {
+    const actions = makeActions()
+    render(<SideList state={makeState({ config: makeConfig({ connectors }), status, ...over })} actions={actions} />)
+    return { actions }
+  }
+
+  it('без коннекторов раздела нет', () => {
+    setup()
+    expect(screen.queryByRole('region', { name: 'Коннекторы' })).not.toBeInTheDocument()
+  })
+
+  it('переключатель выключает коннектор, упавший отмечен', async () => {
+    const { actions } = draw()
+    const list = section('Коннекторы')
+    expect(within(list).getByLabelText('ошибка')).toBeInTheDocument()
+    await userEvent.click(within(list).getByRole('switch', { name: 'Калькулятор' }))
+    expect(actions.setConnectors).toHaveBeenCalledWith([{ ...connectors[0], enabled: false }, connectors[1]], 'Калькулятор: выключен')
+  })
+
+  it('работающие исполнитель и коннектор отмечены точкой с подписью', () => {
+    const live = {
+      executors: { dispatcher: { state: 'speaking' as const, turn: 'a#1' } },
+      connectors: { calc: { tool: 'calc_add', executor: 'dispatcher', turn: 'a#1' } },
+    }
+    draw({ live })
+    expect(within(section('Исполнители')).getByLabelText('говорит')).toBeInTheDocument()
+    expect(within(section('Коннекторы')).getByLabelText('calc_add…')).toBeInTheDocument()
+  })
+})

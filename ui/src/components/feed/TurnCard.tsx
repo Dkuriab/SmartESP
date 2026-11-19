@@ -1,9 +1,10 @@
-// Карточка хода: полный вопрос, пометки, передачи задач и ответ без обрезки.
+// Карточка хода: полный вопрос, пометки, передачи задач, вызовы инструментов и ответ без обрезки.
 import type { Turn } from '../../state/model'
 import './feed.css'
 import type { ExecutorName } from './names'
 import { executorName } from './names'
 import { formatTime } from './time'
+import { ToolTag } from './tools'
 
 type Props = {
   turn: Turn
@@ -45,6 +46,16 @@ export default function TurnCard({ turn, executors, full = false, onClose }: Pro
           {`Передано: ${executorName(executors, d.to)} — ${d.task}${d.auto ? ' (автоматически)' : ''}`}
         </div>
       ))}
+      {(turn.tools ?? []).length > 0 && (
+        <>
+          <div className="cap card-label">Инструменты</div>
+          <div className="line">
+            {(turn.tools ?? []).map((t, i) => (
+              <ToolTag key={i} used={t} />
+            ))}
+          </div>
+        </>
+      )}
       <div className="cap card-label">Ответ</div>
       <div className="card-text">{turn.answer || '—'}</div>
     </div>

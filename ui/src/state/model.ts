@@ -1,6 +1,8 @@
 // Типы состояния интерфейса и действий редьюсера.
 import type { CoreEvent } from '../api/events'
 import type { components } from '../api/schema'
+import type { Live } from './live'
+import { NO_LIVE } from './live'
 
 type Schemas = components['schemas']
 export type Status = Schemas['StatusOut']
@@ -9,11 +11,12 @@ export type Voice = Schemas['VoiceOut']
 export type Model = Schemas['ModelOut']
 export type Turn = Schemas['TurnOut']
 export type Device = Schemas['DeviceOut']
+export type Connector = Schemas['ConnectorOut']
 
 export type Connection = 'connecting' | 'online' | 'offline' | 'unauthorized'
 
 export type Selection = {
-  kind: 'device' | 'stage' | 'dispatcher' | 'executor' | 'voice'
+  kind: 'device' | 'stage' | 'dispatcher' | 'executor' | 'voice' | 'connector'
   id: string
 }
 
@@ -39,6 +42,8 @@ export type CoreState = {
   notice: Notice | null
   /** Перезапуск попросили: кнопка ждёт переподключения к ядру. */
   restarting: boolean
+  /** Кто работает прямо сейчас: исполнители и коннекторы (из событий хода). */
+  live: Live
   // --- служебное, компоненты не читают ---
   /**
    * turn_id ходов, полученных при текущем подключении (событием или загрузкой).
@@ -102,6 +107,7 @@ export function initialState(connection: Connection = 'connecting'): CoreState {
     pending: {},
     notice: null,
     restarting: false,
+    live: NO_LIVE,
     currentTurnIds: [],
     pendingSince: {},
     voiceFailures: {},

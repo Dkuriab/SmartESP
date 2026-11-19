@@ -60,7 +60,8 @@ section:first-child > .sec {
 }
 
 .dotg,
-.dotf {
+.dotf,
+.dotr {
   display: inline-block;
   width: 7px;
   height: 7px;
@@ -73,6 +74,36 @@ section:first-child > .sec {
 
 .dotf {
   background: var(--faint);
+}
+
+.dotr {
+  background: var(--red);
+}
+
+/* Работает сейчас: пульсирующая зелёная точка; без движения — просто точка. */
+.live-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  animation: live-dot 1.6s ease-in-out infinite;
+}
+
+@keyframes live-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--green-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 5px var(--green-glow-end);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
 }
 
 .side-none {
