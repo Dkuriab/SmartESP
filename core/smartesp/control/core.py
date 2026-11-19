@@ -11,6 +11,8 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
 from smartesp.contracts import (
+    Answer,
+    AskUnavailable,
     ChangeResult,
     ConfigStore,
     ConnectorState,
@@ -18,6 +20,7 @@ from smartesp.contracts import (
     EventFeed,
     EventSink,
     ExecutorError,
+    Question,
     Section,
     VoicePort,
 )
@@ -33,6 +36,16 @@ OLLAMA_TIMEOUT_S = 2.0  # сколько status ждёт ответа Ollama о 
 async def _no_tools(model: str) -> bool:
     """По умолчанию модели считаются не умеющими инструменты."""
     return False
+
+
+async def _no_asking(question: Question) -> Answer:
+    """По умолчанию ходов через API нет."""
+    raise AskUnavailable("ходы через API не подключены")
+
+
+async def _no_decoding(audio: bytes) -> bytes:
+    """По умолчанию звук не разбирается."""
+    raise AskUnavailable("разбор звука не подключён")
 
 
 class Core:
@@ -61,6 +74,8 @@ class Core:
         supports_tools: Callable[[str], Awaitable[bool]] = _no_tools,
         executor_states: Callable[[], Mapping[str, str | None]] = dict,
         connectors: Callable[[], Sequence[ConnectorState]] = list,
+        ask: Callable[[Question], Awaitable[Answer]] = _no_asking,
+        decode: Callable[[bytes], Awaitable[bytes]] = _no_decoding,
     ) -> None:
         """validate(настройки) — проверка правки целиком; ValueError — status invalid.
 
@@ -68,7 +83,8 @@ class Core:
         executor_prompts() — итоговые промпты всех исполнителей по id;
         supports_tools(модель) — умеет ли модель инструменты (для списка моделей);
         executor_states() — итог фонового прогрева исполнителей: {id: None — готов, иначе ошибка};
-        connectors() — состояния MCP-коннекторов в порядке настроек.
+        connectors() — состояния MCP-коннекторов в порядке настроек;
+        ask(вопрос) — ход через API; decode(звук) — OGG/Opus или WAV в PCM 16 кГц моно.
         """
         self._store = store
         self._events = events
@@ -83,6 +99,8 @@ class Core:
         self._supports_tools = supports_tools
         self._executor_states = executor_states
         self._connectors = connectors
+        self._ask = ask
+        self._decode = decode
         self._clock = clock
         self._started = clock()
         self._state = "warming"
@@ -217,6 +235,15 @@ class Core:
     def turns(self, limit: int) -> list[dict[str, object]]:
         """Последние ходы из ленты, от новых к старым."""
         return self._feed.recent_turns(limit)
+
+    async def ask(self, question: Question) -> Answer:
+        """Ход через API текстом; ядро не готово или останавливается — AskUnavailable."""
+        return await self._ask(question)
+
+    async def ask_voice(self, audio: bytes, person: str, source: str) -> Answer:
+        """Голосовой ход: звук → PCM → ход; не разобрать — AudioUndecodable, нет ffmpeg — AskUnavailable."""
+        pcm = await self._decode(audio)
+        return await self._ask(Question(pcm=pcm, person=person, source=source))
 
     # ---- внутреннее ----
 

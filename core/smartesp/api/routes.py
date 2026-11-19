@@ -19,6 +19,7 @@ from smartesp.contracts import (
 )
 
 from .access import lan_addresses
+from .ask import add_ask_routes
 from .auth import require_token, token_matches
 from .schemas import (
     AccessOut,
@@ -51,6 +52,7 @@ def create_api(core: CorePort, feed: EventFeed, token: str, *, port: int) -> API
     secured = APIRouter(dependencies=[Depends(require_token(token))], responses=_UNAUTHORIZED)
     _add_core_routes(secured, core)
     _add_voice_routes(secured, core)
+    add_ask_routes(secured, core)
     _add_access_route(secured, token, port)
     router.include_router(secured)
     _add_events_route(router, feed, token)

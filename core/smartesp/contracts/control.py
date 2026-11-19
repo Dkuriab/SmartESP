@@ -6,6 +6,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from .ask import Answer, Question
+
 
 @dataclass(frozen=True)
 class ChangeResult:
@@ -133,4 +135,18 @@ class CorePort(Protocol):
 
     def request_restart(self) -> None:
         """Просит ядро перезапуститься."""
+        ...
+
+    async def ask(self, question: Question) -> Answer:
+        """Ход через API текстом: тот же путь, что с колонки, но без звука; ответ текстом.
+
+        Ядро не готово или останавливается — AskUnavailable.
+        """
+        ...
+
+    async def ask_voice(self, audio: bytes, person: str, source: str) -> Answer:
+        """Ход через API голосом: звук (OGG/Opus, WAV) → распознавание → как ask.
+
+        Звук не разобрать — AudioUndecodable; нет программы разбора или ядро не готово — AskUnavailable.
+        """
         ...

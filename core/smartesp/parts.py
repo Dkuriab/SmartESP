@@ -30,6 +30,7 @@ from smartesp.lifecycle import (
 from smartesp.network import NetworkPrompts
 from smartesp.notify import Announcer
 from smartesp.sections import live_sections, speech_settings
+from smartesp.stt import decode_audio
 from smartesp.tools import McpHub
 from smartesp.tts import VoiceManager
 
@@ -147,4 +148,6 @@ def control(
         supports_tools=capabilities.supports_tools,
         executor_states=lambda: live.members_warmth,
         connectors=tools.states,
+        ask=parts.orchestrator.ask,  # ход через API: тот же путь, что с колонки, ответ текстом
+        decode=decode_audio,  # голосовое (OGG/Opus, WAV) → PCM для распознавания
     )

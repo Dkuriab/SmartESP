@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 class OllamaOut(BaseModel):
@@ -159,7 +159,10 @@ class TurnOut(BaseModel):
     path: list[str] = []  # id исполнителей хода по порядку
     delegations: list[DelegationOut] = []
     tools: list[ToolUseOut] = []  # законченные вызовы инструментов по порядку
-    origin: Literal["wake", "listen", "core"] = "wake"  # слово, прослушивание после вопроса, ядро само
+    # слово, прослушивание после вопроса, ядро само, вопрос через API
+    origin: Literal["wake", "listen", "core", "api"] = "wake"
+    source: str = ""  # ход через API: откуда вопрос ("telegram"); иначе пусто
+    person: str = ""  # ход через API: кто спрашивает; иначе пусто
     kind: Literal["turn", "announcement"] = "turn"  # ход разговора или объявление ядра
 
 
@@ -183,3 +186,22 @@ class AccessOut(BaseModel):
     """Адреса для входа в интерфейс с других компьютеров сети (с токеном)."""
 
     urls: list[str]
+
+
+Person = Annotated[str, StringConstraints(strip_whitespace=True, max_length=64)]
+Source = Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,32}$")]
+
+
+class AskIn(BaseModel):
+    """Вопрос через API текстом: текст, кто спрашивает ("" — неизвестно) и откуда (для ленты)."""
+
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
+    person: Person = ""
+    source: Source = "api"
+
+
+class AskOut(BaseModel):
+    """Ответ на вопрос через API: текст ответа и номер хода в ленте."""
+
+    answer: str
+    turn_id: str

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from smartesp.contracts import ChangeResult, ExecutorError, VoiceNotDownloadedError
+from smartesp.contracts import Answer, ChangeResult, ExecutorError, Question, VoiceNotDownloadedError
 
 
 def make_turn(turn_id: int) -> dict[str, object]:
@@ -45,6 +45,9 @@ class FakeCore:
             {"id": "notes", "name": "Заметки", "state": "ready", "tools": ["note_add"], "error": ""},
             {"id": "weather", "name": "Погода", "state": "failed", "tools": [], "error": "упал"},
         ]
+        self.questions: list[Question] = []  # вопросы /ask
+        self.voices_asked: list[tuple[bytes, str, str]] = []  # (звук, человек, источник) /ask/voice
+        self.ask_error: Exception | None = None  # бросается из ask и ask_voice
 
     async def status(self) -> dict[str, Any]:
         return {
@@ -119,6 +122,18 @@ class FakeCore:
 
     def request_restart(self) -> None:
         self.restarts += 1
+
+    async def ask(self, question: Question) -> Answer:
+        self.questions.append(question)
+        if self.ask_error:
+            raise self.ask_error
+        return Answer(f"Ответ на «{question.text}»", f"api{len(self.questions)}")
+
+    async def ask_voice(self, audio: bytes, person: str, source: str) -> Answer:
+        self.voices_asked.append((audio, person, source))
+        if self.ask_error:
+            raise self.ask_error
+        return Answer("Голос услышан", f"api{len(self.voices_asked)}")
 
 
 __all__ = ["FakeCore", "VoiceNotDownloadedError", "make_turn"]
