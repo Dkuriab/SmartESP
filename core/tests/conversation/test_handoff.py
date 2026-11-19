@@ -1,87 +1,15 @@
-"""Тесты оркестратора: передача задачи другому исполнителю посреди хода.
-
-Сеть подделана исполнителем, который отдаёт куски так же, как ExecutorNetwork:
-фраза входного, ReplyPart(handoff=…), затем куски цели. Интервалы — доли секунды.
-"""
+"""Тесты оркестратора: передача задачи другому исполнителю посреди хода — фраза, ответ цели, путь, стиль."""
 
 import asyncio
 from collections.abc import AsyncIterator, Sequence
 
-import pytest
-from conversation_helpers import CountingTTS, Setup, make_utterance, running, until
+from conversation_helpers import Setup
+from handoff_helpers import PHRASE, TASK, THINKING, FakeNetwork, StyledTTS, run_turn
 
 from fakes.fake_device_port import FakeDevicePort
 from fakes.fake_events import RecordingSink
 from fakes.fake_executor import FakeExecutor
 from smartesp.contracts import ChatMessage, Handoff, ReplyPart, ToolCall, ToolSpec
-
-THINKING = ("kitchen", "thinking")
-PHRASE = "Сейчас спрошу большую модель."
-TASK = "Объясни, почему небо голубое"
-SILENT = "Большая модель сейчас не отвечает."
-HANDOFF = Handoff("dispatcher", "big", "Большая модель", TASK)
-
-
-class FakeNetwork:
-    """Как сеть исполнителей: куски входного, передача, затем (после delay) куски цели."""
-
-    def __init__(
-        self,
-        before: Sequence[str],
-        target: Sequence[str | ReplyPart],
-        *,
-        delay: float = 0.0,
-        port: FakeDevicePort | None = None,
-    ) -> None:
-        self.id = "dispatcher"
-        self._before = before
-        self._target = target
-        self._delay = delay
-        self._port = port  # задан — ход прерывается (barge-in), пока ждём цель
-        self.tts: CountingTTS | None = None
-        self.spoken_at_target: list[str] | None = None  # что уже прозвучало, когда спросили цель
-        self.closed = False
-
-    async def run(
-        self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
-    ) -> AsyncIterator[ReplyPart]:
-        try:
-            for text in self._before:
-                yield ReplyPart(text)
-            yield ReplyPart(handoff=HANDOFF)
-            if self.tts is not None:
-                self.spoken_at_target = list(self.tts.texts)
-            if self._port is not None:
-                self._port.deactivate("kitchen", 1)
-            await asyncio.sleep(self._delay)
-            for part in self._target:
-                yield part if isinstance(part, ReplyPart) else ReplyPart(part)
-        finally:
-            self.closed = True
-
-
-class StyledTTS(CountingTTS):
-    """CountingTTS со стилями normal и quiet, запоминает стиль каждого вызова."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.used: list[str] = []
-
-    def styles(self) -> list[str]:
-        return ["normal", "quiet"]
-
-    def synthesize(self, text: str, style: str) -> AsyncIterator[bytes]:
-        self.used.append(style)
-        return super().synthesize(text, style)
-
-
-async def run_turn(setup: Setup, sink: RecordingSink) -> dict[str, object]:
-    """Проводит ход 1 и возвращает данные turn_finished."""
-    setup.port.feed(make_utterance())
-    async with running(setup):
-        await until(lambda: any(kind == "turn_finished" for kind, _ in sink.events))
-        await setup.port.wait_plays(1)
-    return next(data for kind, data in sink.events if kind == "turn_finished")
 
 
 async def test_phrase_sounds_before_target_answer() -> None:
@@ -140,106 +68,6 @@ async def test_thinking_tones_while_waiting_for_target() -> None:
     assert finished["status"] == "ok"
 
 
-async def test_target_limit_speaks_phrase_instead_of_error_tone() -> None:
-    # «думаю» в 0,05; 0,10; 0,15 с, в 0,175 с — «Не получилось ответить вовремя…»; фраза и есть сигнал ошибки
-    network = FakeNetwork([PHRASE], ["Поздно."], delay=10)
-    sink = RecordingSink()
-    setup = Setup(network, events=sink, thinking_interval_s=0.05, delegate_limit_s=0.175)
-    finished = await run_turn(setup, sink)
-    assert setup.tts.texts == [PHRASE, "Не получилось ответить вовремя, спроси попозже."]
-    assert setup.port.tones == [THINKING, THINKING, THINKING]
-    assert finished["status"] == "error"
-    assert network.closed
-    assert setup.history.messages() == []
-
-
-CANNED = "Минутку, сейчас узнаю."
-
-
-async def test_silent_call_speaks_canned_phrase_and_stores_it() -> None:
-    network = FakeNetwork([], ["Ответ большой модели."], delay=0.25)
-    sink = RecordingSink()
-    setup = Setup(network, events=sink, thinking_interval_s=0.1, delegate_limit_s=5)
-    finished = await run_turn(setup, sink)
-    assert setup.tts.texts == [CANNED, "Ответ большой модели."]
-    assert setup.port.tones == [THINKING, THINKING]  # без немедленного «думаю»: в 0,1 и 0,2 с
-    assert finished["status"] == "ok"
-    assert finished["answer"] == f"{CANNED} Ответ большой модели."
-    assert setup.history.messages() == [
-        ChatMessage("user", "Какая погода?"),
-        ChatMessage(
-            "assistant", CANNED, tool_calls=(ToolCall("delegate", {"executor": "big", "task": TASK}),)
-        ),
-        ChatMessage("tool", "Ответ большой модели.", tool_name="delegate"),
-    ]
-
-
-async def test_silent_call_after_style_tag_only_keeps_quiet() -> None:
-    tts = StyledTTS()
-    sink = RecordingSink()
-    setup = Setup(FakeNetwork(["[style:quiet]"], ["Ответ."]), tts=tts, events=sink)
-    finished = await run_turn(setup, sink)
-    assert tts.texts[0] == CANNED
-    assert tts.used[0] == "quiet"
-    assert finished["answer"] == f"{CANNED} Ответ."
-
-
-async def test_call_after_blank_text_counts_as_silent() -> None:
-    sink = RecordingSink()
-    setup = Setup(FakeNetwork(["  "], ["Ответ."]), events=sink)
-    await run_turn(setup, sink)
-    assert CANNED in setup.tts.texts
-
-
-async def test_phrase_before_call_is_not_replaced() -> None:
-    sink = RecordingSink()
-    setup = Setup(FakeNetwork([PHRASE], ["Ответ."]), events=sink)
-    await run_turn(setup, sink)
-    assert CANNED not in setup.tts.texts
-
-
-async def test_auto_handoff_gets_no_canned_phrase() -> None:
-    class AutoNetwork(FakeNetwork):
-        async def run(
-            self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
-        ) -> AsyncIterator[ReplyPart]:
-            yield ReplyPart(PHRASE)
-            yield ReplyPart(handoff=Handoff("dispatcher", "big", "Большая модель", TASK, auto=True))
-            yield ReplyPart("Ответ.")
-
-    sink = RecordingSink()
-    setup = Setup(AutoNetwork([], []), events=sink)
-    await run_turn(setup, sink)
-    assert setup.tts.texts == [PHRASE, "Ответ."]
-
-
-async def test_second_silent_call_gets_no_canned_phrase() -> None:
-    class Nested(FakeNetwork):
-        async def run(
-            self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
-        ) -> AsyncIterator[ReplyPart]:
-            yield ReplyPart(handoff=HANDOFF)
-            yield ReplyPart(handoff=Handoff("big", "coder", "Программист", "t"))
-            yield ReplyPart("Итог.")
-
-    sink = RecordingSink()
-    setup = Setup(Nested([], []), events=sink)
-    await run_turn(setup, sink)
-    assert setup.tts.texts == [CANNED, "Итог."]
-
-
-async def test_failure_part_is_spoken_instead_of_error_tone() -> None:
-    network = FakeNetwork([PHRASE], [ReplyPart(SILENT, failure=True)])
-    sink = RecordingSink()
-    setup = Setup(network, events=sink)
-    finished = await run_turn(setup, sink)
-    assert setup.tts.texts == [PHRASE, SILENT]
-    assert setup.port.tones == []
-    assert finished["status"] == "error"
-    assert finished["path"] == ["dispatcher", "big"]
-    assert setup.history.messages() == []
-
-
 async def test_target_style_tag_applies_and_is_hidden() -> None:
     tts = StyledTTS()
     network = FakeNetwork([PHRASE], ["[sty", "le:quiet] Тише, все спят уже давно. ", "Завтра солнечно."])
@@ -289,62 +117,3 @@ async def test_path_of_unidentified_executor_is_entry() -> None:
     sink = RecordingSink()
     finished = await run_turn(Setup(FakeExecutor(["Солнечно."]), events=sink), sink)
     assert finished["path"] == ["entry"]
-
-
-@pytest.mark.parametrize("target", [[], [""], ["  "], ["[style:quiet]"]])
-async def test_silent_target_speaks_phrase(target: list[str]) -> None:
-    sink = RecordingSink()
-    finished = await run_turn(Setup(FakeNetwork([PHRASE], target), events=sink), sink)
-    assert finished["status"] == "error"
-    assert finished["answer"] == f"{PHRASE} {SILENT}"
-
-
-async def test_silent_call_to_unavailable_target_speaks_canned_and_failure() -> None:
-    sink = RecordingSink()
-    setup = Setup(FakeNetwork([], []), events=sink)
-    finished = await run_turn(setup, sink)
-    assert setup.tts.texts == [CANNED, SILENT]
-    assert setup.port.tones == []
-    assert finished["status"] == "error"
-    assert finished["answer"] == f"{CANNED} {SILENT}"
-    assert setup.history.messages() == []
-
-
-async def test_target_idle_before_any_text_speaks_phrase() -> None:
-    class StallingTarget(FakeNetwork):
-        async def run(
-            self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
-        ) -> AsyncIterator[ReplyPart]:
-            yield ReplyPart(PHRASE)
-            yield ReplyPart(handoff=HANDOFF)
-            yield ReplyPart("[style:quiet] ")
-            await asyncio.sleep(10)
-            yield ReplyPart("Поздно.")
-
-    sink = RecordingSink()
-    setup = Setup(StallingTarget([], []), events=sink, part_idle_s=0.1)
-    finished = await run_turn(setup, sink)
-    assert setup.tts.texts == [PHRASE, SILENT]
-    assert finished["status"] == "error"
-    assert setup.port.tones == []
-    assert setup.history.messages() == []
-
-
-async def test_failure_phrase_starts_new_sentence() -> None:
-    # недоговорённый текст цели не склеивается с фразой об ошибке
-    network = FakeNetwork([PHRASE], ["Потому что свет", ReplyPart(SILENT, failure=True)])
-    sink = RecordingSink()
-    setup = Setup(network, events=sink)
-    finished = await run_turn(setup, sink)
-    assert setup.tts.texts == [PHRASE, "Потому что свет", SILENT]
-    assert finished["answer"] == f"{PHRASE} Потому что свет {SILENT}"
-    assert finished["status"] == "error"
-
-
-async def test_first_text_ms_is_canned_phrase_for_silent_call() -> None:
-    # передача без фразы: за диспетчера звучит «Минутку…», это и есть первый текст
-    network = FakeNetwork([], ["Ответ большой модели."], delay=0.2)
-    sink = RecordingSink()
-    finished = await run_turn(Setup(network, events=sink), sink)
-    first_text_ms = finished["first_text_ms"]
-    assert isinstance(first_text_ms, int) and first_text_ms < 100
