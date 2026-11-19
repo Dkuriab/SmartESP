@@ -10,7 +10,10 @@ import ollama
 import pytest
 
 from smartesp.contracts import ChatMessage, Executor, ExecutorError
+from smartesp.conversation.handoffs import DELEGATE_FIRST_PART_LIMIT_S
 from smartesp.executors import OllamaExecutor
+from smartesp.executors.ollama_executor import REQUEST_TIMEOUT_S
+from smartesp.wiring import WARM_UP_TIMEOUT_S
 
 
 class FakeClient:
@@ -115,7 +118,14 @@ async def test_warm_up_calls_generate_and_wraps_errors() -> None:
 def test_default_client_has_timeout() -> None:
     ex = OllamaExecutor("m", "Ты помощник.", "30m", timeout_s=12.5)
     assert ex._client._client.timeout == httpx.Timeout(12.5)  # type: ignore[attr-defined]
-    assert OllamaExecutor("m", "", "30m")._client._client.timeout == httpx.Timeout(60.0)  # type: ignore[attr-defined]
+    assert OllamaExecutor("m", "", "30m")._client._client.timeout == httpx.Timeout(120.0)  # type: ignore[attr-defined]
+
+
+def test_default_read_timeout_outlasts_handoff_limit_and_warm_up() -> None:
+    # цель передачи: обрыв чтения раньше предела 90 с дал бы «не отвечает» вместо фразы о сроке;
+    # прогрев участника (120 с) не должен обрываться клиентом раньше своего предела
+    assert REQUEST_TIMEOUT_S >= DELEGATE_FIRST_PART_LIMIT_S + 10
+    assert REQUEST_TIMEOUT_S >= WARM_UP_TIMEOUT_S
 
 
 async def test_read_timeout_becomes_executor_error() -> None:
