@@ -18,6 +18,8 @@ from core_harness import (
 )
 
 from fakes.fake_executor import FakeOllama
+from smartesp.config import ExecutorConfig
+from smartesp.contracts import Executor, ExecutorError
 from smartesp.wiring import finish, start, stop
 
 NAMED = FAST_ARBITRATION + 'devices:\n  "AA:BB": {name: Спальня}\n'
@@ -100,5 +102,22 @@ async def test_config_shows_prompts_of_all_executors_with_rule(tmp_path: Path) -
     assert set(prompts) == {"dispatcher", "big"}
     assert config["dispatcher_prompt"] == prompts["dispatcher"] and "delegate" in prompts["dispatcher"]
     assert "[style:quiet]" in prompts["big"] and "delegate" not in prompts["big"]
+    await stop(core)
+    await finish(core)
+
+
+async def test_status_shows_member_that_did_not_warm_up(tmp_path: Path) -> None:
+    def factory(config: ExecutorConfig) -> Executor:
+        if config.id == "big":
+            return FakeOllama(["Да."], config.model, warm_error=ExecutorError("нет модели deepseek"))
+        return FakeOllama(["Да."], config.model)
+
+    core = make_core(tmp_path, fake_kinds(factory))
+    start(core)
+    await eventually(lambda: core.core.state == "ready" and bool(core.live.members_warmth))
+    async with client(core) as http:
+        status = (await http.get("/api/v1/status", headers=HEADERS)).json()
+    (big,) = status["executors"]
+    assert big["id"] == "big" and not big["ready"] and "deepseek" in big["error"]
     await stop(core)
     await finish(core)

@@ -93,6 +93,7 @@ class Harness:
         self.prompt = "Промпт. Правила."
         self.prompts = {"dispatcher": "Промпт. Правила.", "big": "Большой."}
         self.tool_models = {"qwen"}
+        self.executor_states: dict[str, str | None] = {}  # итог фонового прогрева участников
         self.core = Core(
             self.store,
             {name: s.section() for name, s in self.sections.items()},
@@ -107,6 +108,7 @@ class Harness:
             dispatcher_prompt=lambda: self.prompt,
             executor_prompts=lambda: self.prompts,
             supports_tools=self._supports_tools,
+            executor_states=lambda: self.executor_states,
         )
 
     async def _supports_tools(self, model: str) -> bool:

@@ -94,7 +94,8 @@ class CorePort(Protocol):
     """Всё, что HTTP API берёт у ядра; реализует control.Core."""
 
     async def status(self) -> dict[str, Any]:
-        """Возвращает сводку: version, uptime_s, state, ollama, devices, voice, applying, restart_required."""
+        """Возвращает сводку: version, uptime_s, state, ollama, devices, voice, applying, restart_required,
+        executors ([{id, ready, error}] — итог фонового прогрева исполнителей)."""
         ...
 
     def config(self) -> dict[str, Any]:

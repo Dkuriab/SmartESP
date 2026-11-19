@@ -271,6 +271,18 @@ export interface components {
             /** Detail */
             detail: string;
         };
+        /**
+         * ExecutorStateOut
+         * @description Итог фонового прогрева исполнителя (кроме входного): ready=False — модель недоступна.
+         */
+        ExecutorStateOut: {
+            /** Id */
+            id: string;
+            /** Ready */
+            ready: boolean;
+            /** Error */
+            error?: string | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -337,6 +349,8 @@ export interface components {
             applying: boolean;
             /** Restart Required */
             restart_required: boolean;
+            /** Executors */
+            executors?: components["schemas"]["ExecutorStateOut"][];
         };
         /**
          * TurnOut

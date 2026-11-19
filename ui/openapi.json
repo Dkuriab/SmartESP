@@ -660,6 +660,36 @@
         "title": "ErrorOut",
         "description": "Тело ошибки HTTP."
       },
+      "ExecutorStateOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "ready": {
+            "type": "boolean",
+            "title": "Ready"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "ready"
+        ],
+        "title": "ExecutorStateOut",
+        "description": "Итог фонового прогрева исполнителя (кроме входного): ready=False — модель недоступна."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -793,6 +823,13 @@
           "restart_required": {
             "type": "boolean",
             "title": "Restart Required"
+          },
+          "executors": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutorStateOut"
+            },
+            "type": "array",
+            "title": "Executors"
           }
         },
         "type": "object",

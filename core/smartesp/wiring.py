@@ -176,6 +176,7 @@ def assemble(
         dispatcher_prompt=prompts.entry,
         executor_prompts=prompts.all,
         supports_tools=capabilities.supports_tools,
+        executor_states=lambda: live.members_warmth,
     )
     run_file = RunFile(home / "run" / "core.json")
     parts = Assembly(

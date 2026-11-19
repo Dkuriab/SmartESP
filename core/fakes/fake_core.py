@@ -61,6 +61,7 @@ class FakeCore:
             "voice": self.voice_state,
             "applying": False,
             "restart_required": False,
+            "executors": [{"id": "big", "ready": False, "error": "нет модели"}],
         }
 
     def config(self) -> dict[str, Any]:

@@ -33,7 +33,18 @@ async def test_status_collects_summary() -> None:
         "voice": {"kind": "silero", "voice": "xenia", "state": "ready", "error": None},
         "applying": False,
         "restart_required": False,
+        "executors": [],
     }
+    await h.core.aclose()
+
+
+async def test_status_lists_member_warm_up_results() -> None:
+    h = Harness()
+    h.executor_states = {"big": None, "coder": "нет модели coder"}
+    assert (await h.core.status())["executors"] == [
+        {"id": "big", "ready": True, "error": None},
+        {"id": "coder", "ready": False, "error": "нет модели coder"},
+    ]
     await h.core.aclose()
 
 

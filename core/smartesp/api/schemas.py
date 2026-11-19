@@ -34,6 +34,14 @@ class VoiceStateOut(BaseModel):
     error: str | None = None
 
 
+class ExecutorStateOut(BaseModel):
+    """Итог фонового прогрева исполнителя (кроме входного): ready=False — модель недоступна."""
+
+    id: str
+    ready: bool
+    error: str | None = None
+
+
 class StatusOut(BaseModel):
     """Сводка ядра."""
 
@@ -45,6 +53,8 @@ class StatusOut(BaseModel):
     voice: VoiceStateOut
     applying: bool
     restart_required: bool
+    # исполнители, чей фоновый прогрев закончился; ещё греется или входной — его здесь нет
+    executors: list[ExecutorStateOut] = Field(default_factory=list[ExecutorStateOut])
 
 
 class ConfigOut(BaseModel):

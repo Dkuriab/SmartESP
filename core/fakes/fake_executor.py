@@ -52,7 +52,8 @@ class FakeExecutor:
 class FakeOllama(FakeExecutor):
     """Исполнитель с моделью, прогревом и выгрузкой — как OllamaExecutor.
 
-    warm_gate — прогрев ждёт, пока событие не взведут (None — не ждёт).
+    warm_gate — прогрев ждёт, пока событие не взведут (None — не ждёт);
+    warm_error — прогрев бросает это исключение (None — прогрев удачный).
     """
 
     def __init__(
@@ -63,17 +64,21 @@ class FakeOllama(FakeExecutor):
         delay: float = 0,
         warm_gate: asyncio.Event | None = None,
         prompt: str = "",
+        warm_error: Exception | None = None,
     ) -> None:
         super().__init__(parts, delay=delay)
         self.model = model
         self.prompt = prompt  # системный промпт из настроек (для проверок)
         self.warm_gate = warm_gate
+        self.warm_error = warm_error
         self.warmed = 0
         self.unloaded: list[float] = []  # таймауты вызовов unload
 
     async def warm_up(self) -> None:
         if self.warm_gate is not None:
             await self.warm_gate.wait()
+        if self.warm_error is not None:
+            raise self.warm_error
         self.warmed += 1
 
     async def unload(self, timeout_s: float = 1.0) -> None:

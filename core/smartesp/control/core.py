@@ -58,12 +58,14 @@ class Core:
         dispatcher_prompt: Callable[[], str] = str,
         executor_prompts: Callable[[], Mapping[str, str]] = dict,
         supports_tools: Callable[[str], Awaitable[bool]] = _no_tools,
+        executor_states: Callable[[], Mapping[str, str | None]] = dict,
     ) -> None:
         """validate(настройки) — проверка правки целиком; ValueError — status invalid.
 
         dispatcher_prompt() — итоговый промпт входного исполнителя (с правилами обработчиков);
         executor_prompts() — итоговые промпты всех исполнителей по id;
-        supports_tools(модель) — умеет ли модель инструменты (для списка моделей).
+        supports_tools(модель) — умеет ли модель инструменты (для списка моделей);
+        executor_states() — итог фонового прогрева исполнителей: {id: None — готов, иначе ошибка}.
         """
         self._store = store
         self._events = events
@@ -76,6 +78,7 @@ class Core:
         self._dispatcher_prompt = dispatcher_prompt
         self._executor_prompts = executor_prompts
         self._supports_tools = supports_tools
+        self._executor_states = executor_states
         self._clock = clock
         self._started = clock()
         self._state = "warming"
@@ -123,7 +126,10 @@ class Core:
     # ---- CorePort ----
 
     async def status(self) -> dict[str, Any]:
-        """Сводка: version, uptime_s, state, ollama, devices, voice, applying, restart_required."""
+        """Сводка: version, uptime_s, state, ollama, devices, voice, applying, restart_required, executors.
+
+        executors — [{id, ready, error}] исполнителей, чей фоновый прогрев закончился.
+        """
         return {
             "version": self._version,
             "uptime_s": self._clock() - self._started,
@@ -133,6 +139,10 @@ class Core:
             "voice": self._voices.state(),
             "applying": self._changes.applying,
             "restart_required": self._changes.restart_required,
+            "executors": [
+                {"id": executor_id, "ready": error is None, "error": error}
+                for executor_id, error in self._executor_states().items()
+            ],
         }
 
     def config(self) -> dict[str, Any]:
