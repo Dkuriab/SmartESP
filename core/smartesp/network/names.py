@@ -13,6 +13,8 @@ _WORD = re.compile(r"\w+")
 _SENTENCE_END = re.compile(r"[.!?…]")
 _EDGE = " \t\n«»\"'"
 _LEADING_TAG = re.compile(r"^\s*\[[^\]]*\]")  # метка вроде [style:quiet] в начале ответа
+# основы глаголов просьбы: без них фраза с именем — ответ («Это большая модель»), а не обещание спросить
+ASKING_STEMS = ("спрош", "спрос", "спрашива", "узна", "переда", "уточн")
 
 
 def _words(text: str) -> list[str]:
@@ -39,6 +41,11 @@ def _mentions(phrase: list[str], name: str) -> bool:
     return bool(stems) and all(any(p.startswith(s) for p in phrase) for s in stems)
 
 
+def _asks(phrase: list[str]) -> bool:
+    """Во фразе есть глагол просьбы: слово начинается с одной из ASKING_STEMS."""
+    return any(word.startswith(ASKING_STEMS) for word in phrase)
+
+
 def _mentions_id(phrase: list[str], target: Target) -> bool:
     """id цели стоит во фразе отдельным словом («Сейчас спрошу big.»)."""
     return target.id.lower() in phrase
@@ -48,17 +55,21 @@ def named_target(text: str, targets: Sequence[Target]) -> Target | None:
     """Цель, которую исполнитель назвал во фразе без вызова инструмента, или None.
 
     Правило: текст (без метки вроде «[style:quiet]» в начале, без пробелов и
-    кавычек по краям) — одно предложение не
-    длиннее 80 символов, то есть знаки «. ! ? …» есть только в конце. Сравнение
-    без регистра, по основе: каждое слово имени цели длиной от 3 букв своими
-    первыми max(4, len - 2) символами начинает какое-то слово фразы
+    кавычек по краям) — одно предложение не длиннее 80 символов, то есть знаки
+    «. ! ? …» есть только в конце. Сравнение без регистра, по основе: каждое
+    слово имени цели длиной от 3 букв своими первыми max(4, len - 2) символами
+    начинает какое-то слово фразы
     («большую модель» находит «Большая модель», «программиста» — «Программист»).
     Id цели отдельным словом (без регистра) тоже считается названием.
+    Во фразе должен быть глагол просьбы (слово с основы из ASKING_STEMS:
+    «спрошу», «узнаю», «передам», «уточню»…), иначе это ответ, а не обещание.
     Найдена ровно одна цель — она; ни одной или несколько — None.
     """
     phrase = _LEADING_TAG.sub("", text, count=1).strip(_EDGE)
     if not _is_one_short_sentence(phrase):
         return None
     words = _words(phrase)
+    if not _asks(words):
+        return None
     found = [t for t in targets if _mentions(words, t.name) or _mentions_id(words, t)]
     return found[0] if len(found) == 1 else None

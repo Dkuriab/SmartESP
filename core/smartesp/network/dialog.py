@@ -1,8 +1,44 @@
-"""Диалог для цели передачи: плоский, с задачей от диспетчера."""
+"""Диалог для цели передачи: плоский, с задачей от диспетчера; вопрос человека; закрытие потоков."""
 
-from smartesp.contracts import ChatMessage
+import re
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
+
+from smartesp.contracts import ChatMessage, ReplyPart
 
 TASK_PREFIX = "\n\nЗадача от диспетчера: "  # дописывается к последнему сообщению user у цели
+# строки перед вопросом в сообщении user (их собирает conversation.build_messages)
+_NOTE = re.compile(r"^\[[^\]\n]+\] ")  # пометка обработчика «[источник] текст»
+_DEVICE = "Колонка: "  # строка с именем колонки
+_STYLE_TAG = re.compile(r"^\s*\[\s*style\s*:\s*[\w-]+\s*\]", re.IGNORECASE)  # «[style:quiet]»
+
+
+@asynccontextmanager
+async def closing(parts: AsyncIterator[ReplyPart]) -> AsyncIterator[AsyncIterator[ReplyPart]]:
+    """Как contextlib.aclosing, но для любого AsyncIterator: закрывает его, если это генератор."""
+    try:
+        yield parts
+    finally:
+        if isinstance(parts, AsyncGenerator):
+            await parts.aclose()
+
+
+def speakable(text: str) -> bool:
+    """True, если в тексте есть что озвучить, кроме метки стиля в начале."""
+    return any(ch.isalnum() for ch in _STYLE_TAG.sub("", text, count=1))
+
+
+def question(messages: list[ChatMessage]) -> str:
+    """Вопрос человека: последнее сообщение user без пометок обработчиков и строки «Колонка: …».
+
+    Пометки, строка колонки и пустые строки отбрасываются только в начале сообщения.
+    Сообщения user нет — пустая строка.
+    """
+    content = next((m.content for m in reversed(messages) if m.role == "user"), "")
+    lines = content.splitlines()
+    while lines and (not lines[0].strip() or _NOTE.match(lines[0]) or lines[0].startswith(_DEVICE)):
+        lines.pop(0)
+    return "\n".join(lines).strip()
 
 
 def flatten(messages: list[ChatMessage]) -> list[ChatMessage]:

@@ -4,16 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
-from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Mapping, Sequence
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
 from smartesp.contracts import (
     ChatMessage,
     Executor,
-    ExecutorError,
     Handoff,
     ReplyPart,
     ToolCall,
@@ -22,7 +19,7 @@ from smartesp.contracts import (
     WarmsUp,
 )
 
-from .dialog import flatten, with_task
+from .dialog import closing, flatten, question, speakable, with_task
 from .names import named_target
 from .rules import DELEGATE_TOOL, Target, delegate_tool
 
@@ -30,7 +27,6 @@ _log = logging.getLogger(__name__)
 
 MAX_DEPTH = 2  # передач в одном ходе: диспетчер → A → B
 FAILURE_PHRASE = "{name} сейчас не отвечает."  # цель недоступна или ничего не сказала
-_STYLE_TAG = re.compile(r"^\s*\[\s*style\s*:\s*[\w-]+\s*\]", re.IGNORECASE)  # «[style:quiet]»
 
 
 @dataclass(frozen=True)
@@ -39,13 +35,15 @@ class Member:
 
     executor — сам исполнитель; name — имя для журнала; targets — активные цели
     его связей; tools_ok — модель умеет инструменты (иначе ни инструмента, ни
-    автопередачи по фразе).
+    автопередачи по фразе); plain — тот же исполнитель с промптом без правила
+    передачи: отвечает на глубине, где передавать уже нельзя (None — executor).
     """
 
     executor: Executor
     name: str
     targets: tuple[Target, ...]
     tools_ok: bool
+    plain: Executor | None = None
 
 
 @dataclass
@@ -55,26 +53,6 @@ class _Outcome:
     text: list[str] = field(default_factory=list[str])
     called: bool = False  # был хоть один вызов delegate (верный или нет)
     handoff: Handoff | None = None
-
-
-@asynccontextmanager
-async def _closing(parts: AsyncIterator[ReplyPart]) -> AsyncIterator[AsyncIterator[ReplyPart]]:
-    """Как contextlib.aclosing, но для любого AsyncIterator: закрывает его, если это генератор."""
-    try:
-        yield parts
-    finally:
-        if isinstance(parts, AsyncGenerator):
-            await parts.aclose()
-
-
-def _speakable(text: str) -> bool:
-    """True, если в тексте есть что озвучить, кроме метки стиля в начале."""
-    return any(ch.isalnum() for ch in _STYLE_TAG.sub("", text, count=1))
-
-
-def _last_user_text(messages: list[ChatMessage]) -> str:
-    """Текст последнего сообщения user (пусто, если такого нет)."""
-    return next((m.content for m in reversed(messages) if m.role == "user"), "")
 
 
 class ExecutorNetwork:
@@ -87,22 +65,35 @@ class ExecutorNetwork:
     - первый верный вызов delegate (цель из его связей, непустая задача) —
       поток участника сразу закрывается (модель перестаёт генерировать, что
       было бы дальше — не читается), затем ReplyPart(handoff=…) и куски цели;
-    - не было вызова, а весь ответ — короткая фраза с именем одной цели
-      (named_target) — та же передача с auto=True и задачей = вопрос человека;
+    - не было вызова, а весь ответ — короткая фраза с глаголом просьбы и именем
+      одной цели (named_target) — та же передача с auto=True и задачей = вопрос
+      человека (без пометок обработчиков и строки «Колонка: …»);
     - цель получает те же сообщения с дописанной задачей и свой инструмент,
       пока глубина передачи меньше max_depth; так же может передать дальше;
     - участник с tools_ok=False не получает никаких инструментов;
-    - ExecutorError цели — кусок «<Имя> сейчас не отвечает.» с failure;
+    - на глубине max_depth участник отвечает вариантом plain — без правила передачи;
+    - исключение цели — кусок «<Имя> сейчас не отвечает.» с failure;
       ExecutorError входного пробрасывается.
     """
 
-    def __init__(self, entry: str, members: Mapping[str, Member], *, max_depth: int = MAX_DEPTH) -> None:
-        """entry — id входного исполнителя (должен быть в members); members — участники по id."""
+    def __init__(
+        self,
+        entry: str,
+        members: Mapping[str, Member],
+        *,
+        max_depth: int = MAX_DEPTH,
+        unknown: frozenset[str] = frozenset(),
+    ) -> None:
+        """entry — id входного исполнителя (должен быть в members); members — участники по id.
+
+        unknown — модели, чьи возможности при сборке узнать не удалось (их tools_ok — False).
+        """
         if entry not in members:
             raise ValueError(f"Входного исполнителя «{entry}» нет среди участников сети")
         self.id = entry
         self._members = dict(members)
         self._max_depth = max_depth
+        self._unknown = unknown
 
     @property
     def members(self) -> Mapping[str, Member]:
@@ -114,7 +105,7 @@ class ExecutorNetwork:
     ) -> AsyncIterator[ReplyPart]:
         """Отдаёт куски ответа сети; tools — дополнительные инструменты для входного."""
         parts = self._member_parts(self.id, messages, messages, tuple(tools), 0)
-        async with _closing(parts):
+        async with closing(parts):
             async for part in parts:
                 yield part
 
@@ -133,11 +124,13 @@ class ExecutorNetwork:
         member = self._members[member_id]
         offered = member.targets if member.tools_ok and depth < self._max_depth else ()
         tools = _member_tools(member, offered, extra_tools)
-        if not offered:  # передать некому: структура вызовов delegate модели не нужна
+        executor = member.executor
+        if not offered:  # передать некому: ни правила, ни структуры вызовов delegate
             own = flatten(own)
+            executor = member.plain or executor
         outcome = _Outcome()
-        parts = self._own_parts(member_id, member.executor.run(own, tools), offered, outcome)
-        async with _closing(parts):
+        parts = self._own_parts(member_id, executor.run(own, tools), offered, outcome)
+        async with closing(parts):
             async for part in parts:
                 yield part
         handoff = outcome.handoff
@@ -147,7 +140,7 @@ class ExecutorNetwork:
             return
         yield ReplyPart(handoff=handoff)
         target_parts = self._target_parts(handoff, base, depth + 1)
-        async with _closing(target_parts):
+        async with closing(target_parts):
             async for part in target_parts:
                 yield part
 
@@ -162,14 +155,14 @@ class ExecutorNetwork:
 
         Первый верный вызов завершает поток участника.
         """
-        async with _closing(stream):
+        async with closing(stream):
             async for part in stream:
                 call = part.tool_call
                 if call is not None and call.name == DELEGATE_TOOL:
                     outcome.called = True
                     outcome.handoff = self._handoff(source, call, offered)
                     if outcome.handoff is not None:
-                        return  # _closing закрывает поток: остаток ответа не нужен
+                        return  # closing закрывает поток: остаток ответа не нужен
                     continue
                 outcome.text.append(part.text)
                 yield part
@@ -192,7 +185,7 @@ class ExecutorNetwork:
     ) -> Handoff | None:
         """Передача по фразе без вызова («Сейчас спрошу большую модель.») или None."""
         target = named_target(text, offered)
-        task = _last_user_text(base).strip()
+        task = question(base)
         if target is None or target.id not in self._members or not task:
             return None
         _log.info("«%s» назвал «%s» без вызова delegate — передаём сами", source, target.id)
@@ -203,21 +196,21 @@ class ExecutorNetwork:
     ) -> AsyncIterator[ReplyPart]:
         """Куски цели передачи; хотя бы один из них — с текстом для озвучки.
 
-        ExecutorError цели или ответ без текста (пусто, пробелы, одна метка
-        стиля) — в конце фраза об ошибке с failure.
+        Любое исключение цели (Exception) или ответ без текста (пусто, пробелы,
+        одна метка стиля) — в конце фраза об ошибке с failure.
         """
         own = with_task(flatten(base), handoff.task)
         said: list[str] = []
         try:
             parts = self._member_parts(handoff.target, base, own, (), depth)
-            async with _closing(parts):
+            async with closing(parts):
                 async for part in parts:
                     said.append(part.text)
                     yield part
-        except ExecutorError as exc:
-            _log.warning("Исполнитель «%s» недоступен: %s", handoff.target, exc)
+        except Exception:  # noqa: BLE001 — любой сбой цели озвучивается фразой, ход не падает
+            _log.warning("Исполнитель «%s» недоступен", handoff.target, exc_info=True)
         else:
-            if _speakable("".join(said)):
+            if speakable("".join(said)):
                 return
             _log.warning("Исполнитель «%s» ничего не сказал", handoff.target)
         yield ReplyPart(FAILURE_PHRASE.format(name=handoff.target_name), failure=True)
@@ -241,6 +234,10 @@ class ExecutorNetwork:
         }
         results = await asyncio.gather(*(_warm(i, e, timeout_s) for i, e in warmable.items()))
         return dict(zip(warmable, results, strict=True))
+
+    def unknown_models(self) -> frozenset[str]:
+        """Модели, чьи возможности при сборке были неизвестны: сеть стоит пересобрать, когда узнаем."""
+        return self._unknown
 
     def models(self) -> frozenset[str]:
         """Объединение моделей всех участников."""

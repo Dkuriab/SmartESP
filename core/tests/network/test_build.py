@@ -29,15 +29,18 @@ class HintStage:
 
 
 class Made:
-    """make(id, промпт): запоминает каждый собранный FakeOllama по id."""
+    """make(id, промпт): запоминает первый собранный по id FakeOllama и все сборки по порядку."""
 
     def __init__(self, models: dict[str, str]) -> None:
         self.models = models
         self.by_id: dict[str, FakeOllama] = {}
+        self.made: list[tuple[str, FakeOllama]] = []
 
     def __call__(self, member_id: str, prompt: str) -> Executor:
-        self.by_id[member_id] = FakeOllama([], self.models[member_id], prompt=prompt)
-        return self.by_id[member_id]
+        executor = FakeOllama([], self.models[member_id], prompt=prompt)
+        self.by_id.setdefault(member_id, executor)
+        self.made.append((member_id, executor))
+        return executor
 
 
 class Capabilities:
@@ -83,6 +86,33 @@ async def test_model_without_tools_gets_no_rule() -> None:
     network = await build_network("dispatcher", items, [], made, capabilities)
     assert not network.members["dispatcher"].tools_ok and network.members["big"].tools_ok
     assert made.by_id["dispatcher"].prompt == "Промпт диспетчера."
+
+
+async def test_member_with_rule_gets_plain_variant_without_rule() -> None:
+    items = specs(when="сложное")
+    made = made_for(items)
+    network = await build_network("dispatcher", items, [HintStage()], made, Capabilities())
+    entry = network.members["dispatcher"]
+    assert isinstance(entry.plain, FakeOllama) and entry.plain is not entry.executor
+    assert entry.plain.model == "small" and entry.plain.prompt == "Промпт диспетчера.\n" + HINT
+    assert network.members["big"].plain is None  # без связей правила нет — вариант не нужен
+    assert [member_id for member_id, _ in made.made] == ["dispatcher", "dispatcher", "big"]
+
+
+async def test_model_without_tools_gets_no_plain_variant() -> None:
+    items = specs(when="сложное")
+    capabilities = Capabilities({"small": frozenset({"completion"})})
+    network = await build_network("dispatcher", items, [], made_for(items), capabilities)
+    assert network.members["dispatcher"].plain is None
+
+
+async def test_network_remembers_models_with_unknown_capabilities() -> None:
+    items = specs(when="сложное")
+    capabilities = Capabilities({"small": frozenset()})
+    network = await build_network("dispatcher", items, [], made_for(items), capabilities)
+    assert network.unknown_models() == frozenset({"small"})
+    known = await build_network("dispatcher", items, [], made_for(items), Capabilities())
+    assert known.unknown_models() == frozenset()
 
 
 def test_link_without_when_and_description_is_dropped() -> None:

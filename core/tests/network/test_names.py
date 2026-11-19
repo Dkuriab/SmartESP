@@ -57,3 +57,15 @@ def test_id_as_whole_word_names_target() -> None:
     assert named_target("Сейчас спрошу big.", TARGETS) == BIG
     assert named_target("Сейчас спрошу BIG", TARGETS) == BIG
     assert named_target("Сейчас спрошу bigger.", TARGETS) is None
+
+
+def test_name_without_asking_verb_gives_none() -> None:
+    assert named_target("Это большая модель.", TARGETS) is None
+    assert named_target("Программист занят.", TARGETS) is None
+
+
+def test_asking_verbs_name_target() -> None:
+    assert named_target("Узнаю у программиста.", TARGETS) == CODER
+    assert named_target("Передам большой модели.", TARGETS) == BIG
+    assert named_target("Уточню у программиста.", TARGETS) == CODER
+    assert named_target("Сейчас спрашиваю большую модель.", TARGETS) == BIG

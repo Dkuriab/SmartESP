@@ -204,7 +204,8 @@ async def test_turn_with_handoff_goes_through_network(tmp_path: Path) -> None:
     speaking, _ = await connect(core, "kitchen")
     ask(speaking, 1)
     await eventually(lambda: "reply_end" in sent_types(speaking))
-    assert len(made[1].calls) == 1 and "Задача от диспетчера" in made[1].calls[0][-1].content
+    big = made[2]  # диспетчер, его вариант без правила передачи, затем big
+    assert len(big.calls) == 1 and "Задача от диспетчера" in big.calls[0][-1].content
     async with client(core) as http:
         await eventually(lambda: bool(core.core.turns(1)))
         turns = (await http.get("/api/v1/turns", headers=HEADERS)).json()

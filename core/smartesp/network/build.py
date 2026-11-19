@@ -68,12 +68,13 @@ def member_prompts(
     return {s.id: _prompt(s, stages, active_targets(s, specs), tools_ok.get(s.id, False)) for s in specs}
 
 
-async def _tools_ok_by_id(specs: Sequence[MemberSpec], capabilities: Capabilities) -> dict[str, bool]:
-    """Умеет ли модель каждого участника инструменты; каждая модель спрашивается один раз."""
+async def _capabilities_by_model(
+    specs: Sequence[MemberSpec], capabilities: Capabilities
+) -> dict[str, frozenset[str]]:
+    """Возможности модели каждого участника; каждая модель спрашивается один раз."""
     models = list(dict.fromkeys(s.model for s in specs))
     found = await asyncio.gather(*(capabilities(model) for model in models))
-    tools = {model: TOOLS in caps for model, caps in zip(models, found, strict=True)}
-    return {s.id: tools[s.model] for s in specs}
+    return dict(zip(models, found, strict=True))
 
 
 async def build_network(
@@ -89,16 +90,21 @@ async def build_network(
     правила обработчиков + правило передачи его целям, если модель умеет
     инструменты (capabilities(модель) содержит tools).
 
-    Участник, до которого доходят только на глубине max_depth, получает правило
-    в промпт, но инструмента у него на этой глубине нет: промпт один на все глубины.
+    Участнику с правилом передачи собирается и вариант plain (та же модель,
+    промпт без правила): на глубине max_depth инструмента у него нет, и правило
+    только заставило бы его обещать передачу. Модели, чьи возможности узнать не
+    удалось (пустой ответ), сеть помнит в unknown_models.
     """
-    tools_ok = await _tools_ok_by_id(specs, capabilities)
+    found = await _capabilities_by_model(specs, capabilities)
     members: dict[str, Member] = {}
     for spec in specs:
+        tools_ok = TOOLS in found[spec.model]
         targets = active_targets(spec, specs)
-        executor = make(spec.id, _prompt(spec, stages, targets, tools_ok[spec.id]))
-        members[spec.id] = Member(executor, spec.name, targets, tools_ok[spec.id])
-    return ExecutorNetwork(entry_id, members)
+        executor = make(spec.id, _prompt(spec, stages, targets, tools_ok))
+        plain = make(spec.id, _prompt(spec, stages, targets, False)) if tools_ok and targets else None
+        members[spec.id] = Member(executor, spec.name, targets, tools_ok, plain)
+    unknown = frozenset(model for model, caps in found.items() if not caps)
+    return ExecutorNetwork(entry_id, members, unknown=unknown)
 
 
 class NetworkPrompts:

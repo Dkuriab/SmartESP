@@ -37,7 +37,9 @@ async def test_default_settings_build_network_with_big_and_rule() -> None:
     assert made[0].model == config.entry_executor().model
     assert entry_prompt.startswith(config.entry_executor().system_prompt) and "[style:quiet]" in entry_prompt
     assert entry_prompt.endswith(delegate_rule([target]))
-    assert made[1].model == "deepseek-r1:8b" and "[style:quiet]" in made[1].prompt
+    plain, big = made[1], made[2]  # вариант диспетчера без правила передачи, затем big
+    assert plain.model == made[0].model and "delegate" not in plain.prompt
+    assert big.model == "deepseek-r1:8b" and "[style:quiet]" in big.prompt
     assert callable(analyze)
 
 
