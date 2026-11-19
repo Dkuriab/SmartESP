@@ -13,9 +13,10 @@ from pathlib import Path
 from typing import cast
 
 from smartesp.config import Config, ExecutorConfig, StageConfig, SttConfig
-from smartesp.contracts import Analyzer, Executor, SpeechToText, Stage, TextToSpeech
+from smartesp.contracts import Analyzer, Executor, SpeechToText, Stage, TextToSpeech, ToolBox
 from smartesp.network import ExecutorNetwork, MemberSpec, build_network
 from smartesp.stages import run_stages
+from smartesp.tools import ConnectorSpec
 
 
 class StartupError(Exception):
@@ -30,6 +31,15 @@ class Kinds:
     tts: Mapping[str, Callable[[Path, str], TextToSpeech]]  # (путь голоса, голос)
     executors: Mapping[str, Callable[[ExecutorConfig], Executor]]
     stages: Mapping[str, Callable[[StageConfig], Stage]]
+
+
+@dataclass(frozen=True)
+class Ollama:
+    """Сведения Ollama для status, списка моделей и проверки умения инструментов."""
+
+    models: Callable[[], Awaitable[list[tuple[str, int]]]]
+    loaded: Callable[[], Awaitable[list[str]]]
+    capabilities: Callable[[str], Awaitable[frozenset[str]]]
 
 
 def pick[T](registry: Mapping[str, T], kind: str, what: str) -> T:
@@ -72,6 +82,14 @@ def member_specs(config: Config) -> list[MemberSpec]:
     ]
 
 
+def connector_specs(config: Config) -> list[ConnectorSpec]:
+    """Коннекторы из настроек — описания для MCP-хаба."""
+    return [
+        ConnectorSpec(c.id, c.name, c.command, tuple(c.args), dict(c.env), c.enabled)
+        for c in config.connectors
+    ]
+
+
 def prompt_stages(config: Config, kinds: Kinds) -> list[Stage]:
     """Обработчики известных видов — только ради их правил в промптах (моделей они не грузят)."""
     return [kinds.stages[s.kind](s) for s in config.stages if s.kind in kinds.stages]
@@ -90,13 +108,19 @@ def _maker(config: Config, kinds: Kinds) -> Callable[[str, str], Executor]:
 
 
 async def build_answering(
-    config: Config, kinds: Kinds, capabilities: Callable[[str], Awaitable[frozenset[str]]]
+    config: Config,
+    kinds: Kinds,
+    capabilities: Callable[[str], Awaitable[frozenset[str]]],
+    toolbox: ToolBox | None = None,
 ) -> tuple[Analyzer, ExecutorNetwork]:
-    """Обработчики и сеть исполнителей из настроек; неизвестный вид — StartupError."""
+    """Обработчики и сеть исполнителей из настроек; неизвестный вид — StartupError.
+
+    toolbox — инструменты коннекторов (снимок берётся при сборке).
+    """
     stages = [(pick(kinds.stages, s.kind, "stage")(s), s.timeout_ms / 1000) for s in config.stages]
     specs, plain = member_specs(config), [stage for stage, _ in stages]
     network = await build_network(
-        config.entry_executor().id, specs, plain, _maker(config, kinds), capabilities
+        config.entry_executor().id, specs, plain, _maker(config, kinds), capabilities, toolbox
     )
     analyze: Analyzer = functools.partial(run_stages, stages)
     return analyze, network

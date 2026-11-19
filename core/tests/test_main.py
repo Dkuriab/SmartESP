@@ -94,6 +94,8 @@ def test_check_kinds_rejects_unknown_executor() -> None:
 
 
 ExecCall = tuple[str, list[str]]
+# коннекторы выключены: тесты не запускают настоящие `uv run … -mcp`
+NO_CONNECTORS_SERVER = "server:\n  host: 127.0.0.1\n  port: 0\nconnectors: []\n"
 
 
 def fake_core(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -102,7 +104,7 @@ def fake_core(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TTS_KINDS, "silero", lambda path, voice: FakeTTS())
     monkeypatch.setitem(EXECUTOR_KINDS, "ollama", lambda c: FakeOllama(["Да."], c.model))
     monkeypatch.setattr("smartesp.main.OLLAMA", NO_OLLAMA)
-    (home / "config.yaml").write_text("server:\n  host: 127.0.0.1\n  port: 0\n", encoding="utf-8")
+    (home / "config.yaml").write_text(NO_CONNECTORS_SERVER, encoding="utf-8")
     put_voice(home)
 
 
@@ -180,7 +182,7 @@ def test_sigterm_with_parent_alive_exits_zero(tmp_path: Path) -> None:
     core_dir = Path(__file__).resolve().parents[1]
     home = tmp_path / "home"
     home.mkdir()
-    (home / "config.yaml").write_text("server:\n  host: 127.0.0.1\n  port: 0\n", encoding="utf-8")
+    (home / "config.yaml").write_text(NO_CONNECTORS_SERVER, encoding="utf-8")
     put_voice(home)
     env = {**os.environ, "SMARTESP_HOME": str(home), "PYTHONPATH": f"{core_dir}:{core_dir / 'tests'}"}
     log = (tmp_path / "out.log").open("wb")

@@ -13,8 +13,10 @@ from smartesp.config import Config, SpeechConfig
 from smartesp.contracts import Section
 from smartesp.conversation import History, Orchestrator
 from smartesp.devices import DeviceHub
+from smartesp.kinds import connector_specs
 from smartesp.lifecycle import Answering, LiveAnswering
 from smartesp.notify import Announcer
+from smartesp.tools import ConnectorSpec, McpHub
 
 
 async def _device_names(config: Config) -> dict[str, str]:
@@ -27,6 +29,10 @@ async def _history_limits(config: Config) -> tuple[int, int]:
 
 async def _speech(config: Config) -> SpeechConfig:
     return config.speech
+
+
+async def _connectors(config: Config) -> list[ConnectorSpec]:
+    return connector_specs(config)
 
 
 def speech_settings(orchestrator: Orchestrator, announcer: Announcer) -> Callable[[SpeechConfig], None]:
@@ -45,8 +51,13 @@ def live_sections(
     live: LiveAnswering,
     build_answering: Callable[[Config], Awaitable[Answering]],
     use_speech: Callable[[SpeechConfig], None],
+    tools: McpHub,
 ) -> dict[str, Section]:
-    """Разделы, применяемые на лету (tts пульт открывает через менеджер голосов)."""
+    """Разделы, применяемые на лету (tts пульт открывает через менеджер голосов).
+
+    connectors хаб применяет в фоне; сеть с новыми инструментами пересобирается, когда
+    коннекторы встанут (ToolsRefresh в wiring.py).
+    """
     answering = Section(build_answering, live.use, live.release)
     return {
         "devices": Section(_device_names, lambda names: hub.set_names(cast(dict[str, str], names))),
@@ -54,4 +65,5 @@ def live_sections(
         "executors": answering,
         "stages": answering,  # правила обработчиков в промптах: пересобираем и сеть
         "speech": Section(_speech, lambda speech: use_speech(cast(SpeechConfig, speech))),
+        "connectors": Section(_connectors, lambda specs: tools.apply_soon(cast(list[ConnectorSpec], specs))),
     }

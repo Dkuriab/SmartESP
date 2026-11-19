@@ -70,8 +70,13 @@ def fake_kinds(
 def make_core(
     home: Path, kinds: Kinds, config_yaml: str = FAST_ARBITRATION, ollama: Ollama = NO_OLLAMA
 ) -> Assembly:
-    """Ядро на подделках в папке home: config.yaml, голос, сборка как в main."""
+    """Ядро на подделках в папке home: config.yaml, голос, сборка как в main.
+
+    Без раздела connectors в config_yaml коннекторов нет (connectors: []).
+    """
     home.mkdir(parents=True, exist_ok=True)
+    if "connectors" not in config_yaml:  # наши коннекторы по умолчанию — настоящие `uv run`: не запускаем
+        config_yaml = config_yaml.rstrip("\n") + "\nconnectors: []\n"
     (home / "config.yaml").write_text(config_yaml, encoding="utf-8")
     put_voice(home)
     store = ConfigFile(home / "config.yaml")

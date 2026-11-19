@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,7 +24,9 @@ from smartesp.devices import DeviceHub, WebSocketConnection
 from smartesp.events import EventBus
 from smartesp.kinds import (
     Kinds,
+    Ollama,
     build_answering,
+    connector_specs,
     kinds_validator,
     member_specs,
     prompt_stages,
@@ -35,12 +37,16 @@ from smartesp.lifecycle import (
     CapabilityRetry,
     LiveAnswering,
     RunFile,
+    ToolsRefresh,
+    cancel_tasks,
     guarded,
+    log_crash,
     timed,
 )
 from smartesp.network import NetworkPrompts
 from smartesp.notify import Announcer
 from smartesp.sections import live_sections, speech_settings
+from smartesp.tools import McpHub
 from smartesp.tts import VoiceManager
 
 WARM_UP_PCM = bytes(16000)  # 0,5 с тишины (16 кГц, s16le)
@@ -48,23 +54,16 @@ WARM_UP_TIMEOUT_S = 120.0  # дольше прогрева исполнител�
 DRAIN_S = 10.0  # звучащим ответам при остановке
 UNLOAD_S = 1.0  # выгрузка модели из Ollama
 TURN_WAIT_S = 150.0  # сколько старые модели ждут конца идущих ходов перед выгрузкой (передача — до 90 с)
+LAST_ACTIVE = ""  # колонки с таким id нет: объявление коннектора звучит на последней активной
 
 logger = logging.getLogger("smartesp")
 
 
-@dataclass(frozen=True)
-class Ollama:
-    """Сведения Ollama для status, списка моделей и проверки умения инструментов."""
-
-    models: Callable[[], Awaitable[list[tuple[str, int]]]]
-    loaded: Callable[[], Awaitable[list[str]]]
-    capabilities: Callable[[str], Awaitable[frozenset[str]]]
-
-
 async def _build_answering(
-    kinds: Kinds, live: LiveAnswering, capabilities: CapabilityCache, config: Config
+    kinds: Kinds, live: LiveAnswering, capabilities: CapabilityCache, tools: McpHub, config: Config
 ) -> Answering:
-    return await live.build(await build_answering(config, kinds, capabilities.get), WARM_UP_TIMEOUT_S)
+    part = await build_answering(config, kinds, capabilities.get, tools)
+    return await live.build(part, WARM_UP_TIMEOUT_S)
 
 
 @dataclass
@@ -81,6 +80,8 @@ class Assembly:
     live: LiveAnswering
     capabilities: CapabilityCache  # возможности моделей: умеют ли инструменты
     retry: CapabilityRetry  # пересборка сети, когда станут известны возможности моделей
+    tools: McpHub  # MCP-коннекторы: инструменты сети и объявления
+    refresh: ToolsRefresh  # пересборка сети, когда меняется список инструментов коннекторов
     voices: VoiceManager
     voice_ready: asyncio.Event
     core: Core
@@ -89,6 +90,7 @@ class Assembly:
     running: asyncio.Task[None] | None = None  # оркестратор
     warming: asyncio.Task[None] | None = None  # прогрев частей
     retrying: asyncio.Task[None] | None = None  # повтор запроса возможностей моделей
+    refreshing: asyncio.Task[None] | None = None  # пересборка сети под инструменты коннекторов
 
 
 def assemble(
@@ -126,10 +128,16 @@ def assemble(
         member_warm_s=WARM_UP_TIMEOUT_S,
     )
     capabilities = CapabilityCache(ollama.capabilities)
+    tools = McpHub(
+        home,
+        on_announce=lambda text, person, connector: announcer.say(LAST_ACTIVE, text, connector),
+        on_tools=lambda: refresh.changed(),
+    )
+    refresh = ToolsRefresh(live, lambda: _build_answering(kinds, live, capabilities, tools, store.config))
     retry = CapabilityRetry(  # Ollama поднялась позже ядра — пересборка, как правка executors
         live,
         capabilities.probe,
-        lambda: _build_answering(kinds, live, capabilities, store.config),
+        lambda: _build_answering(kinds, live, capabilities, tools, store.config),
     )
     prompts = NetworkPrompts(  # настройки = живые части
         lambda: store.config.entry_executor().id,
@@ -148,7 +156,12 @@ def assemble(
     core = Core(
         store,
         live_sections(
-            hub, history, live, lambda config: _build_answering(kinds, live, capabilities, config), use_speech
+            hub,
+            history,
+            live,
+            lambda config: _build_answering(kinds, live, capabilities, tools, config),
+            use_speech,
+            tools,
         ),
         events=bus,
         feed=bus,
@@ -162,6 +175,7 @@ def assemble(
         executor_prompts=prompts.all,
         supports_tools=capabilities.supports_tools,
         executor_states=lambda: live.members_warmth,
+        connectors=tools.states,
     )
     run_file = RunFile(home / "run" / "core.json")
     parts = Assembly(
@@ -175,6 +189,8 @@ def assemble(
         live,
         capabilities,
         retry,
+        tools,
+        refresh,
         voices,
         voice_ready,
         core,
@@ -206,14 +222,17 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str) -> FastA
 
 
 def start(parts: Assembly) -> None:
-    """Запускает фон: оркестратор, открытие голоса (с повторами), прогрев частей и повтор возможностей."""
+    """Запускает фон: оркестратор, открытие голоса (с повторами), прогрев частей, повтор возможностей
+    и коннекторы (готовность голоса их не ждёт: сеть пересоберётся, когда они встанут)."""
     tts = parts.config.tts
     voice = asyncio.create_task(parts.voices.open(tts.kind, tts.voice, retry=True), name="voice-open")
     parts.running = asyncio.create_task(parts.orchestrator.run(), name="orchestrator")
     parts.warming = asyncio.create_task(warm_up(parts, voice), name="warm-up")
     parts.retrying = asyncio.create_task(parts.retry.run(), name="capabilities-retry")
-    for task in (parts.running, parts.warming, parts.retrying):
-        task.add_done_callback(_log_crash)
+    parts.refreshing = asyncio.create_task(parts.refresh.run(), name="tools-refresh")
+    parts.tools.apply_soon(connector_specs(parts.config))
+    for task in (parts.running, parts.warming, parts.retrying, parts.refreshing):
+        task.add_done_callback(log_crash)
 
 
 async def warm_up(parts: Assembly, voice: asyncio.Task[bool]) -> None:
@@ -224,7 +243,7 @@ async def warm_up(parts: Assembly, voice: asyncio.Task[bool]) -> None:
     """
     await timed("STT", _warm_stt(parts))
     answering = await guarded(
-        "исполнитель", build_answering(parts.config, parts.kinds, parts.capabilities.get)
+        "исполнитель", build_answering(parts.config, parts.kinds, parts.capabilities.get, parts.tools)
     )
     if answering is not None:
         await parts.live.warm_startup(answering, WARM_UP_TIMEOUT_S)
@@ -246,17 +265,19 @@ async def _warm_stt(parts: Assembly) -> None:
 
 
 async def stop(parts: Assembly) -> None:
-    """Честная остановка: договорить, бросить очередь речи, отключить колонки, выгрузить модель,
-    убрать файл запуска."""
+    """Честная остановка: договорить, остановить коннекторы, бросить очередь речи, отключить колонки,
+    выгрузить модель, убрать файл запуска."""
     logger.info("Остановка: новые ходы и правки не принимаются")
     parts.core.set_state("stopping")
     parts.hub.stop_accepting()
     parts.orchestrator.stop_accepting()
     parts.live.close()  # освобождения старых моделей больше не ждут ходов: их выгрузит unload_all
-    await _cancel(parts.warming, parts.retrying)  # прогрев и повтор, если идут; оркестратор — в finish
+    await cancel_tasks(parts.warming, parts.retrying, parts.refreshing)  # оркестратор — в finish
     await parts.core.aclose()  # правка в работе отменяется: живой исполнитель больше не меняется
     await parts.orchestrator.drain(DRAIN_S)
     logger.info("Остановка: идущие ходы закончены")
+    await parts.tools.aclose()
+    logger.info("Остановка: коннекторы остановлены")
     await parts.announcer.aclose()  # очередь речи бросается до отключения колонок
     await parts.hub.close_all()
     logger.info("Остановка: колонки отключены")
@@ -268,20 +289,8 @@ async def stop(parts: Assembly) -> None:
 
 async def finish(parts: Assembly) -> None:
     """Снимает фоновые задачи и таймеры хаба (после остановки сервера)."""
-    await _cancel(parts.running, parts.warming, parts.retrying)
+    await cancel_tasks(parts.running, parts.warming, parts.retrying, parts.refreshing)
+    await parts.tools.aclose()
     await parts.announcer.aclose()
     await parts.voices.aclose()
     await parts.hub.aclose()
-
-
-async def _cancel(*tasks: asyncio.Task[None] | None) -> None:
-    started = [task for task in tasks if task is not None]
-    for task in started:
-        task.cancel()
-    await asyncio.gather(*started, return_exceptions=True)
-
-
-def _log_crash(task: asyncio.Task[None]) -> None:
-    """Фоновая задача ядра упала — громко в журнал (оркестратор не должен завершаться сам)."""
-    if not task.cancelled() and task.exception() is not None:
-        logger.critical("Задача %s упала", task.get_name(), exc_info=task.exception())

@@ -7,10 +7,18 @@ import pytest
 from fakes.fake_executor import FakeOllama
 from smartesp.config import Config, ExecutorConfig
 from smartesp.config.models import BIG_WHEN, DelegateLink
-from smartesp.contracts import Executor
-from smartesp.kinds import Kinds, StartupError, build_answering, member_specs, prompt_stages
+from smartesp.contracts import Executor, ToolResult, ToolSpec
+from smartesp.kinds import (
+    Kinds,
+    StartupError,
+    build_answering,
+    connector_specs,
+    member_specs,
+    prompt_stages,
+)
 from smartesp.main import STAGE_KINDS
 from smartesp.network import MemberSpec, Target, delegate_rule
+from smartesp.tools import ConnectorSpec
 
 
 async def with_tools(model: str) -> frozenset[str]:
@@ -65,3 +73,33 @@ def test_member_specs_and_prompt_stages_follow_settings() -> None:
         MemberSpec("b", "Б", "описание", "n", "", ()),
     ]
     assert [s.name for s in prompt_stages(config, kinds([]))] == ["whisper_detect"]
+
+
+class Box:
+    """Поддельный ToolBox с одним инструментом."""
+
+    def specs(self) -> list[ToolSpec]:
+        return [ToolSpec("note_add", "Записать", {"type": "object"})]
+
+    async def call(self, name: str, arguments: dict[str, object], person: str | None) -> ToolResult:
+        return ToolResult("ок")
+
+
+async def test_toolbox_tools_go_to_members_with_tools() -> None:
+    _, network = await build_answering(Config(), kinds([]), with_tools, Box())
+    assert [t.name for t in network.members["dispatcher"].tools] == ["note_add"]
+
+
+def test_connector_specs_follow_settings() -> None:
+    config = Config.model_validate(
+        {
+            "connectors": [
+                {"id": "a", "name": "А", "command": "x", "args": ["1", "2"], "env": {"K": "v"}},
+                {"id": "b", "name": "Б", "command": "y", "enabled": False},
+            ]
+        }
+    )
+    assert connector_specs(config) == [
+        ConnectorSpec("a", "А", "x", ("1", "2"), {"K": "v"}, True),
+        ConnectorSpec("b", "Б", "y", (), {}, False),
+    ]

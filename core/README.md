@@ -103,7 +103,7 @@ uv run python -m smartesp
 Настройки, изменённые через `PATCH /api/v1/config`, ядро применяет без перезапуска
 и сразу записывает в `config.yaml`:
 
-- **на лету:** `devices`, `tts`, `executors`, `stages`, `history`, `speech`;
+- **на лету:** `devices`, `tts`, `executors`, `stages`, `history`, `speech`, `connectors`;
 - **требуют перезапуска:** `server`, `stt`, `arbitration` — такая правка
   записывается, ответ получает `status: restart_required`, а `GET /status`
   показывает `restart_required: true`, пока ядро не перезапустят.
@@ -176,6 +176,40 @@ Ollama после конца хода. Новая модель сначала п
 (список `{from, to, task, auto}`). `GET /config` отдаёт `executor_prompts` —
 итоговые промпты всех исполнителей по id; `GET /models` — `supports_tools`.
 
+## Коннекторы
+
+Дизайн: `../docs/superpowers/specs/2026-11-19-mcp-hub-design.md`.
+
+Возможности (заметки, счёт, таймеры, погода, питание) — MCP-коннекторы: отдельные
+процессы, которые ядро запускает и с которыми говорит по stdio (модуль `tools/`).
+Их инструменты получают исполнители, чья модель умеет инструменты
+(`supports_tools`). Раздел `connectors` в `config.yaml`:
+
+```yaml
+connectors:
+  - id: notes                  # папка данных: ~/SmartEsp/connectors/notes
+    name: Заметки
+    command: uv
+    args: [run, --project, /путь/к/SmartEsp/connectors/notes, notes-mcp]
+    env: {}                    # дополнительные переменные окружения
+    enabled: true
+```
+
+По умолчанию — пять наших из `connectors/` репозитория: `notes`, `calc`,
+`timers`, `weather`, `food` (путь к репозиторию подставлен в
+`config.defaults.yaml`). Погоде нужно место: `env: {WEATHER_PLACE: "Город"}` —
+пока его нет, она честно отвечает «место не задано». Список в `config.yaml`
+заменяет умолчание целиком.
+
+Коннекторы стартуют в фоне: голос готов, не дожидаясь их, а пока коннектор
+запускается, его инструментов в сети нет. Когда список готовых инструментов
+меняется (коннектор встал, упал, выключен), сеть исполнителей пересобирается —
+не чаще раза в 2 с. Упавший коннектор перезапускается (1 с, 5 с, 30 с, дальше
+раз в 5 мин). Правка `connectors` применяется на лету: изменённые
+перезапускаются, убранные останавливаются. Коннектор просит сказать вслух
+(таймер сработал) — объявление звучит на последней активной колонке. Состояния —
+`GET /connectors` и `connectors` в `GET /status`.
+
 ## Приложение и API
 
 Ядро отдаёт интерфейс на `/` (собранный `ui/dist`; без сборки — страница с
@@ -207,7 +241,8 @@ curl -X PATCH -H "Authorization: Bearer $(cat ~/SmartEsp/token)" \
 
 | Запрос | Что делает |
 |---|---|
-| `GET /status` | версия, `uptime_s`, `state` (`warming`, `ready`, `stopping`), Ollama (`reachable`, `loaded`), колонки, голос (`state`: `ready`, `downloading`, `failed`, `missing`), `applying`, `restart_required`, `executors` (`[{id, ready, error}]` — итог фонового прогрева исполнителей, кроме входного) |
+| `GET /status` | версия, `uptime_s`, `state` (`warming`, `ready`, `stopping`), Ollama (`reachable`, `loaded`), колонки, голос (`state`: `ready`, `downloading`, `failed`, `missing`), `applying`, `restart_required`, `executors` (`[{id, ready, error}]` — итог фонового прогрева исполнителей, кроме входного), `connectors` (как в `GET /connectors`) |
+| `GET /connectors` | MCP-коннекторы в порядке настроек: `{id, name, state, tools, error}`; `state` — `starting`, `ready`, `failed`, `disabled`; `tools` — имена инструментов для модели (только у готового); `error` — текст последней ошибки |
 | `GET /config` | `effective` — настройки целиком, `overridden` — изменённые ключи через точку (`tts.kind`), `restart_sections`, `dispatcher_prompt` — итоговый промпт диспетчера (`system_prompt` входного исполнителя + правила включённых обработчиков и передачи), `executor_prompts` — итоговые промпты всех исполнителей по id; только для чтения |
 | `PATCH /config` | частичные настройки в форме `config.yaml`: словари сливаются вглубь, списки заменяются целиком, `null` сбрасывает ключ к умолчанию. Ответ `{change_id, status, error}`: `accepted` или `restart_required` — 200, `invalid` — 422 (неизвестный ключ, неверное значение, неизвестный вид `kind` у `stt`, `tts`, исполнителя или обработчика), `stopping` — 503 |
 | `GET /models` | модели Ollama: `{name, size_bytes, supports_tools}` (Ollama недоступна — 502) |
@@ -229,7 +264,8 @@ curl -X PATCH -H "Authorization: Bearer $(cat ~/SmartEsp/token)" \
 1. состояние `stopping`; новые фразы и правки настроек не принимаются: колонка
    на фразу получает отмену хода (`cancel_turn`), правка — ответ 503. Колонки
    при этом могут подключаться, пока их не отключат на шаге 3;
-2. идущие ответы договариваются — до 10 с, потом обрываются;
+2. идущие ответы договариваются — до 10 с, потом обрываются; затем
+   останавливаются коннекторы (их процессы);
 3. очередь объявлений (речь по инициативе) бросается, колонки отключаются;
 4. каждая загруженная модель выгружается из Ollama — все одновременно, не дольше 1 с;
 5. файл `run/core.json` удаляется, процесс выходит с кодом 0.
