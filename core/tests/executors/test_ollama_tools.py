@@ -62,7 +62,7 @@ async def test_no_tools_key_without_tools() -> None:
 async def test_text_then_tool_call() -> None:
     c = ToolClient([obj_chunk("Сейчас спрошу."), obj_chunk("", [obj_call("delegate", {"task": "t"})])])
     parts = await run(OllamaExecutor("m", "s", "1m", c), (SPEC,))
-    assert [p.text for p in parts] == ["Сейчас спрошу."]
+    assert [p.text for p in parts if p.text] == ["Сейчас спрошу."]
     assert [p.tool_call for p in parts if p.tool_call] == [ToolCall("delegate", {"task": "t"})]
 
 
