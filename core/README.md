@@ -317,3 +317,35 @@ devices:
 ```
 uv run --project core python tools/fake_device.py --wav core/tests/data/privet.wav --out reply.wav
 ```
+
+Колонка ведёт себя как прошивка: «играет» ответ столько, сколько он звучит, и
+шлёт `playback_done`; выходит, пробыв в покое `--linger` секунд (по умолчанию 3).
+Ответы сохраняются в `reply.wav`, `reply-2.wav`… WAV с фразой делает
+`tools/make_wav.py` (голос Silero).
+
+### Речь по инициативе (протокол 3)
+
+С `--protocol 3` колонка понимает ходы ядра: на `listen` шлёт звук очередного
+`--answer-wav` (ответы кончились — `utterance_end no_speech` через 5 с), на
+`announce` принимает объявление и доигрывает его; не в покое — отвечает `busy`.
+
+Слушать после вопроса — Кузя переспрашивает, колонка отвечает «Синий»:
+
+```
+uv run --project core python tools/make_wav.py "Спроси меня, какой мой любимый цвет." q.wav
+uv run --project core python tools/make_wav.py "Синий." a.wav
+uv run --project core python tools/fake_device.py --protocol 3 --wav q.wav --answer-wav a.wav --linger 8
+```
+
+Ожидается: ответ Кузи с «?» → `playback_done` → `listen` → ответ «Синий» → второй
+ход; в `GET /api/v1/turns` у него `"origin": "listen"`.
+
+Объявления — колонка без вопроса ждёт речи ядра (запоздавший ответ цели
+передачи приходит не раньше, чем через 90 с после вопроса):
+
+```
+uv run --project core python tools/fake_device.py --protocol 3 --linger 300
+```
+
+`--busy` — колонка на каждый `announce`/`listen` отвечает `busy` (ядро повторяет
+объявление каждые 5 с, `listen` молча снимается).
