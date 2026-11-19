@@ -55,3 +55,32 @@ private let home = URL(fileURLWithPath: "/Users/tester")
         #expect(findUv(env: [:], home: home, fileExists: { _ in false }) == nil)
     }
 }
+
+@Suite struct CoreEnvironmentTests {
+    private let uv = URL(fileURLWithPath: "/Users/tester/.local/bin/uv")
+
+    @Test func prependsUvAndBrewDirsDeduped() {
+        let env = coreEnvironment(base: ["PATH": "/usr/bin:/opt/homebrew/bin:/bin", "HOME": "/Users/tester"], uv: uv)
+        #expect(env["PATH"] == "/Users/tester/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")
+        #expect(env["HOME"] == "/Users/tester")
+    }
+
+    @Test func uvInBrewIsNotRepeated() {
+        let env = coreEnvironment(base: ["PATH": "/usr/bin"], uv: URL(fileURLWithPath: "/opt/homebrew/bin/uv"))
+        #expect(env["PATH"] == "/opt/homebrew/bin:/usr/local/bin:/usr/bin")
+    }
+
+    @Test func missingPathGetsSystemDefaults() {
+        let env = coreEnvironment(base: [:], uv: uv)
+        #expect(env["PATH"] == "/Users/tester/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin")
+    }
+}
+
+@MainActor @Suite struct CoreLaunchEnvironmentTests {
+    @Test func launcherGetsExtendedPath() async {
+        let rig = Rig()
+        await rig.supervisor.performStart()
+        let uvDir = rig.dir.appendingPathComponent(".local/bin").path
+        #expect(rig.launcher.lastEnv?["PATH"] == "\(uvDir):/opt/homebrew/bin:/usr/local/bin:/bin")
+    }
+}

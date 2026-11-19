@@ -76,11 +76,13 @@ import Foundation
     var handles: [FakeHandle] = []
     var lastUv: URL?
     var lastCwd: URL?
+    var lastEnv: [String: String]?
     var exitsOnTerminate = true
 
     func launch(uv: URL, cwd: URL, env: [String: String]) throws -> any CoreHandle {
         lastUv = uv
         lastCwd = cwd
+        lastEnv = env
         let handle = FakeHandle(pid: Int32(100 + handles.count))
         handle.exitsOnTerminate = exitsOnTerminate
         handles.append(handle)

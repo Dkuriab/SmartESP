@@ -59,3 +59,20 @@ public func findUv(env: [String: String], home: URL, fileExists: (String) -> Boo
     candidates += dirs.map { URL(fileURLWithPath: $0).appendingPathComponent("uv").path }
     return candidates.first(where: fileExists).map { URL(fileURLWithPath: $0) }
 }
+
+/// Окружение процесса ядра: в начало `PATH` — папка `uv`, `/opt/homebrew/bin`
+/// и `/usr/local/bin` (без повторов). При входе в систему launchd даёт короткий
+/// `PATH`, и ядро не нашло бы `uv`, `ollama` и прочие программы из Homebrew.
+/// - Parameters:
+///   - base: окружение приложения.
+///   - uv: найденный `uv`.
+/// - Returns: копия `base` с дополненным `PATH`; без `PATH` — системные папки в конце.
+public func coreEnvironment(base: [String: String], uv: URL) -> [String: String] {
+    let current = base["PATH"].flatMap { $0.isEmpty ? nil : $0 } ?? "/usr/bin:/bin:/usr/sbin:/sbin"
+    let dirs = [uv.deletingLastPathComponent().path, "/opt/homebrew/bin", "/usr/local/bin"]
+        + current.split(separator: ":").map(String.init)
+    var seen = Set<String>()
+    var env = base
+    env["PATH"] = dirs.filter { seen.insert($0).inserted }.joined(separator: ":")
+    return env
+}

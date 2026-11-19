@@ -58,7 +58,7 @@ extension CoreSupervisor {
         guard let uv = findUv(env: env, home: home, fileExists: fileExists) else { return fail(CoreErrors.uvNotFound) }
         logOffset = CoreLog.size(paths.logFile)
         do {
-            let handle = try launcher.launch(uv: uv, cwd: paths.coreDir, env: env)
+            let handle = try launcher.launch(uv: uv, cwd: paths.coreDir, env: coreEnvironment(base: env, uv: uv))
             handle.onExit { [weak self] _ in
                 Task { @MainActor in await self?.tick() }
             }
