@@ -206,7 +206,7 @@ TEST(hello_has_device_id_and_protocol) {
   CHECK(length > 0);
   const std::string json(buffer, length);
   CHECK(json.find("\"device_id\":\"AA:BB:CC:DD:EE:FF\"") != std::string::npos);
-  CHECK(json.find("\"protocol\":2") != std::string::npos);
+  CHECK(json.find("\"protocol\":3") != std::string::npos);
   JsonDocument doc;
   CHECK(!deserializeJson(doc, buffer, length));
   CHECK_EQ(std::string(doc["type"] | ""), "hello");
@@ -246,4 +246,38 @@ TEST(decode_announce) {
   CHECK(cmd.type == ServerCommandType::Announce);
   CHECK_EQ(cmd.turn, 0x80000001u);
   CHECK(!decode("{\"type\":\"announce\"}", cmd));
+}
+
+// ---------- протокол v3 ----------
+
+TEST(hello_protocol_3) {
+  char buffer[192];
+  const size_t length = encodeHello("0.3.0", "AA:BB", buffer, sizeof(buffer));
+  CHECK(length > 0);
+  JsonDocument doc;
+  CHECK(!deserializeJson(doc, buffer, length));
+  CHECK_EQ(doc["protocol"].as<int>(), 3);
+}
+
+TEST(decode_listen) {
+  ServerCommand cmd{};
+  CHECK(decode("{\"type\":\"listen\",\"turn\":2147483650}", cmd));
+  CHECK(cmd.type == ServerCommandType::Listen);
+  CHECK_EQ(cmd.turn, 0x80000002u);
+  CHECK(!decode("{\"type\":\"listen\"}", cmd));
+}
+
+TEST(encode_busy) {
+  char buffer[128];
+  const size_t length = encodeClientEvent({ClientEventType::Busy, 7, UtteranceEndReason::Vad, 0.0f}, buffer, sizeof(buffer));
+  CHECK_EQ(std::string(buffer, length), "{\"type\":\"busy\",\"turn\":7}");
+}
+
+TEST(decode_tone_listen_attention) {
+  ServerCommand cmd{};
+  CHECK(decode(R"({"type":"tone","name":"listen"})", cmd));
+  CHECK(cmd.type == ServerCommandType::PlayTone);
+  CHECK(cmd.tone == Tone::Listen);
+  CHECK(decode(R"({"type":"tone","name":"attention"})", cmd));
+  CHECK(cmd.tone == Tone::Attention);
 }

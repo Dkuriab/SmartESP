@@ -123,13 +123,34 @@ void Session::onServerCommand(const ServerCommand& command) {
     case ServerCommandType::Announce:
       // Объявление по инициативе сервера: принимаем только в покое и при связи.
       // Ход серверный; ждём reply_start, как после вопроса.
-      if (state_ == SessionState::Idle && connected_) {
-        turn_ = command.turn;
-        Action action{};
-        action.type = ActionType::SetActiveTurn;
-        action.turn = turn_;
-        push(action);
-        enter(SessionState::Waiting);
+      if (state_ == SessionState::Idle) {
+        if (connected_) {
+          turn_ = command.turn;
+          Action action{};
+          action.type = ActionType::SetActiveTurn;
+          action.turn = turn_;
+          push(action);
+          enter(SessionState::Waiting);
+        }
+      } else {
+        pushEventFor(ClientEventType::Busy, command.turn);
+      }
+      break;
+    case ServerCommandType::Listen:
+      // Ядро просит слушать: как после слова, но без события wake; ход серверный.
+      if (state_ == SessionState::Idle) {
+        if (connected_) {
+          turn_ = command.turn;
+          Action action{};
+          action.type = ActionType::SetActiveTurn;
+          action.turn = turn_;
+          push(action);
+          pushTone(Tone::Listen);
+          pushSimple(ActionType::StartCapture);
+          enter(SessionState::Listening);
+        }
+      } else {
+        pushEventFor(ClientEventType::Busy, command.turn);
       }
       break;
   }
@@ -237,6 +258,13 @@ void Session::pushEvent(ClientEventType type, UtteranceEndReason reason) {
   Action action{};
   action.type = ActionType::SendEvent;
   action.event = ClientEvent{type, turn_, reason, type == ClientEventType::Wake ? pendingLevel_ : 0.0f};
+  push(action);
+}
+
+void Session::pushEventFor(ClientEventType type, uint32_t turn) {
+  Action action{};
+  action.type = ActionType::SendEvent;
+  action.event = ClientEvent{type, turn, UtteranceEndReason::Vad, 0.0f};
   push(action);
 }
 

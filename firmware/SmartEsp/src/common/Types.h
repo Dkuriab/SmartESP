@@ -27,6 +27,8 @@ enum class Tone : uint8_t {
   Wake,      // слово услышано
   Error,     // ошибка: нет связи, нет ответа
   Thinking,  // ждём ответ
+  Listen,    // колонка сама начала слушать (команда listen)
+  Attention, // перед объявлением ядра
 };
 
 // ---------- события ESP → сервер ----------
@@ -44,6 +46,7 @@ enum class ClientEventType : uint8_t {
   UtteranceEnd,
   BargeIn,
   PlaybackDone,
+  Busy,  // ответ на announce/listen, когда колонка занята
 };
 
 struct ClientEvent {
@@ -64,11 +67,12 @@ enum class ServerCommandType : uint8_t {
   PlayTone,
   CancelTurn,  // ядро отменило ход
   Announce,    // ядро само начинает ответ
+  Listen,      // ядро просит слушать (вопрос от самой колонки)
 };
 
 struct ServerCommand {
   ServerCommandType type;
-  uint32_t turn;  // для StopListening, ReplyStart, ReplyEnd, CancelTurn, Announce; иначе 0
+  uint32_t turn;  // для StopListening, ReplyStart, ReplyEnd, CancelTurn, Announce, Listen; иначе 0
   float volume;   // для Volume, 0..1
   Tone tone;      // для PlayTone
 };

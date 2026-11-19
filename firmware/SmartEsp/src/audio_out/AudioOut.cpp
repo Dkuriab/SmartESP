@@ -29,7 +29,10 @@ struct ToneShape {
 
 ToneShape shapeOf(Tone tone) {
   switch (tone) {
-    case Tone::Wake: return {WAKE_TONE, sizeof(WAKE_TONE) / sizeof(WAKE_TONE[0])};
+    // Временно: Listen и Attention звучат как Wake (настоящие звуки — позже).
+    case Tone::Wake:
+    case Tone::Listen:
+    case Tone::Attention: return {WAKE_TONE, sizeof(WAKE_TONE) / sizeof(WAKE_TONE[0])};
     case Tone::Error: return {ERROR_TONE, sizeof(ERROR_TONE) / sizeof(ERROR_TONE[0])};
     case Tone::Thinking: return {THINKING_TONE, sizeof(THINKING_TONE) / sizeof(THINKING_TONE[0])};
   }

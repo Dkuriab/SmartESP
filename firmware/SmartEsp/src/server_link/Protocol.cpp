@@ -7,7 +7,7 @@
 namespace {
 
 constexpr int SAMPLE_RATE = 16000;
-constexpr int PROTOCOL_VERSION = 2;
+constexpr int PROTOCOL_VERSION = 3;
 
 const char* eventTypeName(ClientEventType type) {
   switch (type) {
@@ -15,6 +15,7 @@ const char* eventTypeName(ClientEventType type) {
     case ClientEventType::UtteranceEnd: return "utterance_end";
     case ClientEventType::BargeIn: return "barge_in";
     case ClientEventType::PlaybackDone: return "playback_done";
+    case ClientEventType::Busy: return "busy";
   }
   return "";
 }
@@ -53,6 +54,10 @@ bool readTone(const char* name, Tone& tone) {
     tone = Tone::Error;
   } else if (strcmp(name, "thinking") == 0) {
     tone = Tone::Thinking;
+  } else if (strcmp(name, "listen") == 0) {
+    tone = Tone::Listen;
+  } else if (strcmp(name, "attention") == 0) {
+    tone = Tone::Attention;
   } else {
     return false;
   }
@@ -111,6 +116,9 @@ bool decodeServerCommand(const char* json, size_t length, ServerCommand& out) {
     if (!readTurn(doc, cmd.turn)) return false;
   } else if (strcmp(type, "announce") == 0) {
     cmd.type = ServerCommandType::Announce;
+    if (!readTurn(doc, cmd.turn)) return false;
+  } else if (strcmp(type, "listen") == 0) {
+    cmd.type = ServerCommandType::Listen;
     if (!readTurn(doc, cmd.turn)) return false;
   } else if (strcmp(type, "stop_playback") == 0) {
     cmd.type = ServerCommandType::StopPlayback;

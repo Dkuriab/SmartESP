@@ -7,7 +7,7 @@
 
 #include "../common/Types.h"
 
-// {"type":"hello","fw":...,"device_id":...,"protocol":2,"sample_rate":16000,
+// {"type":"hello","fw":...,"device_id":...,"protocol":3,"sample_rate":16000,
 //  "format":"pcm_s16le","channels":1}
 // deviceId — MAC Wi-Fi строкой. Возвращает длину JSON без завершающего нуля;
 // 0 — не хватило места.

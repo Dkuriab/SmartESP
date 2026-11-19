@@ -367,11 +367,73 @@ TEST(announce_from_idle) {
   CHECK(session.state() == SessionState::Idle);
 }
 
-TEST(announce_when_busy_ignored) {
+TEST(announce_when_busy_sends_busy) {
   Session session = listeningSession();
   session.onServerCommand(server(ServerCommandType::Announce, 0x80000001u));
-  CHECK(drain(session).empty());
+  CHECK(sameActions(drain(session), {sendEvent(ClientEventType::Busy, 0x80000001u)}));
   CHECK(session.state() == SessionState::Listening);
+}
+
+TEST(listen_from_idle) {
+  Session session = connectedSession();
+  session.onServerCommand(server(ServerCommandType::Listen, 0x80000001u));
+  CHECK(sameActions(drain(session), {setActiveTurn(0x80000001u), playTone(Tone::Listen),
+                                     simple(ActionType::StartCapture)}));
+  CHECK(session.state() == SessionState::Listening);
+  CHECK_EQ(session.turn(), 0x80000001u);
+}
+
+TEST(listen_then_speech) {
+  Session session = connectedSession();
+  session.onServerCommand(server(ServerCommandType::Listen, 0x80000001u));
+  drain(session);
+  session.onVoiceEvent(voice(VoiceEventType::SpeechStart));
+  session.onVoiceEvent(voice(VoiceEventType::SpeechEnd));
+  CHECK(sameActions(drain(session), {simple(ActionType::StopCapture),
+                                     sendEvent(ClientEventType::UtteranceEnd, 0x80000001u, UtteranceEndReason::Vad)}));
+  CHECK(session.state() == SessionState::Waiting);
+}
+
+TEST(listen_no_speech) {
+  Session session = connectedSession(1000);
+  session.onServerCommand(server(ServerCommandType::Listen, 0x80000001u));
+  drain(session);
+  session.loop(1000 + 5000);
+  CHECK(sameActions(drain(session), {simple(ActionType::StopCapture),
+                                     sendEvent(ClientEventType::UtteranceEnd, 0x80000001u, UtteranceEndReason::NoSpeech),
+                                     setActiveTurn(0)}));
+  CHECK(session.state() == SessionState::Idle);
+}
+
+TEST(listen_when_busy_sends_busy) {
+  Session session = speakingSession();
+  session.onServerCommand(server(ServerCommandType::Listen, 0x80000002u));
+  CHECK(sameActions(drain(session), {sendEvent(ClientEventType::Busy, 0x80000002u)}));
+  CHECK(session.state() == SessionState::Speaking);
+  CHECK_EQ(session.turn(), 1u);
+}
+
+TEST(listen_when_disconnected_ignored) {
+  Session session;
+  session.begin(SessionConfig{});
+  session.onServerCommand(server(ServerCommandType::Listen, 0x80000001u));
+  CHECK(drain(session).empty());
+  CHECK(session.state() == SessionState::Idle);
+}
+
+TEST(wake_after_listen_turn_uses_local_counter) {
+  Session session = connectedSession();
+  session.onServerCommand(server(ServerCommandType::Listen, 0x80000001u));
+  session.onVoiceEvent(voice(VoiceEventType::SpeechStart));
+  session.onVoiceEvent(voice(VoiceEventType::SpeechEnd));
+  session.onServerCommand(server(ServerCommandType::ReplyStart, 0x80000001u));
+  session.onServerCommand(server(ServerCommandType::ReplyEnd, 0x80000001u));
+  session.loop(3000);
+  drain(session);
+  CHECK(session.state() == SessionState::Idle);
+  session.onVoiceEvent(voice(VoiceEventType::WakeWord));
+  CHECK(sameActions(drain(session), {playTone(Tone::Wake), setActiveTurn(1), sendEvent(ClientEventType::Wake, 1),
+                                     simple(ActionType::StartCapture)}));
 }
 
 TEST(announce_when_disconnected_ignored) {

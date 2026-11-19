@@ -3,7 +3,8 @@
 // session — сценарий колонки (дизайн, раздел 5): ожидание → слушаем вопрос →
 // ждём ответ → говорим, перебивание словом, таймауты.
 // Команды сервера: cancel_turn (тихий возврат в Idle), announce (из Idle сразу
-// в ожидание reply_start), thinking-тон в Waiting продлевает ожидание ответа.
+// в ожидание reply_start), listen (из Idle сразу слушать вопрос; ход серверный).
+// Если announce/listen пришли не в Idle — отвечаем событием busy с их номером хода, thinking-тон в Waiting продлевает ожидание ответа.
 // Чистая логика: не трогает железо и сеть, только выдаёт «действия»,
 // которые SmartEsp.ino передаёт модулям. Время передаётся снаружи,
 // поэтому модуль тестируется на ноутбуке (tools/host_tests).
@@ -52,6 +53,7 @@ class Session {
   void push(const Action& action);
   void pushSimple(ActionType type);
   void pushEvent(ClientEventType type, UtteranceEndReason reason = UtteranceEndReason::Vad);
+  void pushEventFor(ClientEventType type, uint32_t turn);
   void pushTone(Tone tone);
 
   SessionConfig config_{};
