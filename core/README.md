@@ -17,6 +17,9 @@ uv sync
 
 `mlx-whisper` тянет `torch` — установка долгая, это нормально.
 
+Для голосовых сообщений через API (Telegram) нужен `ffmpeg`: `brew install ffmpeg`.
+Без него всё остальное работает, а `POST /api/v1/ask/voice` отвечает 503.
+
 ## Проверка
 
 ```
@@ -287,12 +290,56 @@ curl -X PATCH -H "Authorization: Bearer $(cat ~/SmartEsp/token)" \
 | `GET /voices` | голоса: `{kind, voice, title, size_mb, downloaded, current}` |
 | `POST /voices/download` | `{kind, voice}` → 202, `{change_id, status: "accepted"}`; ход скачивания — события `voice_download`, `voice_ready`. Голоса нет в каталоге `GET /voices` — 422 (`status: "invalid"`, текст в `error`), ядро останавливается — 503 (`status: "stopping"`) |
 | `POST /voices/preview` | `{kind, voice, style="normal", text=null}` → `audio/wav` (16 кГц, 16 бит, моно); голос не скачан (или ещё качается) — 409, неизвестный голос — 404, модель не озвучила образец — 500; тело ошибки `{detail}` |
-| `GET /turns?limit=100` | последние ходы (данные `turn_finished`: `turn_id`, `device_id`, `device_name`, `text`, `annotations`, `style`, `answer`, `status`, `path`, `delegations`, `tools`, `at` — время конца хода в секундах Unix, `stt_ms`, `first_text_ms`, `first_audio_ms`), от новых к старым; ядро хранит 100 последних в памяти |
+| `GET /turns?limit=100` | последние ходы (данные `turn_finished`: `turn_id`, `device_id`, `device_name`, `text`, `annotations`, `style`, `answer`, `status`, `path`, `delegations`, `tools`, `at` — время конца хода в секундах Unix, `stt_ms`, `first_text_ms`, `first_audio_ms`, `origin` — `wake`, `listen`, `core` или `api`, у хода через API ещё `source` и `person`), от новых к старым; ядро хранит 100 последних в памяти |
+| `POST /ask` | ход через API текстом: `{text, person="", source="api"}` → `{answer, turn_id}` (см. «Ход через API») |
+| `POST /ask/voice` | ход через API голосом: multipart `audio` (OGG/Opus или WAV, до 10 МБ), `person`, `source` → `{answer, turn_id}` |
 | `GET /access` | `{urls}` — адреса `http://<ip>:<порт>/?token=…` для входа с других компьютеров сети (без `127.*`) |
 | `POST /restart` | перезапуск ядра, ответ 202 |
 | `WS /events?token=` | поток событий JSON `{"kind", "data", "at"}`: `core_state`, `device_connected`, `device_disconnected`, `wake`, `arbitration`, `turn_started`, `turn_heard`, `executor_active`, `tool_call`, `turn_finished`, `change_applied`, `voice_download`, `voice_ready` |
 
 Схема OpenAPI для интерфейса: `uv run python -m smartesp --openapi ../ui/openapi.json`.
+
+### Ход через API
+
+`POST /api/v1/ask` и `POST /api/v1/ask/voice` — разговор с Кузей не с колонки, а
+программой (Telegram-бот, скрипт). Ход идёт тем же путём, что с колонки:
+обработчики (время и др.), сеть исполнителей с инструментами и передачами,
+общая история, — но без звука: ответ приходит текстом.
+
+- **Текст:** `{"text": "Который час?", "person": "Аня", "source": "telegram"}`.
+  `text` — непустой (до 4000 символов); `person` — кто спрашивает (до 64
+  символов, можно пусто); `source` — откуда (`a-z`, цифры, `_`, `-`; по
+  умолчанию `api`).
+- **Голос:** `multipart/form-data` с файлом `audio` (OGG/Opus, как у Telegram,
+  или WAV; до 10 МБ) и полями `person`, `source`. Звук разбирает `ffmpeg`
+  (ищется в `PATH`, затем `/opt/homebrew/bin`, `/usr/local/bin`;
+  `brew install ffmpeg`) в 16 кГц моно, дальше — то же распознавание, что у
+  колонок.
+- **Ответ 200:** `{"answer": "…", "turn_id": "api7"}`. Нечего распознать — честное
+  «Не расслышала.»; исполнитель не ответил — «Не получилось ответить, попробуй
+  ещё раз.».
+- **Срок:** весь ход — не дольше 55 с (клиенту хватает своих 60 с), включая
+  передачу задачи большой модели. Не уложились — к сказанному добавляется
+  «Не успела ответить, спроси попозже.»; запоздавший ответ не откладывается и
+  на колонках не объявляется.
+- **Ошибки:** 401 — токен; 413 — звук больше 10 МБ; 422 — неверный запрос или
+  звук не разобрать (`{"detail": "…"}` по-русски); 503 — ядро ещё греется,
+  останавливается или нет `ffmpeg`.
+- **Лента:** ход виден как обычный, с `origin: "api"`, источником вместо колонки
+  («Telegram») и именем человека; номера ходов свои — `api1`, `api2`, … Ходы
+  через API идут параллельно с ходами колонок и им не мешают.
+
+```
+curl -H "Authorization: Bearer $(cat ~/SmartEsp/token)" -H "Content-Type: application/json" \
+  -d '{"text": "Который час?", "person": "Аня", "source": "telegram"}' http://127.0.0.1:8765/api/v1/ask
+curl -H "Authorization: Bearer $(cat ~/SmartEsp/token)" -F audio=@voice.ogg -F person=Аня \
+  -F source=telegram http://127.0.0.1:8765/api/v1/ask/voice
+```
+
+**Telegram-бот** — отдельная программа-клиент этого API (`../clients/telegram/`):
+создать бота, вписать токены и допущенных людей и запустить — по
+[`clients/telegram/README.md`](../clients/telegram/README.md). Коротко: ядро
+запущено, затем `cd clients/telegram && uv sync && uv run telegram-bot`.
 
 ## Остановка и перезапуск
 
