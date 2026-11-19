@@ -111,4 +111,16 @@ describe('Feed', () => {
     view.rerender(<Feed turns={turns} executors={executors} selectedId={1} onSelect={vi.fn()} full />)
     expect(screen.getByRole('dialog', { name: 'Ход' })).toHaveClass('turn-card', 'turn-card-full')
   })
+
+  it('объявление: пометка «сам», текст ответа без вопроса', () => {
+    setup([makeTurn(1, { turn_id: 'a3', kind: 'announcement', origin: 'core', text: '', answer: 'Пора пить воду' })])
+    expect(screen.getByText('сам')).toBeInTheDocument()
+    expect(screen.getByText('Пора пить воду')).toBeInTheDocument()
+  })
+
+  it('не доставлено и ответ на вопрос Кузи', () => {
+    setup([makeTurn(2, { status: 'undelivered' }), makeTurn(1, { origin: 'listen' })])
+    expect(screen.getByText('не доставлено')).toBeInTheDocument()
+    expect(screen.getByText('ответ на вопрос Кузи')).toBeInTheDocument()
+  })
 })

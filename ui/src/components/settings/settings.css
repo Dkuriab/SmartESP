@@ -297,3 +297,10 @@
 .set-fine.link-hint {
   margin: 0;
 }
+
+.set-speech {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}

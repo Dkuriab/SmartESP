@@ -106,4 +106,16 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('Применяется…')).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: 'Включён' })).toBeDisabled()
   })
+
+  it('колонка со старой прошивкой в сети — подсказка обновить', () => {
+    const old = [{ ...devices[0]!, protocol: 2 }]
+    setup({ kind: 'device', id: 'aa:bb' }, { status: makeStatus({ devices: old }) })
+    expect(screen.getByText('Обновите прошивку, чтобы Кузя мог говорить сам')).toBeInTheDocument()
+  })
+
+  it('подсказки нет: новая прошивка или колонка не в сети', () => {
+    const fresh = [{ ...devices[0]!, protocol: 3 }, { ...devices[1]!, protocol: 2 }]
+    setup({ kind: 'device', id: 'aa:bb' }, { status: makeStatus({ devices: fresh }) })
+    expect(screen.queryByText(/Обновите прошивку/)).not.toBeInTheDocument()
+  })
 })

@@ -24,8 +24,16 @@ export default function TurnCard({ turn, executors, full = false, onClose }: Pro
           ×
         </button>
       </div>
-      <div className="card-text">{turn.text}</div>
+      {turn.kind === 'announcement' ? (
+        <div className="line">
+          <span className="tag p">сам</span>
+        </div>
+      ) : (
+        <div className="card-text">{turn.text}</div>
+      )}
       <div className="line">
+        {turn.origin === 'listen' && <span className="tag">ответ на вопрос Кузи</span>}
+        {turn.status === 'undelivered' && <span className="tag err">не доставлено</span>}
         {turn.annotations.map((a, i) => (
           <span key={i} className="tag" title={a.source}>
             {a.text}

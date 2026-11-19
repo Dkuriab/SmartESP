@@ -31,9 +31,19 @@ export default function TurnRow({ turn, executors, selected, onSelect }: Props) 
       <span className="when cut">{turn.device_name || turn.device_id}</span>
       <span className="msg-body">
         <span className="line">
-          <span className="cut q" title={turn.text}>
-            {turn.text}
-          </span>
+          {turn.kind === 'announcement' ? (
+            <>
+              <span className="tag p">сам</span>
+              <span className="cut q" title={turn.answer}>
+                {turn.answer}
+              </span>
+            </>
+          ) : (
+            <span className="cut q" title={turn.text}>
+              {turn.text}
+            </span>
+          )}
+          {turn.origin === 'listen' && <span className="tag">ответ на вопрос Кузи</span>}
           {turn.annotations.map((a, i) => (
             <span key={i} className="tag" title={a.source}>
               {a.text}
@@ -44,10 +54,13 @@ export default function TurnRow({ turn, executors, selected, onSelect }: Props) 
           ))}
           {turn.style === 'quiet' && <span className="tag p">тихо</span>}
           {turn.status === 'error' && <span className="tag err">ошибка</span>}
+          {turn.status === 'undelivered' && <span className="tag err">не доставлено</span>}
         </span>
-        <span className="cut route" title={turn.answer}>
-          {turn.answer}
-        </span>
+        {turn.kind !== 'announcement' && (
+          <span className="cut route" title={turn.answer}>
+            {turn.answer}
+          </span>
+        )}
       </span>
       {timing && <span className="timing">{timing}</span>}
     </button>

@@ -8,6 +8,7 @@ import type { ExecutorPatch } from '../../state/executors'
 import type { CoreState } from '../../state/model'
 import { APPLYING, CommitField, FinalPrompt, ModelField, PromptField } from './ExecutorFields'
 import LinkRows from './LinkRows'
+import SpeechSettings from './SpeechSettings'
 
 type Props = { state: CoreState; actions: CoreActions; executor: ExecutorItem }
 
@@ -61,6 +62,7 @@ export default function ExecutorSettings({ state, actions, executor: e }: Props)
       <CommitField key={`desc:${e.description}`} label="Описание" value={e.description} placeholder="Когда ко мне обращаться" disabled={applying} onCommit={(description) => update({ description })} />
       <PromptField key={e.systemPrompt} current={e.systemPrompt} applying={applying} onSave={(systemPrompt) => update({ systemPrompt })} />
       <LinkRows executor={e} others={others} disabled={applying} noTools={noTools} onLink={(to, on, when) => void actions.setLink(e.id, to, on, when)} />
+      {e.entry && <SpeechSettings state={state} actions={actions} />}
       {final !== undefined && <FinalPrompt text={final} />}
       {!e.entry && <RemoveButton name={e.name || e.id} disabled={applying} onRemove={() => void actions.removeExecutor(e.id)} />}
     </div>

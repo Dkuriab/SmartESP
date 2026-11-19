@@ -3,6 +3,9 @@ import { useState } from 'react'
 import type { Device } from '../../state/model'
 import { formatClock } from '../feed/time'
 
+/** С этой версии протокола колонка принимает речь, начатую ядром. */
+const MIN_SPEECH_PROTOCOL = 3
+
 type Props = { device: Device; onRename: (name: string) => void }
 
 /** Адрес без порта: «IP:port» и «[IPv6]:port»; голый IPv6 (много «:») — как есть. */
@@ -53,6 +56,9 @@ export default function DeviceSettings({ device, onRename }: Props) {
           <span className="val-text">{value}</span>
         </div>
       ))}
+      {device.connected && device.protocol < MIN_SPEECH_PROTOCOL && (
+        <div className="set-note">Обновите прошивку, чтобы Кузя мог говорить сам</div>
+      )}
     </div>
   )
 }
