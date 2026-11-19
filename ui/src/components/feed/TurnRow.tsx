@@ -1,9 +1,11 @@
-// Строка хода: колонка, вопрос, пометки, ответ, стиль, задержки, ошибка.
+// Строка хода: колонка, вопрос, пометки, передачи, ответ, стиль, задержки, ошибка.
 import type { Turn } from '../../state/model'
 import './feed.css'
+import type { ExecutorName } from './names'
+import { executorName } from './names'
 import { formatTime } from './time'
 
-type Props = { turn: Turn; selected: boolean; onSelect: (id: Turn['turn_id']) => void }
+type Props = { turn: Turn; executors: ExecutorName[]; selected: boolean; onSelect: (id: Turn['turn_id']) => void }
 
 /** Задержки «stt / первый звук», мс; нет данных — прочерк. */
 function delays(turn: Turn): string | null {
@@ -11,7 +13,12 @@ function delays(turn: Turn): string | null {
   return `${turn.stt_ms ?? '—'} / ${turn.first_audio_ms ?? '—'} мс`
 }
 
-export default function TurnRow({ turn, selected, onSelect }: Props) {
+/** Цели передач хода по порядку, без повторов. */
+function targets(turn: Turn): string[] {
+  return [...new Set(turn.delegations.map((d) => d.to))]
+}
+
+export default function TurnRow({ turn, executors, selected, onSelect }: Props) {
   const timing = delays(turn)
   return (
     <button
@@ -31,6 +38,9 @@ export default function TurnRow({ turn, selected, onSelect }: Props) {
             <span key={i} className="tag" title={a.source}>
               {a.text}
             </span>
+          ))}
+          {targets(turn).map((to) => (
+            <span key={to} className="tag handoff">{`→ ${executorName(executors, to)}`}</span>
           ))}
           {turn.style === 'quiet' && <span className="tag p">тихо</span>}
           {turn.status === 'error' && <span className="tag err">ошибка</span>}

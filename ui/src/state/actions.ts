@@ -3,7 +3,7 @@ import type { createClient } from '../api/client'
 import type { Config, Notice, Selection } from './model'
 import type { Dispatch } from './request'
 import type { Executor, ExecutorPatch } from './executors'
-import { executorsOf, withAdded, withLink, withRemoved, withUpdated } from './executors'
+import { executorsOf, nextExecutorId, withAdded, withLink, withRemoved, withUpdated } from './executors'
 import { send, sendNotify } from './request'
 
 export type Client = ReturnType<typeof createClient>
@@ -24,12 +24,12 @@ export type CoreActions = {
   renameDevice(id: string, name: string): Promise<void>
   setStages(list: StageEntry[]): Promise<void>
   setDispatcher(patch: DispatcherPatch): Promise<void>
-  /** Новый исполнитель executor-N с моделью входного. */
-  addExecutor(): Promise<void>
+  /** Новый исполнитель executor-N с моделью входного; его id, если правка принята, иначе null. */
+  addExecutor(): Promise<string | null>
   updateExecutor(id: string, patch: ExecutorPatch): Promise<void>
-  /** Убирает исполнителя и ссылки на него; входного убрать нельзя. */
+  /** Убирает исполнителя и ссылки на него; входной и неизвестный — ничего не шлёт. */
   removeExecutor(id: string): Promise<void>
-  /** Включает/выключает связь from → to; when — условие передачи. */
+  /** Включает/выключает связь from → to; when — условие передачи. На себя и с неизвестным — ничего не шлёт. */
   setLink(from: string, to: string, enabled: boolean, when: string): Promise<void>
   restart(): Promise<void>
   /** Адреса для входа из сети; ошибка — пустой список. */
@@ -65,10 +65,12 @@ async function restartCore(client: Client, dispatch: Dispatch): Promise<void> {
 /** Создаёт действия поверх клиента; в тестах клиент поддельный. */
 export function createActions(deps: ActionDeps): CoreActions {
   const { client, dispatch, getConfig, onToken, now = Date.now } = deps
-  async function patchConfig(patch: Record<string, unknown>, description: string) {
+  /** PATCH настроек; true — ядро приняло правку. */
+  async function sendPatch(patch: Record<string, unknown>, description: string): Promise<boolean> {
     const outcome = await sendNotify(dispatch, () => client.PATCH('/api/v1/config', { body: patch }))
-    if (!outcome.ok) return
+    if (!outcome.ok) return false
     dispatch({ type: 'changeSent', changeId: outcome.data.change_id, description, at: now() })
+    return true
   }
 
   async function previewVoice(kind: string, voice: string, style: string): Promise<Blob> {
@@ -79,22 +81,32 @@ export function createActions(deps: ActionDeps): CoreActions {
     return outcome.data
   }
 
-  /** Шлёт весь список executors после правки; настроек ещё нет — уведомление. */
-  async function changeExecutors(change: (list: Executor[]) => Executor[], description: string) {
+  /**
+   * Шлёт весь список executors после правки; true — правка принята.
+   * Настроек ещё нет — уведомление; правка ничего не меняет (тот же список) — ничего не шлёт.
+   */
+  async function changeExecutors(change: (list: Executor[]) => Executor[], description: string): Promise<boolean> {
     const list = executorsOf(getConfig()?.effective)
     if (!list) {
       dispatch({ type: 'notice', notice: { text: 'Настройки ещё не загружены', tone: 'error' } })
-      return
+      return false
     }
-    await patchConfig({ executors: change(list) }, description)
+    const next = change(list)
+    return next === list ? false : sendPatch({ executors: next }, description)
   }
 
-  const updateExecutor = (id: string, patch: ExecutorPatch) =>
-    changeExecutors((list) => withUpdated(list, id, patch), 'Исполнитель')
+  async function addExecutor(): Promise<string | null> {
+    const id = nextExecutorId(executorsOf(getConfig()?.effective) ?? [])
+    return (await changeExecutors(withAdded, 'Новый исполнитель')) ? id : null
+  }
 
-  function setDispatcher(patch: DispatcherPatch) {
+  async function updateExecutor(id: string, patch: ExecutorPatch) {
+    await changeExecutors((list) => withUpdated(list, id, patch), 'Исполнитель')
+  }
+
+  async function setDispatcher(patch: DispatcherPatch) {
     const entry = executorsOf(getConfig()?.effective)?.find((e) => e.entry === true)
-    return changeExecutors(
+    await changeExecutors(
       (list) => withUpdated(list, String(entry?.id), { model: patch.model, systemPrompt: patch.system_prompt }),
       'Диспетчер',
     )
@@ -106,22 +118,33 @@ export function createActions(deps: ActionDeps): CoreActions {
   }
 
   return {
-    patchConfig,
+    async patchConfig(patch, description) {
+      await sendPatch(patch, description)
+    },
     previewVoice,
     setDispatcher,
     updateExecutor,
-    addExecutor: () => changeExecutors(withAdded, 'Новый исполнитель'),
-    removeExecutor: (id) => changeExecutors((list) => withRemoved(list, id), 'Исполнитель удалён'),
-    setLink: (from, to, enabled, when) =>
-      changeExecutors((list) => withLink(list, from, to, enabled, when), 'Связь исполнителей'),
+    addExecutor,
+    async removeExecutor(id) {
+      await changeExecutors((list) => withRemoved(list, id), 'Исполнитель удалён')
+    },
+    async setLink(from, to, enabled, when) {
+      await changeExecutors((list) => withLink(list, from, to, enabled, when), 'Связь исполнителей')
+    },
     loadAccess,
     async downloadVoice(kind, voice) {
       dispatch({ type: 'downloadRequested', kind, voice })
       await sendNotify(dispatch, () => client.POST('/api/v1/voices/download', { body: { kind, voice } }))
     },
-    selectVoice: (kind, voice) => patchConfig({ tts: { kind, voice } }, `Голос ${voice}`),
-    renameDevice: (id, name) => patchConfig({ devices: { [id]: { name } } }, `Имя колонки: ${name}`),
-    setStages: (list) => patchConfig({ stages: list }, 'Обработчики'),
+    async selectVoice(kind, voice) {
+      await sendPatch({ tts: { kind, voice } }, `Голос ${voice}`)
+    },
+    async renameDevice(id, name) {
+      await sendPatch({ devices: { [id]: { name } } }, `Имя колонки: ${name}`)
+    },
+    async setStages(list) {
+      await sendPatch({ stages: list }, 'Обработчики')
+    },
     restart: () => restartCore(client, dispatch),
     setToken: onToken,
     select: (selected) => dispatch({ type: 'select', selected }),

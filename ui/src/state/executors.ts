@@ -35,11 +35,22 @@ export function withUpdated(list: Executor[], id: string, patch: ExecutorPatch):
   return list.map((e) => (e.id === id ? { ...e, ...changes } : e))
 }
 
-/** Новый исполнитель: первый свободный executor-N, модель входного. */
-export function withAdded(list: Executor[]): Executor[] {
+/** Номер N первого свободного id executor-N. */
+function freeNumber(list: Executor[]): number {
   const ids = new Set(list.map((e) => e.id))
   let n = 1
   while (ids.has(`executor-${n}`)) n += 1
+  return n
+}
+
+/** id, который получит следующий исполнитель (executor-N). */
+export function nextExecutorId(list: Executor[]): string {
+  return `executor-${freeNumber(list)}`
+}
+
+/** Новый исполнитель: первый свободный executor-N, модель входного. */
+export function withAdded(list: Executor[]): Executor[] {
+  const n = freeNumber(list)
   const entry = list.find((e) => e.entry === true)
   const added: Executor = {
     id: `executor-${n}`,
@@ -54,16 +65,22 @@ export function withAdded(list: Executor[]): Executor[] {
   return [...list, added]
 }
 
-/** Без исполнителя id и без ссылок на него; входного убрать нельзя (список прежний). */
+/** Без исполнителя id и без ссылок на него; входного и неизвестного убрать нельзя (тот же список). */
 export function withRemoved(list: Executor[], id: string): Executor[] {
-  if (list.find((e) => e.id === id)?.entry === true) return list
+  const target = list.find((e) => e.id === id)
+  if (!target || target.entry === true) return list
   return list
     .filter((e) => e.id !== id)
     .map((e) => (delegatesOf(e).some((d) => d.to === id) ? { ...e, delegates: delegatesOf(e).filter((d) => d.to !== id) } : e))
 }
 
-/** Включает/выключает связь from → to; when задаёт условие (у существующей связи — меняет). */
+/**
+ * Включает/выключает связь from → to; when задаёт условие (у существующей связи — меняет).
+ * Связь на себя или с неизвестным исполнителем — тот же список без изменений.
+ */
 export function withLink(list: Executor[], from: string, to: string, enabled: boolean, when: string): Executor[] {
+  const known = (id: string) => list.some((e) => e.id === id)
+  if (from === to || !known(from) || !known(to)) return list
   return list.map((e) => {
     if (e.id !== from) return e
     const rest = delegatesOf(e).filter((d) => d.to !== to)

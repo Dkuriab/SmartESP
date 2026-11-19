@@ -1,6 +1,7 @@
 // Каркас экрана: плавающие панели поверх холста в точку; на узком экране
 // боковые панели открываются поверх схемы кнопками «Список» и «Настройки».
 import { useState } from 'react'
+import { listExecutors } from '../../schema/blocks'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState } from '../../state/model'
 import Notice from '../common/Notice'
@@ -47,7 +48,7 @@ export default function Shell({ state, actions }: Props) {
           <SettingsPanel state={state} actions={actions} />
         </aside>
       )}
-      <Feed turns={state.turns} selectedId={state.selectedTurnId} onSelect={actions.selectTurn} full={full} />
+      <Feed turns={state.turns} executors={listExecutors(state)} selectedId={state.selectedTurnId} onSelect={actions.selectTurn} full={full} />
       <TopBar state={state} tab={tab} onTab={setTab} overlay={full ? undefined : overlay} onOverlay={setOverlay} />
       {state.status?.restart_required && (
         <RestartBanner onRestart={() => void actions.restart()} restarting={state.restarting} online={state.connection === 'online'} />

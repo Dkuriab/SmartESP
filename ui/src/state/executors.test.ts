@@ -63,10 +63,26 @@ describe('executor actions', () => {
     expect(sent()).toEqual([{ ...entry, delegates: [] }])
   })
 
-  it('входного не удаляет', async () => {
-    const { actions, sent } = setup(cfg([entry, big]))
+  it('входного и неизвестного не удаляет: ни PATCH, ни «применяется»', async () => {
+    const { actions, client } = setup(cfg([entry, big]))
     await actions.removeExecutor('dispatcher')
-    expect(sent().map((e) => e.id)).toEqual(['dispatcher', 'big'])
+    await actions.removeExecutor('nobody')
+    expect(client.PATCH).not.toHaveBeenCalled()
+  })
+
+  it('setLink на себя и на неизвестного — ничего не шлёт', async () => {
+    const { actions, client } = setup(cfg([entry, big]))
+    await actions.setLink('dispatcher', 'dispatcher', true, 'x')
+    await actions.setLink('dispatcher', 'nobody', true, 'x')
+    await actions.setLink('nobody', 'big', true, 'x')
+    expect(client.PATCH).not.toHaveBeenCalled()
+  })
+
+  it('addExecutor отдаёт id нового исполнителя; без настроек — null', async () => {
+    const { actions } = setup(cfg([entry, big]))
+    expect(await actions.addExecutor()).toBe('executor-1')
+    const none = setup(makeConfig({ executors: [] }))
+    expect(await none.actions.addExecutor()).toBeNull()
   })
 
   it('setLink включает, меняет when и выключает', async () => {

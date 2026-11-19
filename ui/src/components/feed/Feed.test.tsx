@@ -3,9 +3,11 @@ import userEvent from '@testing-library/user-event'
 import { makeTurn } from '../fixtures'
 import Feed from './Feed'
 
+const executors = [{ id: 'big', name: 'Большая модель' }]
+
 function setup(turns = [makeTurn(2), makeTurn(1)]) {
   const onSelect = vi.fn()
-  const view = render(<Feed turns={turns} selectedId={null} onSelect={onSelect} />)
+  const view = render(<Feed turns={turns} executors={executors} selectedId={null} onSelect={onSelect} />)
   return { onSelect, ...view }
 }
 
@@ -46,6 +48,32 @@ describe('Feed', () => {
     expect(screen.getByText('ошибка')).toBeInTheDocument()
   })
 
+  it('ход с передачей — метка «→ <имя цели>», неизвестная цель — по id', () => {
+    const delegations = [
+      { from: 'dispatcher', to: 'big', task: 'посчитай', auto: false },
+      { from: 'big', to: 'ghost', task: 'проверь', auto: true },
+    ]
+    setup([makeTurn(1, { delegations })])
+    expect(screen.getByText('→ Большая модель')).toBeInTheDocument()
+    expect(screen.getByText('→ ghost')).toBeInTheDocument()
+  })
+
+  it('ход без передачи — без метки', () => {
+    setup([makeTurn(1)])
+    expect(screen.queryByText(/→/)).not.toBeInTheDocument()
+  })
+
+  it('карточка: «Передано <имя>: <задача>», «(автоматически)» при auto', () => {
+    const delegations = [
+      { from: 'dispatcher', to: 'big', task: 'посчитай интеграл', auto: false },
+      { from: 'dispatcher', to: 'big', task: 'ещё раз', auto: true },
+    ]
+    render(<Feed turns={[makeTurn(1, { delegations })]} executors={executors} selectedId={1} onSelect={vi.fn()} />)
+    const card = screen.getByRole('dialog')
+    expect(within(card).getByText('Передано Большая модель: посчитай интеграл')).toBeInTheDocument()
+    expect(within(card).getByText('Передано Большая модель: ещё раз (автоматически)')).toBeInTheDocument()
+  })
+
   it('показывает время хода HH:MM:SS в местном времени', () => {
     const at = new Date(2024, 0, 2, 9, 5, 7).getTime() / 1000
     setup([makeTurn(1, { at })])
@@ -61,7 +89,7 @@ describe('Feed', () => {
   it('выделенный ход открывает карточку с полным текстом', () => {
     const long = 'в'.repeat(2000)
     const turns = [makeTurn(1, { text: long, answer: 'о'.repeat(1500) })]
-    render(<Feed turns={turns} selectedId={1} onSelect={vi.fn()} />)
+    render(<Feed turns={turns} executors={executors} selectedId={1} onSelect={vi.fn()} />)
     const card = screen.getByRole('dialog')
     expect(within(card).getByText(/\d\d:\d\d:\d\d/)).toBeInTheDocument()
     expect(within(card).getByText(long)).toBeInTheDocument()
@@ -70,17 +98,17 @@ describe('Feed', () => {
 
   it('закрытие карточки снимает выделение', async () => {
     const onSelect = vi.fn()
-    render(<Feed turns={[makeTurn(1)]} selectedId={1} onSelect={onSelect} />)
+    render(<Feed turns={[makeTurn(1)]} executors={executors} selectedId={1} onSelect={onSelect} />)
     await userEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
     expect(onSelect).toHaveBeenCalledWith(null)
   })
 
   it('карточка хода — внутри ленты, в полной ленте тоже', () => {
     const turns = [makeTurn(1)]
-    const view = render(<Feed turns={turns} selectedId={1} onSelect={vi.fn()} />)
+    const view = render(<Feed turns={turns} executors={executors} selectedId={1} onSelect={vi.fn()} />)
     expect(screen.getByRole('dialog', { name: 'Ход' })).toHaveClass('turn-card')
     expect(screen.getByRole('dialog', { name: 'Ход' })).not.toHaveClass('turn-card-full')
-    view.rerender(<Feed turns={turns} selectedId={1} onSelect={vi.fn()} full />)
+    view.rerender(<Feed turns={turns} executors={executors} selectedId={1} onSelect={vi.fn()} full />)
     expect(screen.getByRole('dialog', { name: 'Ход' })).toHaveClass('turn-card', 'turn-card-full')
   })
 })

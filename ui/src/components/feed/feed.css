@@ -111,6 +111,12 @@
   color: var(--red-text);
 }
 
+/* Передача задачи другому исполнителю. */
+.tag.handoff {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+
 .route {
   color: var(--muted);
   font-size: 12px;
@@ -156,6 +162,11 @@
 .card-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.card-handoff {
+  margin-top: 8px;
+  color: var(--accent-text);
 }
 
 /* Узкий экран: лента во всю ширину, карточка хода — внутри ленты. */

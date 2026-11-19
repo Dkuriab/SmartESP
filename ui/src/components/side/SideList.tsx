@@ -1,6 +1,6 @@
-// Левая панель: колонки, обработчики, диспетчер и голос; клик выбирает блок.
+// Левая панель: колонки, обработчики, исполнители и голос; клик выбирает блок.
 import type { ReactNode } from 'react'
-import { dispatcherInfo, listDevices, listExecutors, listStages, stagesLocked, stagesWith, voiceLabel } from '../../schema/blocks'
+import { isApplying, listDevices, listExecutors, listStages, stagesLocked, stagesWith, voiceLabel } from '../../schema/blocks'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState, Selection } from '../../state/model'
 import AccessInfo from '../common/AccessInfo'
@@ -71,15 +71,32 @@ function Stages(props: Props) {
   )
 }
 
+/** Исполнители (входной первым) и «Добавить»: новый исполнитель сразу выбирается. */
+function Executors(props: Props) {
+  const { state, actions } = props
+  const add = async () => {
+    const id = await actions.addExecutor()
+    if (id) actions.select({ kind: 'executor', id })
+  }
+  return (
+    <Section title="Исполнители">
+      {listExecutors(state).map((e) => (
+        <Row key={e.id} icon={e.entry ? '⚡️' : '🧠'} label={e.name || e.id} sub={e.model || '—'} target={{ kind: 'executor', id: e.id }} props={props} />
+      ))}
+      <button type="button" className="btn small side-add" disabled={isApplying(state) || state.config === null} onClick={() => void add()}>
+        Добавить
+      </button>
+    </Section>
+  )
+}
+
 export default function SideList(props: Props) {
   const { state, actions } = props
   return (
     <>
       <Devices {...props} />
       <Stages {...props} />
-      <Section title="Диспетчер">
-        <Row icon="⚡️" label="Диспетчер" sub={dispatcherInfo(state)?.model || '—'} target={{ kind: 'executor', id: listExecutors(state).find((e) => e.entry)?.id ?? 'dispatcher' }} props={props} />
-      </Section>
+      <Executors {...props} />
       <Section title="Голос">
         <Row icon="🔈" label="Голос" sub={voiceLabel(state) ?? '—'} target={{ kind: 'voice', id: 'voice' }} props={props} />
       </Section>

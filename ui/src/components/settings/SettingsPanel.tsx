@@ -3,7 +3,7 @@ import { isApplying, listDevices, listExecutors, listStages, stagesLocked, stage
 import type { CoreActions } from '../../state/actions'
 import type { CoreState } from '../../state/model'
 import DeviceSettings from './DeviceSettings'
-import DispatcherSettings from './DispatcherSettings'
+import ExecutorSettings from './ExecutorSettings'
 import StageSettings from './StageSettings'
 import VoiceSettings from './VoiceSettings'
 import './settings.css'
@@ -27,11 +27,13 @@ export default function SettingsPanel({ state, actions }: Props) {
     const onToggle = (on: boolean) => void actions.setStages(stagesWith(state, stage.kind, on))
     return <StageSettings stage={stage} applying={isApplying(state)} locked={stagesLocked(state)} onToggle={onToggle} />
   }
-  if (selected?.kind === 'dispatcher') return <DispatcherSettings state={state} actions={actions} />
-  if (selected?.kind === 'executor') {
-    // настройки исполнителя — задача 9; входной пока открывает панель диспетчера
-    const entry = listExecutors(state).find((e) => e.id === selected.id)?.entry
-    return entry ? <DispatcherSettings state={state} actions={actions} /> : <p className="set-hint">Настройки исполнителя — скоро</p>
+  if (selected?.kind === 'executor' || selected?.kind === 'dispatcher') {
+    // прежний выбор «dispatcher» — это входной исполнитель
+    const list = listExecutors(state)
+    const executor = selected.kind === 'dispatcher' ? list.find((e) => e.entry) : list.find((e) => e.id === selected.id)
+    if (!executor) return hint
+    // key: черновики полей не переходят к другому исполнителю
+    return <ExecutorSettings key={executor.id} state={state} actions={actions} executor={executor} />
   }
   if (selected?.kind === 'voice') return <VoiceSettings state={state} actions={actions} />
   return hint

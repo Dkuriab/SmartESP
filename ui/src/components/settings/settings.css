@@ -237,3 +237,36 @@
   white-space: pre-wrap;
   color: var(--muted);
 }
+
+/* «Может передавать:» — строка связи: флажок с именем цели, условие ниже. */
+.link-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.link-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.link-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link-when {
+  width: 100%;
+  text-align: left;
+}
+
+.btn-danger {
+  margin-top: 14px;
+  background: var(--red-bg);
+  color: var(--red-text);
+}

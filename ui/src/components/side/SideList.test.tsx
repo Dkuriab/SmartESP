@@ -47,15 +47,46 @@ describe('SideList', () => {
     expect(within(section('Обработчики')).getByRole('switch', { name: 'Шёпот' })).toBeDisabled()
   })
 
-  it('диспетчер и голос показывают модель и голос, выбираются кликом', async () => {
+  it('голос показывает текущий голос, выбирается кликом', async () => {
     const { actions } = setup({ selected: { kind: 'voice', id: 'voice' } })
-    const dispatcher = screen.getByRole('button', { name: /Диспетчер/ })
-    expect(dispatcher).toHaveTextContent('qwen3')
     const voice = screen.getByRole('button', { name: /Голос/ })
     expect(voice).toHaveTextContent('piper · irina')
     expect(voice).toHaveAttribute('aria-pressed', 'true')
-    await userEvent.click(dispatcher)
+    await userEvent.click(voice)
+    expect(actions.select).toHaveBeenCalledWith({ kind: 'voice', id: 'voice' })
+  })
+
+  it('исполнители: имя (или id) и модель, входной первым, клик выбирает', async () => {
+    const executors = [
+      { id: 'big', name: 'Большая модель', entry: false, model: 'gpt-oss' },
+      { id: 'dispatcher', name: 'Диспетчер', entry: true, model: 'qwen3' },
+      { id: 'executor-1', name: '', entry: false, model: 'gemma3' },
+    ]
+    const { actions } = setup({ config: makeConfig({ executors }), selected: { kind: 'executor', id: 'big' } })
+    const rows = within(section('Исполнители')).getAllByRole('button').filter((b) => b.classList.contains('row-main'))
+    expect(rows.map((r) => r.textContent)).toEqual(['⚡️Диспетчерqwen3', '🧠Большая модельgpt-oss', '🧠executor-1gemma3'])
+    expect(rows[1]).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(rows[0]!)
     expect(actions.select).toHaveBeenCalledWith({ kind: 'executor', id: 'dispatcher' })
+  })
+
+  it('«Добавить» создаёт исполнителя и выбирает его', async () => {
+    const { actions } = setup()
+    vi.mocked(actions.addExecutor).mockResolvedValue('executor-1')
+    await userEvent.click(within(section('Исполнители')).getByRole('button', { name: 'Добавить' }))
+    expect(actions.addExecutor).toHaveBeenCalledTimes(1)
+    expect(actions.select).toHaveBeenCalledWith({ kind: 'executor', id: 'executor-1' })
+  })
+
+  it('«Добавить» не принят — выбор не меняется', async () => {
+    const { actions } = setup()
+    await userEvent.click(screen.getByRole('button', { name: 'Добавить' }))
+    expect(actions.select).not.toHaveBeenCalled()
+  })
+
+  it('«Добавить» заблокирована, пока применяется или нет настроек', () => {
+    setup({ pending: { 1: 'x' } })
+    expect(screen.getByRole('button', { name: 'Добавить' })).toBeDisabled()
   })
 
   it('внизу — «Доступ из сети»', async () => {
