@@ -1,0 +1,49 @@
+[project]
+name = "smartesp-telegram"
+version = "0.1.0"
+description = "Telegram-бот SmartESP: разговор с Кузей с телефона через API ядра"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "aiogram==3.31.0",
+    "aiohttp==3.14.5",
+    "httpx==0.28.1",
+    "zxing-cpp==3.1.1",
+    "pillow==13.0.0",
+]
+
+[project.scripts]
+telegram-bot = "telegram_bot.main:main"
+
+[build-system]
+requires = ["hatchling==1.33.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["telegram_bot"]
+
+[dependency-groups]
+dev = [
+    "pytest==9.2.0",
+    "pytest-asyncio==1.5.0",
+    "ruff==0.17.5",
+    "pyright==1.1.414",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.pyright]
+include = ["telegram_bot", "tests"]
+strict = ["telegram_bot"]
