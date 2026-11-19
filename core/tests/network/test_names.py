@@ -15,6 +15,13 @@ def test_phrase_without_final_period() -> None:
     assert named_target("Спрошу программиста", TARGETS) == CODER
 
 
+def test_leading_style_tag_ignored() -> None:
+    assert named_target("[style:quiet] Сейчас спрошу большую модель.", TARGETS) == BIG
+    text = "[style:quiet]" + " Сейчас спрошу большую модель, она точно знает ответ на этот сложный вопрос."
+    assert len(text) > 80 >= len(text) - len("[style:quiet]")
+    assert named_target(text, TARGETS) == BIG
+
+
 def test_case_and_spaces_ignored() -> None:
     assert named_target("  СЕЙЧАС СПРОШУ ПРОГРАММИСТА!  ", TARGETS) == CODER
 

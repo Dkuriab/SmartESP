@@ -12,6 +12,7 @@ _MIN_NAME_WORD = 3  # более короткие слова имени («и»,
 _WORD = re.compile(r"\w+")
 _SENTENCE_END = re.compile(r"[.!?…]")
 _EDGE = " \t\n«»\"'"
+_LEADING_TAG = re.compile(r"^\s*\[[^\]]*\]")  # метка вроде [style:quiet] в начале ответа
 
 
 def _words(text: str) -> list[str]:
@@ -41,14 +42,15 @@ def _mentions(phrase: list[str], name: str) -> bool:
 def named_target(text: str, targets: Sequence[Target]) -> Target | None:
     """Цель, которую исполнитель назвал во фразе без вызова инструмента, или None.
 
-    Правило: текст (без пробелов и кавычек по краям) — одно предложение не
+    Правило: текст (без метки вроде «[style:quiet]» в начале, без пробелов и
+    кавычек по краям) — одно предложение не
     длиннее 80 символов, то есть знаки «. ! ? …» есть только в конце. Сравнение
     без регистра, по основе: каждое слово имени цели длиной от 3 букв своими
     первыми max(4, len - 2) символами начинает какое-то слово фразы
     («большую модель» находит «Большая модель», «программиста» — «Программист»).
     Найдена ровно одна цель — она; ни одной или несколько — None.
     """
-    phrase = text.strip(_EDGE)
+    phrase = _LEADING_TAG.sub("", text, count=1).strip(_EDGE)
     if not _is_one_short_sentence(phrase):
         return None
     words = _words(phrase)

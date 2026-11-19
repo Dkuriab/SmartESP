@@ -1,5 +1,7 @@
 """Тесты сети исполнителей: id, модели участников, выгрузка и прогрев."""
 
+import asyncio
+
 import pytest
 
 from fakes.fake_executor import FakeExecutor, FakeOllama
@@ -53,3 +55,30 @@ async def test_warm_up_warms_only_entry() -> None:
 def test_unknown_entry_is_rejected() -> None:
     with pytest.raises(ValueError):
         ExecutorNetwork("nobody", {})
+
+
+async def test_warm_up_members_warms_others_concurrently_with_limit() -> None:
+    gate = asyncio.Event()
+    entry = FakeOllama([], "gemma")
+    big, slow = FakeOllama([], "deepseek"), FakeOllama([], "qwen", warm_gate=gate)
+    members = {
+        "dispatcher": member(entry, "Диспетчер", (BIG,)),
+        "big": member(big, "Большая модель"),
+        "slow": member(slow, "Медленная"),
+        "plain": member(FakeExecutor([]), "Без прогрева"),
+    }
+    result = await ExecutorNetwork("dispatcher", members).warm_up_members(timeout_s=0.05)
+    assert result.keys() == {"big", "slow"}
+    assert result["big"] is None
+    assert result["slow"]
+    assert (entry.warmed, big.warmed, slow.warmed) == (0, 1, 0)
+
+
+async def test_warm_up_members_reports_errors_without_raising() -> None:
+    class Broken(FakeOllama):
+        async def warm_up(self) -> None:
+            raise RuntimeError("модели нет")
+
+    members = {"dispatcher": member(FakeOllama([], "gemma"), "Диспетчер"), "big": member(Broken([]), "Б")}
+    result = await ExecutorNetwork("dispatcher", members).warm_up_members(timeout_s=1.0)
+    assert result == {"big": "модели нет"}

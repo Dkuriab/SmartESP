@@ -13,6 +13,7 @@ from smartesp.contracts import (
     Handoff,
     ReplyPart,
     ToolCall,
+    ToolSpec,
 )
 from smartesp.network import ExecutorNetwork, Member, Target
 
@@ -173,25 +174,34 @@ async def test_call_with_non_string_arguments_is_ignored() -> None:
     assert big.calls == []
 
 
-async def test_second_call_is_ignored(caplog: pytest.LogCaptureFixture) -> None:
-    entry = FakeExecutor([call(task="первая"), call(task="вторая"), "Лишний текст."])
+async def test_valid_call_closes_source_right_away() -> None:
+    entry = FakeExecutor(["Сейчас спрошу.", call(task="первая"), call(task="вторая"), "Лишний текст."])
     big = FakeExecutor(["4913."])
     parts = await collect(network(entry, big))
     assert [h.task for h in handoffs(parts)] == ["первая"]
-    assert texts(parts) == ["4913."]
+    assert texts(parts) == ["Сейчас спрошу.", "4913."]
+    assert parts[1].handoff is not None  # передача сразу после вызова
+    assert entry.closed_early  # остаток ответа не читался
     assert len(big.calls) == 1
-    assert any("втор" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
+
+
+async def test_bad_call_before_valid_one_is_skipped(caplog: pytest.LogCaptureFixture) -> None:
+    entry = FakeExecutor([call("nobody", "первая"), call(task="вторая")])
+    big = FakeExecutor(["4913."])
+    parts = await collect(network(entry, big))
+    assert [h.task for h in handoffs(parts)] == ["вторая"]
+    assert any("nobody" in r.getMessage() for r in caplog.records if r.levelname == "WARNING")
 
 
 async def test_target_error_becomes_failure_phrase() -> None:
     entry = FakeExecutor(["Сейчас спрошу большую модель.", call()])
     big = FakeExecutor(["Начало"], error=ExecutorError("нет модели"), error_after=1)
     parts = await collect(network(entry, big))
-    assert parts[-1] == ReplyPart("Не получилось спросить Большая модель.", failure=True)
+    assert parts[-1] == ReplyPart("Большая модель сейчас не отвечает.", failure=True)
     assert texts(parts) == [
         "Сейчас спрошу большую модель.",
         "Начало",
-        "Не получилось спросить Большая модель.",
+        "Большая модель сейчас не отвечает.",
     ]
 
 
@@ -228,6 +238,20 @@ async def test_tools_not_ok_means_no_tool_and_no_auto_handoff() -> None:
     assert big.calls == []
 
 
+async def test_tools_not_ok_drops_tools_passed_into_run() -> None:
+    lamp = ToolSpec("lamp", "Включить свет.", {"type": "object", "properties": {}})
+    entry = FakeExecutor(["Привет."])
+    _ = [p async for p in network(entry, tools_ok=False).run(QUESTION, [lamp])]
+    assert entry.tools == [()]
+
+
+async def test_tools_passed_into_run_go_before_delegate() -> None:
+    lamp = ToolSpec("lamp", "Включить свет.", {"type": "object", "properties": {}})
+    entry = FakeExecutor(["Привет."])
+    _ = [p async for p in network(entry, FakeExecutor([])).run(QUESTION, [lamp])]
+    assert [t.name for t in entry.tools[0]] == ["lamp", "delegate"]
+
+
 async def test_closing_mid_target_answer_closes_target_and_entry() -> None:
     entry = FakeExecutor(["Сейчас спрошу большую модель.", call()])
     big = FakeExecutor(["Первый.", "Второй.", "Третий."])
@@ -240,7 +264,7 @@ async def test_closing_mid_target_answer_closes_target_and_entry() -> None:
     assert isinstance(stream, AsyncGenerator)
     await stream.aclose()
     assert big.closed_early
-    assert not entry.closed_early  # входной дочитан до передачи
+    assert entry.closed_early  # поток входного закрыт сразу после вызова
 
 
 async def test_cancel_while_target_waits_closes_target() -> None:

@@ -27,7 +27,7 @@ _log = logging.getLogger(__name__)
 
 MAX_DEPTH = 2  # передач в одном ходе: диспетчер → A → B
 TASK_PREFIX = "\n\nЗадача от диспетчера: "  # дописывается к последнему сообщению user у цели
-FAILURE_PHRASE = "Не получилось спросить {name}."  # цель недоступна
+FAILURE_PHRASE = "{name} сейчас не отвечает."  # цель недоступна
 
 
 @dataclass(frozen=True)
@@ -87,13 +87,14 @@ class ExecutorNetwork:
       инструменты — с инструментом delegate (плюс tools из run);
     - текст и чужие вызовы инструментов отдаются как есть;
     - первый верный вызов delegate (цель из его связей, непустая задача) —
-      остаток ответа дочитывается и отбрасывается (второй вызов — в журнал),
-      затем ReplyPart(handoff=…) и куски цели;
+      поток участника сразу закрывается (модель перестаёт генерировать, что
+      было бы дальше — не читается), затем ReplyPart(handoff=…) и куски цели;
     - не было вызова, а весь ответ — короткая фраза с именем одной цели
       (named_target) — та же передача с auto=True и задачей = вопрос человека;
     - цель получает те же сообщения с дописанной задачей и свой инструмент,
       пока глубина передачи меньше max_depth; так же может передать дальше;
-    - ExecutorError цели — кусок «Не получилось спросить <имя>.» с failure;
+    - участник с tools_ok=False не получает никаких инструментов;
+    - ExecutorError цели — кусок «<Имя> сейчас не отвечает.» с failure;
       ExecutorError входного пробрасывается.
     """
 
@@ -128,7 +129,7 @@ class ExecutorNetwork:
         """
         member = self._members[member_id]
         offered = member.targets if member.tools_ok and depth < self._max_depth else ()
-        tools = (*extra_tools, delegate_tool(offered)) if offered else extra_tools
+        tools = _member_tools(member, offered, extra_tools)
         outcome = _Outcome()
         parts = self._own_parts(member_id, member.executor.run(own, tools), offered, outcome)
         async with _closing(parts):
@@ -152,16 +153,18 @@ class ExecutorNetwork:
         offered: tuple[Target, ...],
         outcome: _Outcome,
     ) -> AsyncIterator[ReplyPart]:
-        """Собственные куски участника; вызовы delegate перехватываются в outcome."""
+        """Собственные куски участника; вызовы delegate перехватываются в outcome.
+
+        Первый верный вызов завершает поток участника.
+        """
         async with _closing(stream):
             async for part in stream:
-                if outcome.handoff is not None:
-                    _ignore_after_handoff(source, part)
-                    continue
                 call = part.tool_call
                 if call is not None and call.name == DELEGATE_TOOL:
                     outcome.called = True
                     outcome.handoff = self._handoff(source, call, offered)
+                    if outcome.handoff is not None:
+                        return  # _closing закрывает поток: остаток ответа не нужен
                     continue
                 outcome.text.append(part.text)
                 yield part
@@ -210,6 +213,20 @@ class ExecutorNetwork:
         if isinstance(entry, WarmsUp):
             await entry.warm_up()
 
+    async def warm_up_members(self, timeout_s: float) -> dict[str, str | None]:
+        """Прогревает всех участников, кроме входного, одновременно; не бросает исключений.
+
+        timeout_s — предел прогрева каждого, секунды. Возвращает {id: None, если
+        прогрелся, иначе короткий текст ошибки} для участников, умеющих прогрев.
+        """
+        warmable = {
+            member_id: member.executor
+            for member_id, member in self._members.items()
+            if member_id != self.id and isinstance(member.executor, WarmsUp)
+        }
+        results = await asyncio.gather(*(_warm(i, e, timeout_s) for i, e in warmable.items()))
+        return dict(zip(warmable, results, strict=True))
+
     def models(self) -> frozenset[str]:
         """Объединение моделей всех участников."""
         names: set[str] = set()
@@ -230,10 +247,25 @@ class ExecutorNetwork:
         await asyncio.gather(*(executor.unload_models(mine, timeout_s) for executor, mine in jobs))
 
 
-def _ignore_after_handoff(source: str, part: ReplyPart) -> None:
-    """Куски после выбранной передачи не звучат; второй delegate — предупреждение в журнал."""
-    call = part.tool_call
-    if call is not None and call.name == DELEGATE_TOOL:
-        _log.warning("«%s»: второй вызов delegate в одном ответе проигнорирован: %r", source, call.arguments)
-    elif part.text:
-        _log.debug("«%s»: текст после вызова delegate отброшен: %r", source, part.text)
+def _member_tools(
+    member: Member, offered: tuple[Target, ...], extra_tools: tuple[ToolSpec, ...]
+) -> tuple[ToolSpec, ...]:
+    """Инструменты участника: без tools_ok — никаких; иначе extra_tools и delegate, если есть цели."""
+    if not member.tools_ok:
+        return ()
+    return (*extra_tools, delegate_tool(offered)) if offered else extra_tools
+
+
+async def _warm(member_id: str, executor: WarmsUp, timeout_s: float) -> str | None:
+    """Прогревает одного участника не дольше timeout_s; None — успех, иначе текст ошибки."""
+    try:
+        async with asyncio.timeout(timeout_s):
+            await executor.warm_up()
+    except TimeoutError:
+        error = f"не прогрелся за {timeout_s:g} с"
+    except Exception as exc:  # noqa: BLE001 — прогрев участника не должен ломать связку
+        error = str(exc) or type(exc).__name__
+    else:
+        return None
+    _log.warning("Исполнитель «%s» не прогрелся: %s", member_id, error)
+    return error
