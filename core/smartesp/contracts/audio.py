@@ -16,3 +16,4 @@ class Utterance:
     pcm: bytes  # s16le, 16 кГц, моно
     started_at: float  # time.monotonic() начала слова
     text: str = ""
+    origin: str = "wake"  # "wake" — ход по слову пробуждения; "listen" — колонку включило ядро

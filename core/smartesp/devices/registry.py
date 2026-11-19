@@ -13,6 +13,7 @@ class _Seen:
 
     remote: str
     fw: str
+    protocol: int
     last_seen: float
 
 
@@ -32,9 +33,9 @@ class DeviceRegistry:
         """Имя колонки или сам id."""
         return self._names.get(device_id, device_id)
 
-    def hello(self, device_id: str, remote: str, fw: str, now: float) -> None:
-        """Колонка поздоровалась: запоминает адрес, прошивку и время."""
-        self._seen[device_id] = _Seen(remote, fw, now)
+    def hello(self, device_id: str, remote: str, fw: str, protocol: int, now: float) -> None:
+        """Колонка поздоровалась: запоминает адрес, прошивку, версию протокола и время."""
+        self._seen[device_id] = _Seen(remote, fw, protocol, now)
 
     def touch(self, device_id: str, now: float) -> None:
         """Пришёл кадр от колонки: обновляет last_seen."""
@@ -55,6 +56,7 @@ class DeviceRegistry:
                     remote=seen.remote if seen else "",
                     fw=seen.fw if seen else "",
                     last_seen=seen.last_seen if seen else None,
+                    protocol=seen.protocol if seen else 0,
                 )
             )
         return sorted(infos, key=lambda i: (i.name, i.device_id))

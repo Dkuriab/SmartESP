@@ -36,26 +36,26 @@ async def eventually(condition: Callable[[], bool], timeout: float = 1.0) -> Non
 
 
 async def connect(
-    hub: DeviceHub, device_id: str | None, remote: str = "10.0.0.7:5000"
+    hub: DeviceHub, device_id: str | None, remote: str = "10.0.0.7:5000", protocol: int = 2
 ) -> tuple[FakeConnection, asyncio.Task[None]]:
-    """Подключает поддельную колонку и шлёт hello (v2 с device_id или v1 без него)."""
+    """Подключает поддельную колонку и шлёт hello (v2+ с device_id или v1 без него)."""
     conn = FakeConnection(remote)
     task = asyncio.create_task(hub.handle(conn))
     if device_id is None:
         conn.feed_json("hello", fw="1.0")
     else:
-        conn.feed_json("hello", fw="2.0", device_id=device_id, protocol=2)
+        conn.feed_json("hello", fw="2.0", device_id=device_id, protocol=protocol)
     return conn, task
 
 
 async def accepted_turn(
-    hub: DeviceHub, clock: FakeClock, device_id: str, turn: int = 1, turn_id: int = 1
+    hub: DeviceHub, clock: FakeClock, device_id: str, turn: int = 1, turn_id: int = 1, protocol: int = 2
 ) -> tuple[FakeConnection, asyncio.Task[None]]:
     """Подключает колонку, шлёт wake хода колонки turn и ждёт, пока хаб примет его.
 
     turn_id — ожидаемый номер хода в хабе: хаб выдаёт их по порядку принятия, с 1.
     """
-    conn, task = await connect(hub, device_id)
+    conn, task = await connect(hub, device_id, protocol=protocol)
     conn.feed_json("wake", turn=turn, level=-30.0)
     await asyncio.sleep(0.01)
     clock.now += WINDOW_S + 0.1

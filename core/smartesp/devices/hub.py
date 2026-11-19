@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import itertools
 import logging
 import time
 from collections.abc import AsyncIterator, Callable, Coroutine, Iterable
@@ -13,8 +12,9 @@ from smartesp.contracts import DeviceInfo, EventSink, Utterance
 
 from .arbiter import Arbiter, Decision
 from .connection import DeviceConnection, close_quietly
-from .messages import BargeIn, PlaybackDone, UtteranceEnd, Wake, cancel_turn, parse_message, tone
+from .messages import BargeIn, Busy, PlaybackDone, UtteranceEnd, Wake, cancel_turn, parse_message, tone
 from .playback import send_reply
+from .proactive import REPLY_GRACE_S, CoreTurns
 from .registry import DeviceRegistry
 from .session import ActiveTurn, Recording, Session, wait_hello
 
@@ -24,14 +24,15 @@ NO_SPEECH = "no_speech"
 logger = logging.getLogger(__name__)
 
 
-class DeviceHub:
-    """Все подключённые колонки. Реализует DevicePort из contracts.
+class DeviceHub(CoreTurns):
+    """Все подключённые колонки. Реализует DevicePort из contracts (ходы ядра — в CoreTurns).
 
     Номер хода (Utterance.turn и аргумент turn в is_active/play) — номер хода в хабе:
     уникален на всё время жизни хаба, выдаётся при принятии хода (1, 2, 3…). Номера
     колонки (ESP) после перезагрузки снова начинаются с 1, поэтому наружу не выдаются;
     хаб переводит свой номер в номер колонки только в кадрах reply_start/reply_end/
-    cancel_turn. Ход заменённой или отключённой сессии больше никогда не активен.
+    cancel_turn. Ходы ядра (announce, listen) колонка получает с номером 0x80000000 | n.
+    Ход заменённой или отключённой сессии больше никогда не активен.
     """
 
     def __init__(
@@ -43,21 +44,19 @@ class DeviceHub:
         *,
         events: EventSink | None = None,
         wall_clock: Callable[[], float] = time.time,
+        reply_grace_s: float = REPLY_GRACE_S,
     ) -> None:
         """window_s, late_s — окна арбитра; names — имена колонок по id; clock — часы (секунды).
 
-        events — приёмник событий (None — без событий); wall_clock — настенные часы для last_seen.
+        events — приёмник событий (None — без событий); wall_clock — настенные часы для last_seen;
+        reply_grace_s — запас сверх длительности объявления на ожидание playback_done.
         """
-        self._arbiter = Arbiter(window_s, late_s)
+        super().__init__(Arbiter(window_s, late_s), clock, reply_grace_s)
         self._registry = DeviceRegistry(names)
         self._events = events
         self._wall_clock = wall_clock
-        self._accepting = True
-        self._clock = clock
-        self._sessions: dict[str, Session] = {}
         self._utterances: asyncio.Queue[Utterance] = asyncio.Queue()
         self._poll_task: asyncio.Task[None] | None = None
-        self._turn_ids = itertools.count(1)
         self._background: set[asyncio.Task[object]] = set()  # отправки, которых никто не ждёт
 
     async def handle(self, conn: DeviceConnection) -> None:
@@ -181,7 +180,7 @@ class DeviceHub:
         old = self._sessions.get(session.device_id)
         self._sessions[session.device_id] = session
         remote = session.conn.remote
-        self._registry.hello(session.device_id, remote, fw, self._wall_clock())
+        self._registry.hello(session.device_id, remote, fw, session.protocol, self._wall_clock())
         logger.info("device %s connected from %s", session.device_id, remote)
         info = {"device_id": session.device_id, "name": self.device_name(session.device_id)}
         self._publish("device_connected", {**info, "remote": remote, "fw": fw})
@@ -202,13 +201,7 @@ class DeviceHub:
         session.closed = True
         session.recording = None
         if session.active is not None:
-            self._end_turn(session, session.active.esp_turn)
-
-    def _end_turn(self, session: Session, esp_turn: int) -> None:
-        """Заканчивает активный ход колонки esp_turn (если он активен) и сообщает арбитру."""
-        if session.active is not None and session.active.esp_turn == esp_turn:
-            session.active = None
-            self._arbiter.on_turn_finished(session.device_id, esp_turn)
+            self._end_turn(session, session.active.esp_turn, "lost")
 
     # --- входящие кадры ---
 
@@ -224,16 +217,20 @@ class DeviceHub:
             self._on_wake(session, message)
         elif isinstance(message, UtteranceEnd):
             self._on_utterance_end(session, message)
-        elif isinstance(message, BargeIn | PlaybackDone):
-            self._end_turn(session, message.turn)
+        elif isinstance(message, BargeIn):
+            self._end_turn(session, message.turn, "interrupted")
+        elif isinstance(message, PlaybackDone):
+            self._end_turn(session, message.turn, "delivered")
+        elif isinstance(message, Busy):
+            self._on_busy(session, message.turn)
 
     def _on_wake(self, session: Session, wake: Wake) -> None:
         """Новый ход: прежний заканчивается, звук копится, решает арбитр. При остановке — сразу отмена."""
         if not self._accepting:
             self._send_cancel(session, wake.turn)
             return
-        if session.active is not None:
-            self._end_turn(session, session.active.esp_turn)
+        if session.active is not None:  # без barge_in: прежний ход колонка не играла (ход ядра — повторить)
+            self._end_turn(session, session.active.esp_turn, "busy")
         self._publish("wake", {"device_id": session.device_id, "level": wake.level})
         now = self._clock()
         session.recording = Recording(esp_turn=wake.turn, started_at=now)
@@ -246,7 +243,7 @@ class DeviceHub:
             return
         if end.reason == NO_SPEECH:
             session.recording = None
-            self._end_turn(session, end.turn)
+            self._end_turn(session, end.turn, "lost")
             return
         recording.ended = True
         if recording.turn_id is not None:
@@ -256,7 +253,8 @@ class DeviceHub:
         """Готовый вопрос принятого хода → очередь Utterance (turn — номер хода в хабе)."""
         session.recording = None
         pcm = bytes(recording.pcm)
-        self._utterances.put_nowait(Utterance(session.device_id, turn_id, pcm, recording.started_at))
+        utterance = Utterance(session.device_id, turn_id, pcm, recording.started_at, origin=recording.origin)
+        self._utterances.put_nowait(utterance)
 
     # --- решения арбитра ---
 
@@ -279,6 +277,7 @@ class DeviceHub:
         self._publish("arbitration", {"device_id": decision.device_id, "decision": "accept"})
         recording.turn_id = next(self._turn_ids)
         session.active = ActiveTurn(turn_id=recording.turn_id, esp_turn=decision.turn)
+        self._last_active = decision.device_id
         if recording.ended:
             self._emit(session, recording, recording.turn_id)
 
@@ -291,5 +290,5 @@ class DeviceHub:
             return
         if session.recording is not None and session.recording.esp_turn == decision.turn:
             session.recording = None
-        self._end_turn(session, decision.turn)
+        self._end_turn(session, decision.turn, "interrupted")
         self._send_cancel(session, decision.turn)

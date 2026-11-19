@@ -2,7 +2,7 @@
 
 from .audio import SAMPLE_RATE, Utterance
 from .control import ChangeResult, ConfigStore, CorePort, Section, VoicePort
-from .device import DeviceInfo, DevicePort
+from .device import Delivery, DeviceInfo, DevicePort
 from .events import CoreEvent, EventFeed, EventSink, Subscription
 from .executor import (
     DELEGATE_TOOL,
@@ -32,6 +32,7 @@ __all__ = [
     "ConfigStore",
     "CorePort",
     "CoreEvent",
+    "Delivery",
     "DeviceInfo",
     "DevicePort",
     "EventFeed",

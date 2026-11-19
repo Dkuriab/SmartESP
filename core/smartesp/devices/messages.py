@@ -50,7 +50,14 @@ class PlaybackDone:
     turn: int
 
 
-DeviceMessage = Hello | Wake | UtteranceEnd | BargeIn | PlaybackDone
+@dataclass(frozen=True)
+class Busy:
+    """Колонка не приняла announce/listen хода turn: она не в покое (протокол 3)."""
+
+    turn: int
+
+
+DeviceMessage = Hello | Wake | UtteranceEnd | BargeIn | PlaybackDone | Busy
 
 
 def _turn(data: dict[str, Any]) -> int | None:
@@ -120,12 +127,18 @@ def _parse_playback_done(data: dict[str, Any]) -> PlaybackDone | None:
     return None if turn is None else PlaybackDone(turn)
 
 
+def _parse_busy(data: dict[str, Any]) -> Busy | None:
+    turn = _turn(data)
+    return None if turn is None else Busy(turn)
+
+
 _PARSERS = {
     "hello": _parse_hello,
     "wake": _parse_wake,
     "utterance_end": _parse_utterance_end,
     "barge_in": _parse_barge_in,
     "playback_done": _parse_playback_done,
+    "busy": _parse_busy,
 }
 
 
@@ -154,6 +167,16 @@ def reply_start(turn: int) -> str:
 def reply_end(turn: int) -> str:
     """Кадр «ответ закончен» для хода turn."""
     return _encode({"type": "reply_end", "turn": turn})
+
+
+def announce(turn: int) -> str:
+    """Кадр «сейчас будет объявление хода ядра turn»: колонка ждёт reply_start."""
+    return _encode({"type": "announce", "turn": turn})
+
+
+def listen(turn: int) -> str:
+    """Кадр «слушай вопрос хода ядра turn»: звук «слушаю» и запись, без wake."""
+    return _encode({"type": "listen", "turn": turn})
 
 
 def cancel_turn(turn: int) -> str:

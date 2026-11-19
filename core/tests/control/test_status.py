@@ -12,7 +12,7 @@ from smartesp.control import RESTART_SECTIONS
 
 async def test_status_collects_summary() -> None:
     h = Harness()
-    h.device_list = [DeviceInfo("aa", "Кухня", True, "192.168.1.5", "1.0", 50.0)]
+    h.device_list = [DeviceInfo("aa", "Кухня", True, "192.168.1.5", "1.0", 50.0, 3)]
     h.now = 112.5
     status = await h.core.status()
     assert status == {
@@ -28,6 +28,7 @@ async def test_status_collects_summary() -> None:
                 "remote": "192.168.1.5",
                 "fw": "1.0",
                 "last_seen": 50.0,
+                "protocol": 3,
             }
         ],
         "voice": {"kind": "silero", "voice": "xenia", "state": "ready", "error": None},

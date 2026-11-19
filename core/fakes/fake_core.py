@@ -56,6 +56,7 @@ class FakeCore:
                     "remote": "10.0.0.5:1234",
                     "fw": "1.0",
                     "last_seen": 1.0,
+                    "protocol": 3,
                 }
             ],
             "voice": self.voice_state,

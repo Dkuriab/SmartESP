@@ -23,6 +23,7 @@ class DeviceOut(BaseModel):
     remote: str  # адрес последней сессии «хост:порт»; колонку ещё не видели — ""
     fw: str
     last_seen: float | None = None
+    protocol: int = 0  # версия протокола последней сессии; 0 — колонку ещё не видели
 
 
 class VoiceStateOut(BaseModel):

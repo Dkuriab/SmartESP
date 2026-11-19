@@ -58,6 +58,10 @@ class Arbiter:
         self._candidates = {}
         return decisions
 
+    def on_turn_started(self, device_id: str, turn: int) -> None:
+        """Ход принят в обход окна (прослушивание по команде ядра): новый ход другой колонки его отменит."""
+        self._active[device_id] = turn
+
     def on_turn_finished(self, device_id: str, turn: int) -> None:
         """Ход закончился или отменён; неизвестный ход игнорируется."""
         if self._active.get(device_id) == turn:

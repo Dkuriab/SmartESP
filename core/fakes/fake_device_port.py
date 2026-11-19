@@ -1,4 +1,4 @@
-"""Подделка порта колонок: очередь реплик, запись проигранного звука и сигналов."""
+"""Подделка порта колонок: очередь реплик, запись проигранного звука, сигналов и ходов ядра."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass
 
-from smartesp.contracts import Utterance
+from smartesp.contracts import Delivery, Utterance
 
 
 @dataclass
@@ -19,11 +19,26 @@ class PlayCall:
     finished: bool  # True — дошли до конца потока (настоящий хаб шлёт reply_end)
 
 
+@dataclass
+class AnnounceCall:
+    """Один вызов announce: колонка, весь звук объявления и выданный итог."""
+
+    device_id: str
+    audio: bytes
+    result: Delivery
+
+
 class FakeDevicePort:
     def __init__(self, names: dict[str, str] | None = None) -> None:
         self.plays: list[PlayCall] = []
         self.tones: list[tuple[str, str]] = []
         self.inactive: set[tuple[str, int]] = set()  # ходы, ставшие неактуальными
+        self.proactive: set[str] = set()  # колонки v3: подключены и умеют речь по инициативе
+        self.deliveries: list[Delivery] = []  # итоги следующих announce по порядку; кончились — delivered
+        self.announces: list[AnnounceCall] = []
+        self.listens: list[str] = []  # колонки, которым ушёл listen
+        self.listen_afters: list[tuple[str, int]] = []
+        self.last_active: str | None = None  # что вернёт last_active_device
         self._names = names or {}
         self._utterances: asyncio.Queue[Utterance] = asyncio.Queue()
         self._changed = asyncio.Condition()
@@ -70,3 +85,40 @@ class FakeDevicePort:
 
     def device_name(self, device_id: str) -> str:
         return self._names.get(device_id, device_id)
+
+    async def wait_announces(self, count: int) -> None:
+        """Ждёт, пока announce завершится count раз."""
+        async with self._changed:
+            await self._changed.wait_for(lambda: len(self.announces) >= count)
+
+    def supports_proactive(self, device_id: str) -> bool:
+        return device_id in self.proactive
+
+    async def announce(self, device_id: str, audio: AsyncIterator[bytes]) -> Delivery:
+        # Колонка не v3 — lost без звука, как у хаба; иначе забирает весь звук.
+        received: list[bytes] = []
+        try:
+            if device_id in self.proactive:
+                received = [chunk async for chunk in audio]
+        finally:
+            if isinstance(audio, AsyncGenerator):
+                await audio.aclose()
+        result: Delivery = "lost"
+        if device_id in self.proactive:
+            result = self.deliveries.pop(0) if self.deliveries else "delivered"
+        self.announces.append(AnnounceCall(device_id, b"".join(received), result))
+        async with self._changed:
+            self._changed.notify_all()
+        return result
+
+    async def listen(self, device_id: str) -> bool:
+        if device_id not in self.proactive:
+            return False
+        self.listens.append(device_id)
+        return True
+
+    async def listen_after(self, device_id: str, turn: int) -> None:
+        self.listen_afters.append((device_id, turn))
+
+    def last_active_device(self) -> str | None:
+        return self.last_active

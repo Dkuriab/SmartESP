@@ -4,11 +4,14 @@ import json
 
 from smartesp.devices import (
     BargeIn,
+    Busy,
     Hello,
     PlaybackDone,
     UtteranceEnd,
     Wake,
+    announce,
     cancel_turn,
+    listen,
     parse_message,
     reply_end,
     reply_start,
@@ -57,6 +60,16 @@ def test_parse_rejects_bad_turn_and_level() -> None:
     assert parse_message('{"type":"wake","turn":1,"level":true}') is None
     assert parse_message('{"type":"utterance_end","turn":1}') is None
     assert parse_message('{"type":"hello"}') is None
+
+
+def test_parse_busy() -> None:
+    assert parse_message('{"type":"busy","turn":2147483649}') == Busy(2147483649)
+    assert parse_message('{"type":"busy"}') is None
+
+
+def test_encode_announce_and_listen() -> None:
+    assert announce(2147483649) == '{"type":"announce","turn":2147483649}'
+    assert listen(2147483650) == '{"type":"listen","turn":2147483650}'
 
 
 def test_encode_cancel_turn() -> None:
