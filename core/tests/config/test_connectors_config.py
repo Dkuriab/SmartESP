@@ -10,20 +10,21 @@ from smartesp.config import Config, ConfigFile, ConnectorConfig, load_config
 REPO = Path(__file__).resolve().parents[3]  # core/tests/config → корень репозитория
 
 
-def test_defaults_are_our_five_connectors() -> None:
+def test_defaults_are_our_connectors() -> None:
     connectors = Config().connectors
-    assert [c.id for c in connectors] == ["notes", "calc", "timers", "weather", "food"]
+    ids = ["notes", "calc", "timers", "weather", "food", "mac_media", "claude_tasks"]
+    assert [c.id for c in connectors] == ids
     for c in connectors:
+        script = f"{c.id.replace('_', '-')}-mcp"
         assert c.command == "uv"
-        assert c.args == ["run", "--project", f"{{repo}}/connectors/{c.id}", f"{c.id}-mcp"]
-        assert c.enabled
+        assert c.args == ["run", "--project", f"{{repo}}/connectors/{c.id}", script]
+        assert c.enabled == (c.id != "claude_tasks")  # задачам Клоду нужны папки владельца
         assert c.name
         project = Path(c.expanded().args[2])
         assert project == REPO / "connectors" / c.id
-        assert (project / "pyproject.toml").exists()
-    weather = next(c for c in connectors if c.id == "weather")
-    assert weather.env == {"WEATHER_PLACE": ""}
-    assert all(c.env == {} for c in connectors if c.id != "weather")
+        assert f"{script} = " in (project / "pyproject.toml").read_text(encoding="utf-8")
+    env = {c.id: c.env for c in connectors if c.env}
+    assert env == {"weather": {"WEATHER_PLACE": ""}, "claude_tasks": {"CLAUDE_TASK_FOLDERS": ""}}
 
 
 def test_defaults_file_keeps_repo_placeholder(tmp_path: Path) -> None:
@@ -48,7 +49,7 @@ def test_expanded_replaces_placeholder_and_keeps_absolute_paths() -> None:
 def test_owner_file_without_connectors_gets_defaults(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text("version: 3\nhistory:\n  max_turns: 5\n", encoding="utf-8")
-    assert [c.id for c in load_config(path).connectors] == ["notes", "calc", "timers", "weather", "food"]
+    assert [c.id for c in load_config(path).connectors] == [c.id for c in Config().connectors]
 
 
 def test_owner_connectors_replace_list(tmp_path: Path) -> None:

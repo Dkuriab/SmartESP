@@ -20,13 +20,17 @@ BIG_WHEN = "сложные вопросы: рассуждения, расчёт�
 # корень репозитория: core/smartesp/config/models.py → вверх на четыре уровня
 REPO_DIR = Path(__file__).resolve().parents[3]
 REPO_PLACEHOLDER = "{repo}"  # в command, args и env коннектора заменяется на REPO_DIR при запуске
-# наши коннекторы по умолчанию: (id, имя для людей, дополнительное окружение)
-DEFAULT_CONNECTORS: tuple[tuple[str, str, dict[str, str]], ...] = (
-    ("notes", "Заметки", {}),
-    ("calc", "Калькулятор", {}),
-    ("timers", "Таймеры", {}),
-    ("weather", "Погода", {"WEATHER_PLACE": ""}),  # место впишет владелец; без него — «место не задано»
-    ("food", "Питание", {}),
+# наши коннекторы по умолчанию: (id, имя для людей, дополнительное окружение, включён ли);
+# папка — connectors/<id>, команда — <id с «-» вместо «_»>-mcp
+DEFAULT_CONNECTORS: tuple[tuple[str, str, dict[str, str], bool], ...] = (
+    ("notes", "Заметки", {}, True),
+    ("calc", "Калькулятор", {}, True),
+    ("timers", "Таймеры", {}, True),
+    ("weather", "Погода", {"WEATHER_PLACE": ""}, True),  # место впишет владелец; без него — «место не задано»
+    ("food", "Питание", {}, True),
+    ("mac_media", "Музыка и звук Mac", {}, True),
+    # выключен, пока владелец не впишет разрешённые папки: «имя=путь;имя=путь»
+    ("claude_tasks", "Задачи Клоду", {"CLAUDE_TASK_FOLDERS": ""}, False),
 )
 BIG_SYSTEM_PROMPT = (
     "Ты отвечаешь голосом через колонку: по-русски, без разметки и списков, связно, до 6–8 предложений."
@@ -143,10 +147,11 @@ def _default_connectors() -> list[ConnectorConfig]:
             id=cid,
             name=name,
             command="uv",
-            args=["run", "--project", f"{REPO_PLACEHOLDER}/connectors/{cid}", f"{cid}-mcp"],
+            args=["run", "--project", f"{REPO_PLACEHOLDER}/connectors/{cid}", f"{cid.replace('_', '-')}-mcp"],
             env=dict(env),
+            enabled=enabled,
         )
-        for cid, name, env in DEFAULT_CONNECTORS
+        for cid, name, env, enabled in DEFAULT_CONNECTORS
     ]
 
 

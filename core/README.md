@@ -195,12 +195,18 @@ connectors:
     enabled: true
 ```
 
-По умолчанию — пять наших из `connectors/` репозитория: `notes`, `calc`,
-`timers`, `weather`, `food`. `{repo}` в `command`, `args` и `env` ядро при запуске
+По умолчанию — наши из `connectors/` репозитория: `notes`, `calc`,
+`timers`, `weather`, `food`, `mac_media` (музыка и звук Mac) и выключенный
+`claude_tasks` (задачи Клоду). `{repo}` в `command`, `args` и `env` ядро при запуске
 заменяет на путь к репозиторию: настройки переживают его перенос (абсолютные пути
 тоже работают). Погоде нужно место: `env: {WEATHER_PLACE: "Город"}` —
-пока его нет, она честно отвечает «место не задано». Список в `config.yaml`
-заменяет умолчание целиком.
+пока его нет, она честно отвечает «место не задано». Задачам Клоду нужны
+разрешённые папки: `env: {CLAUDE_TASK_FOLDERS: "имя=путь;имя=путь"}` и
+`enabled: true` (подробнее — `connectors/claude_tasks/README.md`). Значения
+окружения правятся в `config.yaml` (в интерфейсе — только просмотр); список в
+`config.yaml` заменяет умолчание целиком, поэтому вписывать его надо весь — проще
+всего скопировать раздел из `config.defaults.yaml`. Включить и выключить
+коннектор можно и на его панели в интерфейсе (схема → коннектор).
 
 Коннекторы стартуют в фоне: голос готов, не дожидаясь их, а пока коннектор
 запускается, его инструментов в сети нет. Когда список готовых инструментов
@@ -212,6 +218,15 @@ connectors:
 (таймер сработал) — объявление звучит на последней активной колонке, а если
 после старта ядра никто не говорил — на первой подключённой (по имени). Состояния —
 `GET /connectors` и `connectors` в `GET /status`.
+
+**Живая подсветка.** Пока идёт ход, ядро шлёт `executor_active`
+(`{turn_id, device_id, executor, state}`, `state` — `thinking`: ждём первый текст,
+`speaking`: ответ звучит, `done`: закончил или передал задачу) и `tool_call`
+(`{turn_id, device_id, executor, connector, tool, state, ok}`, `state` — `started`
+или `finished`). Законченные вызовы попадают в `turn_finished` полем `tools`
+(`[{executor, connector, tool, ok}]`). Ответ, отложенный «на потом», отмечает
+`done` своего исполнителя, когда договорит. Какие модели сейчас в памяти Ollama —
+`ollama.loaded` в `GET /status` (`ollama ps`); интерфейс перечитывает его раз в 5 с.
 
 ## Приложение и API
 
@@ -252,10 +267,10 @@ curl -X PATCH -H "Authorization: Bearer $(cat ~/SmartEsp/token)" \
 | `GET /voices` | голоса: `{kind, voice, title, size_mb, downloaded, current}` |
 | `POST /voices/download` | `{kind, voice}` → 202, `{change_id, status: "accepted"}`; ход скачивания — события `voice_download`, `voice_ready`. Голоса нет в каталоге `GET /voices` — 422 (`status: "invalid"`, текст в `error`), ядро останавливается — 503 (`status: "stopping"`) |
 | `POST /voices/preview` | `{kind, voice, style="normal", text=null}` → `audio/wav` (16 кГц, 16 бит, моно); голос не скачан (или ещё качается) — 409, неизвестный голос — 404, модель не озвучила образец — 500; тело ошибки `{detail}` |
-| `GET /turns?limit=100` | последние ходы (данные `turn_finished`: `turn_id`, `device_id`, `device_name`, `text`, `annotations`, `style`, `answer`, `status`, `path`, `delegations`, `at` — время конца хода в секундах Unix, `stt_ms`, `first_text_ms`, `first_audio_ms`), от новых к старым; ядро хранит 100 последних в памяти |
+| `GET /turns?limit=100` | последние ходы (данные `turn_finished`: `turn_id`, `device_id`, `device_name`, `text`, `annotations`, `style`, `answer`, `status`, `path`, `delegations`, `tools`, `at` — время конца хода в секундах Unix, `stt_ms`, `first_text_ms`, `first_audio_ms`), от новых к старым; ядро хранит 100 последних в памяти |
 | `GET /access` | `{urls}` — адреса `http://<ip>:<порт>/?token=…` для входа с других компьютеров сети (без `127.*`) |
 | `POST /restart` | перезапуск ядра, ответ 202 |
-| `WS /events?token=` | поток событий JSON `{"kind", "data", "at"}`: `core_state`, `device_connected`, `device_disconnected`, `wake`, `arbitration`, `turn_started`, `turn_heard`, `turn_finished`, `change_applied`, `voice_download`, `voice_ready` |
+| `WS /events?token=` | поток событий JSON `{"kind", "data", "at"}`: `core_state`, `device_connected`, `device_disconnected`, `wake`, `arbitration`, `turn_started`, `turn_heard`, `executor_active`, `tool_call`, `turn_finished`, `change_applied`, `voice_download`, `voice_ready` |
 
 Схема OpenAPI для интерфейса: `uv run python -m smartesp --openapi ../ui/openapi.json`.
 
