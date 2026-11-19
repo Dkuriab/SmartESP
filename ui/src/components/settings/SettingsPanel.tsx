@@ -18,8 +18,8 @@ export default function SettingsPanel({ state, actions }: Props) {
   if (selected?.kind === 'device') {
     const device = listDevices(state).find((d) => d.device_id === selected.id)
     if (!device) return hint
-    // key: черновик имени не переезжает на другую колонку
-    return <DeviceSettings key={device.device_id} device={device} onRename={(name) => void actions.renameDevice(device.device_id, name)} />
+    // key: черновик сбрасывается при смене колонки, переименовании извне и после отказа
+    return <DeviceSettings key={`${device.device_id}:${device.name}`} device={device} onRename={(name) => void actions.renameDevice(device.device_id, name)} />
   }
   if (selected?.kind === 'stage') {
     const stage = listStages(state).find((s) => s.kind === selected.id)

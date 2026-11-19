@@ -1,8 +1,8 @@
 // Строка каталога голосов: подпись, размер, скачивание, образцы, выбор.
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CoreActions } from '../../state/actions'
 import type { Download, Voice } from '../../state/model'
-import { playBlob, progressText } from './voice'
+import { playBlob, progressText, stopPlayback } from './voice'
 
 type Actions = Pick<CoreActions, 'downloadVoice' | 'previewVoice' | 'selectVoice'>
 type Props = { voice: Voice; download?: Download; applying: boolean; actions: Actions }
@@ -40,18 +40,38 @@ function Availability({ voice, download, actions }: Omit<Props, 'applying'>) {
   )
 }
 
-export default function VoiceRow({ voice, download, applying, actions }: Props) {
+/** Образец голоса: какой стиль играет и запуск; уход строки с экрана останавливает звук. */
+function usePreview(voice: Voice, previewVoice: Actions['previewVoice']) {
   const [playing, setPlaying] = useState<string | null>(null)
+  // строка на экране и играет ли её образец
+  const mounted = useRef(true)
+  const mine = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      if (mine.current) stopPlayback()
+    }
+  }, [])
   const play = async (style: string) => {
     setPlaying(style)
     try {
-      await playBlob(await actions.previewVoice(voice.kind, voice.voice, style))
+      const blob = await previewVoice(voice.kind, voice.voice, style)
+      if (!mounted.current) return
+      mine.current = true
+      await playBlob(blob)
     } catch {
       // ошибку уже показало действие уведомлением
     } finally {
+      mine.current = false
       setPlaying(null)
     }
   }
+  return { playing, play }
+}
+
+export default function VoiceRow({ voice, download, applying, actions }: Props) {
+  const { playing, play } = usePreview(voice, actions.previewVoice)
   return (
     <li className="voice" aria-label={voice.title}>
       <div className="voice-head">

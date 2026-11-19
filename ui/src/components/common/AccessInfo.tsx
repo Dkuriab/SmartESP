@@ -8,6 +8,8 @@ type Props = {
   online: boolean
 }
 
+const COPIED_MS = 2000
+
 /** Копирует в буфер; в http-странице из сети буфера нет — тогда false. */
 async function copy(text: string): Promise<boolean> {
   try {
@@ -30,6 +32,12 @@ export default function AccessInfo({ loadAccess, online }: Props) {
       live = false
     }
   }, [online])
+  // «Скопировано» держится COPIED_MS, затем кнопка снова «Скопировать»
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(null), COPIED_MS)
+    return () => clearTimeout(timer)
+  }, [copied])
   const onCopy = async (url: string) => {
     if (await copy(url)) setCopied(url)
   }

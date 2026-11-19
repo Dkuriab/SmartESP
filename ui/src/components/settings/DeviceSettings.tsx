@@ -5,10 +5,12 @@ import { formatClock } from '../feed/time'
 
 type Props = { device: Device; onRename: (name: string) => void }
 
-/** IP без порта из «IP:port». */
+/** Адрес без порта: «IP:port» и «[IPv6]:port»; голый IPv6 (много «:») — как есть. */
 function hostOf(remote: string): string {
-  const i = remote.lastIndexOf(':')
-  return i > 0 ? remote.slice(0, i) : remote
+  const bracketed = /^\[([^\]]+)\](?::\d+)?$/.exec(remote)
+  if (bracketed) return bracketed[1] ?? remote
+  const parts = remote.split(':')
+  return parts.length === 2 ? (parts[0] ?? remote) : remote
 }
 
 function presence(d: Device): string {

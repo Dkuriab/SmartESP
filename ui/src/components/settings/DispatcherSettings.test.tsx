@@ -60,6 +60,11 @@ describe('DispatcherSettings', () => {
     expect(save).toBeDisabled()
   })
 
+  it('пока применяется, выбор модели заблокирован (иначе затёр бы применяемый промпт)', () => {
+    setup({ pending: { 5: 'Диспетчер' } })
+    expect(screen.getByLabelText('Модель')).toBeDisabled()
+  })
+
   it('status.applying тоже показывает «Применяется…»', () => {
     setup({ status: makeStatus({ applying: true }) })
     expect(screen.getByRole('button', { name: 'Применяется…' })).toBeInTheDocument()

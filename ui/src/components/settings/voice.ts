@@ -1,18 +1,36 @@
 // Голос: проигрывание образца и подпись хода скачивания.
 import type { Download } from '../../state/model'
 
-/** Проигрывает образец; промис завершается по окончании или ошибке, URL освобождается. */
+/** Звучащий сейчас образец: одновременно играет только один. */
+let current: { audio: HTMLAudioElement; finish: () => void } | null = null
+
+/** Останавливает звучащий образец (его промис из playBlob завершается). */
+export function stopPlayback(): void {
+  current?.finish()
+}
+
+/**
+ * Проигрывает образец, остановив прежний; промис завершается по окончании,
+ * ошибке или остановке, URL освобождается.
+ */
 export function playBlob(blob: Blob): Promise<void> {
+  stopPlayback()
   const url = URL.createObjectURL(blob)
   return new Promise((resolve) => {
     const audio = new Audio(url)
-    const done = () => {
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      if (current?.audio === audio) current = null
+      audio.pause()
       URL.revokeObjectURL(url)
       resolve()
     }
-    audio.onended = done
-    audio.onerror = done
-    audio.play().catch(done)
+    current = { audio, finish }
+    audio.onended = finish
+    audio.onerror = finish
+    audio.play().catch(finish)
   })
 }
 

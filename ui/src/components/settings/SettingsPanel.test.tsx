@@ -47,6 +47,26 @@ describe('SettingsPanel', () => {
     expect(screen.getByText('в сети')).toBeInTheDocument()
   })
 
+  it.each([
+    ['[fe80::1]:5123', 'fe80::1'],
+    ['fe80::1', 'fe80::1'],
+    ['kitchen.local:80', 'kitchen.local'],
+  ])('колонка: адрес %s показывается как %s', (remote, host) => {
+    const status = makeStatus({ devices: [{ ...devices[0]!, remote }] })
+    setup({ kind: 'device', id: 'aa:bb' }, { status })
+    expect(screen.getByText(host)).toBeInTheDocument()
+  })
+
+  it('колонка: черновик имени сбрасывается, когда имя сменилось извне', async () => {
+    const actions = makeActions()
+    const at = (name: string) =>
+      makeState({ status: makeStatus({ devices: [{ ...devices[0]!, name }] }), selected: { kind: 'device', id: 'aa:bb' } })
+    const view = render(<SettingsPanel state={at('Спальня')} actions={actions} />)
+    await userEvent.type(screen.getByLabelText('Имя'), ' 2')
+    view.rerender(<SettingsPanel state={at('Детская')} actions={actions} />)
+    expect(screen.getByLabelText('Имя')).toHaveValue('Детская')
+  })
+
   it('колонка без имени и не в сети: MAC в заголовке, «была в HH:MM»', () => {
     setup({ kind: 'device', id: 'cc:dd' }, { status: makeStatus({ devices }) })
     expect(screen.getByRole('heading')).toHaveTextContent('cc:dd')

@@ -14,15 +14,15 @@ function gigabytes(bytes: number): string {
   return `${gb.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ГБ`
 }
 
-type ModelProps = { current: string; models: Model[]; reachable: boolean; onPick: (model: string) => void }
+type ModelProps = { current: string; models: Model[]; disabled: boolean; onPick: (model: string) => void }
 
-function ModelField({ current, models, reachable, onPick }: ModelProps) {
+function ModelField({ current, models, disabled, onPick }: ModelProps) {
   // текущая модель видна, даже если её нет в списке (Ollama недоступна)
   const known = models.some((m) => m.name === current)
   return (
     <label className="field">
       <span className="lbl">Модель</span>
-      <select className="val" value={current} disabled={!reachable} onChange={(e) => onPick(e.target.value)}>
+      <select className="val" value={current} disabled={disabled} onChange={(e) => onPick(e.target.value)}>
         {!known && <option value={current}>{current || '—'}</option>}
         {models.map((m) => (
           <option key={m.name} value={m.name}>
@@ -66,7 +66,8 @@ export default function DispatcherSettings({ state, actions }: Props) {
           <ModelField
             current={info.model}
             models={state.models ?? []}
-            reachable={reachable}
+            // пока изменение применяется, executors в настройках старые: новая правка затёрла бы его
+            disabled={!reachable || applying}
             onPick={(model) => void actions.setDispatcher({ model })}
           />
           {!reachable && <div className="set-note warn">Ollama недоступна</div>}

@@ -32,11 +32,16 @@ class FakeAudio {
   static last: FakeAudio | null = null
   onended: (() => void) | null = null
   onerror: (() => void) | null = null
+  paused = true
   constructor(public src: string) {
     FakeAudio.last = this
   }
   play() {
+    this.paused = false
     return Promise.resolve()
+  }
+  pause() {
+    this.paused = true
   }
 }
 
@@ -95,6 +100,38 @@ describe('VoiceSettings', () => {
     await act(async () => FakeAudio.last?.onended?.())
     expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:x')
     expect(within(row('Ирина')).getByRole('button', { name: '▶ Тихий' })).toBeEnabled()
+  })
+
+  it('новый образец останавливает прежний', async () => {
+    const { actions } = setup()
+    vi.mocked(actions.previewVoice).mockResolvedValue(new Blob(['x']))
+    await userEvent.click(within(row('Ирина')).getByRole('button', { name: '▶ Обычный' }))
+    const first = FakeAudio.last
+    await userEvent.click(within(row('Vosk русский')).getByRole('button', { name: '▶ Обычный' }))
+    expect(first?.paused).toBe(true)
+    expect(FakeAudio.last).not.toBe(first)
+    expect(within(row('Ирина')).getByRole('button', { name: '▶ Обычный' })).toBeEnabled()
+    expect(within(row('Vosk русский')).getByRole('button', { name: 'играет…' })).toBeInTheDocument()
+  })
+
+  it('уход с панели останавливает проигрывание и освобождает URL', async () => {
+    const { actions, unmount } = setup()
+    vi.mocked(actions.previewVoice).mockResolvedValue(new Blob(['x']))
+    await userEvent.click(within(row('Ирина')).getByRole('button', { name: '▶ Обычный' }))
+    unmount()
+    expect(FakeAudio.last?.paused).toBe(true)
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:x')
+  })
+
+  it('образец пришёл после ухода с панели — не играет', async () => {
+    const { actions, unmount } = setup()
+    let answer: (b: Blob) => void = () => {}
+    vi.mocked(actions.previewVoice).mockReturnValue(new Promise<Blob>((r) => (answer = r)))
+    await userEvent.click(within(row('Ирина')).getByRole('button', { name: '▶ Обычный' }))
+    FakeAudio.last = null
+    unmount()
+    await act(async () => answer(new Blob(['x'])))
+    expect(FakeAudio.last).toBeNull()
   })
 
   it('ошибка образца сбрасывает «играет…»', async () => {
