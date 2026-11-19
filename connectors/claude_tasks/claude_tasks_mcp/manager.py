@@ -161,4 +161,7 @@ class Manager:
         except OSError:
             # Объявить важнее, чем записать: сбой диска только в журнал коннектора.
             logger.exception("не удалось записать итог задачи %s", record.id)
-        await self._announce(text, record.person)
+        try:
+            await self._announce(text, record.person)
+        except Exception:
+            logger.exception("не удалось объявить итог задачи %s", record.id)

@@ -57,7 +57,7 @@ def build_server(
     announcer = Announcer()
     manager = Manager(
         Store(data_dir),
-        runner or ClaudeRunner(settings.claude_bin, settings.tools),
+        runner or ClaudeRunner(settings.claude_bin, settings.tools, settings.env_passthrough),
         announcer.announce,
         timeout_s=settings.timeout_s,
         max_running=max_running,

@@ -142,12 +142,18 @@ def folders(tmp_path: Path) -> tuple[tuple[str, Path], ...]:
 
 
 @pytest.fixture
-def fake_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Исполняемый файл `claude`, который запускает tests/fake_claude.py этим же Python."""
+def fake_bin(tmp_path: Path) -> Path:
+    """Исполняемый файл `claude`, который запускает tests/fake_claude.py этим же Python.
+
+    Журнал — `tmp_path/log.json`, режим — в файле `tmp_path/mode` (нет файла — ok).
+    """
     script = Path(__file__).with_name("fake_claude.py")
     binary = tmp_path / "bin" / "claude"
     binary.parent.mkdir()
-    binary.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n')
+    binary.write_text(
+        "#!/bin/sh\n"
+        f'export FAKE_CLAUDE_LOG="{tmp_path / "log.json"}" FAKE_CLAUDE_MODE_FILE="{tmp_path / "mode"}"\n'
+        f'exec "{sys.executable}" "{script}" "$@"\n'
+    )
     binary.chmod(binary.stat().st_mode | stat.S_IEXEC)
-    monkeypatch.setenv("FAKE_CLAUDE_LOG", str(tmp_path / "log.json"))
     return binary

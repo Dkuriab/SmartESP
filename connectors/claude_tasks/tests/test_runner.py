@@ -7,7 +7,14 @@ from pathlib import Path
 
 import pytest
 
-from claude_tasks_mcp.runner import ClaudeRunner, RunResult, build_args, find_claude, parse_output
+from claude_tasks_mcp.runner import (
+    ClaudeRunner,
+    RunResult,
+    build_args,
+    child_env,
+    find_claude,
+    parse_output,
+)
 
 TOOLS = ("Read", "Edit", "Write", "Glob", "Grep")
 
@@ -16,17 +23,71 @@ def _log(tmp_path: Path) -> dict[str, object]:
     return json.loads((tmp_path / "log.json").read_text(encoding="utf-8"))
 
 
-def test_args_are_safe() -> None:
-    args = build_args("/bin/claude", TOOLS)
-    assert args[:2] == ["/bin/claude", "-p"]
-    joined = " ".join(args)
-    assert "--output-format json" in joined
-    assert "--permission-mode acceptEdits" in joined
-    assert "--tools=Read,Edit,Write,Glob,Grep" in args
-    assert "--allowedTools=Read,Edit,Write,Glob,Grep" in args
-    assert "--strict-mcp-config" in args
-    assert "dangerously" not in joined
-    assert "Bash" not in joined
+def test_exact_argv() -> None:
+    assert build_args("/bin/claude", TOOLS) == [
+        "/bin/claude",
+        "-p",
+        "--output-format",
+        "json",
+        "--restricted",
+        "--strict-mcp-config",
+        "--permission-mode",
+        "acceptEdits",
+        "--permission-prompts",
+        "none",
+        "--tools",
+        "Read,Edit,Write,Glob,Grep",
+    ]
+
+
+def test_argv_protections() -> None:
+    """Папка, настройки и хуки защищены флагами; опасного нет ни при каком наборе инструментов."""
+    args = build_args("/bin/claude", ("Read", "Bash(git log *)"))
+    assert {"--restricted", "--strict-mcp-config"} <= set(args)
+    assert args[args.index("--permission-prompts") + 1] == "none"
+    assert args[args.index("--permission-mode") + 1] == "acceptEdits"
+    assert args[-2:] == ["--tools", "Read,Bash(git log *)"]
+    for banned in ("--allowedTools", "--allowed-tools", "--add-dir", "bypass", "dangerously"):
+        assert not any(banned in a for a in args)
+
+
+def test_child_env_allowlist() -> None:
+    source = {
+        "PATH": "/usr/bin",
+        "HOME": "/Users/x",
+        "USER": "x",
+        "LOGNAME": "x",
+        "SHELL": "/bin/zsh",
+        "TMPDIR": "/tmp/x",
+        "LANG": "ru_RU.UTF-8",
+        "LC_ALL": "ru_RU.UTF-8",
+        "CLAUDECODE": "1",
+        "CLAUDE_CODE_SESSION_ID": "s",
+        "CLAUDE_CODE_MESSAGING_TOKEN": "t",
+        "ANTHROPIC_API_KEY": "k",
+        "ANTHROPIC_BASE_URL": "u",
+        "GITHUB_TOKEN": "g",
+        "MY_SECRET": "m",
+        "SMARTESP_CONNECTOR_DATA": "/d",
+        "CLAUDE_TASK_FOLDERS": "a=/b",
+        "OTHER": "o",
+    }
+    assert child_env(source) == {
+        "PATH": "/usr/bin",
+        "HOME": "/Users/x",
+        "USER": "x",
+        "LOGNAME": "x",
+        "SHELL": "/bin/zsh",
+        "TMPDIR": "/tmp/x",
+        "LANG": "ru_RU.UTF-8",
+        "LC_ALL": "ru_RU.UTF-8",
+    }
+    passed = child_env(source, ("ANTHROPIC_API_KEY", "OTHER", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID"))
+    assert passed["ANTHROPIC_API_KEY"] == "k"
+    assert passed["OTHER"] == "o"
+    assert "CLAUDECODE" not in passed
+    assert "CLAUDE_CODE_SESSION_ID" not in passed
+    assert "ANTHROPIC_BASE_URL" not in passed
 
 
 def test_parse_success() -> None:
@@ -72,14 +133,33 @@ async def test_runs_in_folder_with_prompt_on_stdin(tmp_path: Path, fake_bin: Pat
     log = _log(tmp_path)
     assert log["cwd"] == str(folder.resolve())
     assert log["prompt"] == "почини тест"
-    assert "--permission-mode" in log["argv"]  # type: ignore[operator]
+    assert log["argv"] == build_args(str(fake_bin), TOOLS)[1:]
 
 
-async def test_crash_and_error(tmp_path: Path, fake_bin: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_child_gets_only_allowed_env(
+    tmp_path: Path, fake_bin: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CLAUDECODE", "1")
+    monkeypatch.setenv("CLAUDE_CODE_MESSAGING_TOKEN", "t")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setenv("SMARTESP_CONNECTOR_DATA", "/d")
+    monkeypatch.setenv("LC_CTYPE", "UTF-8")
+    await ClaudeRunner(str(fake_bin), TOOLS)("x", tmp_path)
+    env = _log(tmp_path)["env"]
+    assert isinstance(env, dict)
+    for name in ("CLAUDECODE", "CLAUDE_CODE_MESSAGING_TOKEN", "ANTHROPIC_API_KEY", "SMARTESP_CONNECTOR_DATA"):
+        assert name not in env
+    assert env["LC_CTYPE"] == "UTF-8"
+    assert env["HOME"] == os.environ["HOME"]
+    await ClaudeRunner(str(fake_bin), TOOLS, ("ANTHROPIC_API_KEY",))("x", tmp_path)
+    assert _log(tmp_path)["env"]["ANTHROPIC_API_KEY"] == "k"  # type: ignore[index]
+
+
+async def test_crash_and_error(tmp_path: Path, fake_bin: Path) -> None:
     runner = ClaudeRunner(str(fake_bin), TOOLS)
-    monkeypatch.setenv("FAKE_CLAUDE_MODE", "crash")
+    (tmp_path / "mode").write_text("crash")
     assert await runner("x", tmp_path) == RunResult(False, "Error: Invalid API key")
-    monkeypatch.setenv("FAKE_CLAUDE_MODE", "error")
+    (tmp_path / "mode").write_text("error")
     assert await runner("x", tmp_path) == RunResult(False, "Не удалось войти.")
 
 
@@ -88,8 +168,8 @@ async def test_missing_binary(tmp_path: Path) -> None:
     assert result == RunResult(False, "не найдена программа claude")
 
 
-async def test_cancel_kills_process(tmp_path: Path, fake_bin: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("FAKE_CLAUDE_MODE", "sleep")
+async def test_cancel_kills_process(tmp_path: Path, fake_bin: Path) -> None:
+    (tmp_path / "mode").write_text("sleep")
     task = asyncio.create_task(ClaudeRunner(str(fake_bin), TOOLS)("x", tmp_path))
     log: dict[str, object] = {}
     async with asyncio.timeout(10):
