@@ -192,6 +192,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/{device_id}/play": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Play File */
+        post: operations["play_file_api_v1_devices__device_id__play_post"];
+        /** Stop File */
+        delete: operations["stop_file_api_v1_devices__device_id__play_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/access": {
         parameters: {
             query?: never;
@@ -276,6 +294,14 @@ export interface components {
              * @default api
              */
             source: string;
+        };
+        /** Body_play_file_api_v1_devices__device_id__play_post */
+        Body_play_file_api_v1_devices__device_id__play_post: {
+            /**
+             * Audio
+             * @description звуковой файл: MP3, WAV, OGG, M4A или FLAC, до 50 МБ
+             */
+            audio: string;
         };
         /**
          * ChangeOut
@@ -435,6 +461,18 @@ export interface components {
             loaded: string[];
         };
         /**
+         * PlayOut
+         * @description Файл на колонке начал играть; итог придёт событием playback_finished.
+         */
+        PlayOut: {
+            /**
+             * Status
+             * @default started
+             * @constant
+             */
+            status: "started";
+        };
+        /**
          * PreviewIn
          * @description Тело запроса на пробное озвучивание.
          */
@@ -477,6 +515,14 @@ export interface components {
             executors?: components["schemas"]["ExecutorStateOut"][];
             /** Connectors */
             connectors?: components["schemas"]["ConnectorOut"][];
+        };
+        /**
+         * StopOut
+         * @description Остановка файла: stopped=False — файл не играл.
+         */
+        StopOut: {
+            /** Stopped */
+            stopped: boolean;
         };
         /**
          * ToolUseOut
@@ -1122,6 +1168,135 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    play_file_api_v1_devices__device_id__play_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_play_file_api_v1_devices__device_id__play_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    stop_file_api_v1_devices__device_id__play_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StopOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

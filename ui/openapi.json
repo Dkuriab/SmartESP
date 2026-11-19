@@ -570,6 +570,162 @@
         }
       }
     },
+    "/api/v1/devices/{device_id}/play": {
+      "post": {
+        "summary": "Play File",
+        "operationId": "play_file_api_v1_devices__device_id__play_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_play_file_api_v1_devices__device_id__play_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Stop File",
+        "operationId": "stop_file_api_v1_devices__device_id__play_delete",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StopOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/access": {
       "get": {
         "summary": "Get Access",
@@ -712,6 +868,21 @@
           "audio"
         ],
         "title": "Body_ask_voice_api_v1_ask_voice_post"
+      },
+      "Body_play_file_api_v1_devices__device_id__play_post": {
+        "properties": {
+          "audio": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Audio",
+            "description": "звуковой файл: MP3, WAV, OGG, M4A или FLAC, до 50 МБ"
+          }
+        },
+        "type": "object",
+        "required": [
+          "audio"
+        ],
+        "title": "Body_play_file_api_v1_devices__device_id__play_post"
       },
       "ChangeOut": {
         "properties": {
@@ -1031,6 +1202,19 @@
         "title": "OllamaOut",
         "description": "Состояние Ollama: доступна ли и какие модели загружены."
       },
+      "PlayOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "started",
+            "title": "Status",
+            "default": "started"
+          }
+        },
+        "type": "object",
+        "title": "PlayOut",
+        "description": "Файл на колонке начал играть; итог придёт событием playback_finished."
+      },
       "PreviewIn": {
         "properties": {
           "kind": {
@@ -1134,6 +1318,20 @@
         ],
         "title": "StatusOut",
         "description": "Сводка ядра."
+      },
+      "StopOut": {
+        "properties": {
+          "stopped": {
+            "type": "boolean",
+            "title": "Stopped"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stopped"
+        ],
+        "title": "StopOut",
+        "description": "Остановка файла: stopped=False — файл не играл."
       },
       "ToolUseOut": {
         "properties": {
