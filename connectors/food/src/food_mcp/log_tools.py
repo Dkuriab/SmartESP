@@ -102,7 +102,7 @@ async def log_food(
         return NOTHING
     found = await resolve(root, amount.name, barcode, lookups, now)
     if not isinstance(found, Found):
-        if found.options:
+        if found.options and tokens(amount.name):
             choice.remember(root, amount.name, found.options, now)
         return found.text
     weight = portion(found.food, grams, amount.count)

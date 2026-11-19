@@ -113,6 +113,7 @@ class Lookups:
     """Сетевые справочники: `off` — Open Food Facts (None — выключен), `names` — barcode-list.ru."""
 
     names: BarcodeList
+    cache_dir: Path  # общий кэш названий: штрихкод → название одинаков для всех людей
     off: OpenFoodFacts | None = None
 
 
@@ -130,9 +131,15 @@ def _off_reply(result: OffResult | None) -> str | None:
 def _names_reply(result: NameResult, code: str) -> str:
     if result.status == "offline":
         return "Нет связи со справочником штрихкодов — штрихкод не проверить. Скажи название продукта."
+    if result.status == "unknown":
+        return (
+            f"Не получилось найти штрихкод {code} в справочнике: страница пришла не та. "
+            "Скажи название продукта."
+        )
     if result.status == "busy":
         return (
-            "Справочник штрихкодов отвечает не чаще раза в 10 секунд. Повтори чуть позже или скажи название."
+            "Справочник штрихкодов отвечает не чаще раза в 10 секунд. "
+            "Скажи название или повтори через несколько секунд."
         )
     return f"Не знаю продукт со штрихкодом {code}. Скажи название и сколько ккал на 100 г — запомню."
 
@@ -140,11 +147,13 @@ def _names_reply(result: NameResult, code: str) -> str:
 def _names_note(result: NameResult, off: OffResult | None) -> str:
     if off is not None and off.status == "offline":
         return "Нет связи с Open Food Facts — считаю по названию."
-    if result.status == "offline":
-        return "Нет связи со справочником штрихкодов — считаю по названию."
-    if result.status == "found":
-        return f"По штрихкоду нашла «{result.name}»."
-    return "По штрихкоду калорийность не нашла — считаю по названию."
+    notes = {
+        "offline": "Нет связи со справочником штрихкодов — считаю по названию.",
+        "unknown": "Справочник штрихкодов не ответил понятно — считаю по названию.",
+        "busy": "Справочник штрихкодов сейчас занят — считаю по названию.",
+        "found": f"По штрихкоду нашла «{result.name}».",
+    }
+    return notes.get(result.status, "По штрихкоду калорийность не нашла — считаю по названию.")
 
 
 def _from_barcode_name(root: Path, code: str, name: str) -> Reply:
@@ -184,10 +193,10 @@ async def _network_names(
         if off_result.food is not None:
             products.upsert(root, off_result.food, "off")
             return Found(off_result.food, "off"), off_result, NameResult("missing")
-    cached = barcode_list.cached(root, code, now)
+    cached = barcode_list.cached(lookups.cache_dir, code, now)
     names = cached or await lookups.names.lookup(code)
     if cached is None:
-        barcode_list.remember(root, code, names, now)
+        barcode_list.remember(lookups.cache_dir, code, names, now)
     return None, off_result, names
 
 
@@ -201,24 +210,44 @@ async def resolve(root: Path, name: str, barcode: str, lookups: Lookups, now: da
     if not barcode.strip():
         return by_name(root, name)
     code = valid_barcode(barcode)
-    off_result: OffResult | None = None
-    names = NameResult("missing")
     if code is None:
         if not tokens(name):
             return Reply(bad_barcode(barcode))
-        note = bad_barcode(barcode, "считаю по названию.")
-    else:
-        own = products.by_barcode(root, code)
-        if own is not None:
-            return Found(own, "own")
-        online, off_result, names = await _network_names(root, code, lookups, now)
-        if online is not None:
-            return online
-        if not tokens(name):
-            if names.status == "found":
-                return _from_barcode_name(root, code, names.name)
-            return Reply(_off_reply(off_result) or _names_reply(names, code))
-        note = _names_note(names, off_result)
+        return _by_name_noted(root, name, bad_barcode(barcode, "считаю по названию."), NameResult("missing"))
+    own = products.by_barcode(root, code)
+    if own is not None:
+        return Found(own, "own")
+    online, off_result, names = await _network_names(root, code, lookups, now)
+    if online is not None:
+        return online
+    if not tokens(name):
+        if names.status == "found":
+            return _from_barcode_name(root, code, names.name)
+        return Reply(_off_reply(off_result) or _names_reply(names, code))
+    confirmed = _confirmed(root, name, names)
+    if confirmed is not None:
+        return confirmed
+    return _by_name_noted(root, name, _names_note(names, off_result), names)
+
+
+def _confirmed(root: Path, name: str, names: NameResult) -> Found | None:
+    """Подтверждение предложения: `name` — точно один из предложенных продуктов.
+
+    Пишется именно предложенный продукт (без дневника и прочих предпочтений), с весом
+    упаковки из названия товара.
+    """
+    if names.status != "found":
+        return None
+    wanted = tokens(name)
+    for c in barcode_match.candidates(root, names.name):
+        if tokens(c.food.name) == wanted:
+            found = Found(c.food, "own" if c.own else "table", f"По штрихкоду нашла «{names.name}».")
+            return _with_pack(found, barcode_match.pack_grams(names.name))
+    return None
+
+
+def _by_name_noted(root: Path, name: str, note: str, names: NameResult) -> Found | Reply:
+    """Поиск по названию с пояснением `note` (и весом упаковки с barcode-list.ru)."""
     found = by_name(root, name)
     if isinstance(found, Found):
         pack = barcode_match.pack_grams(names.name) if names.status == "found" else 0.0

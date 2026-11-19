@@ -36,7 +36,9 @@ def build_server(
     if off_enabled is None:
         off_enabled = os.environ.get(OFF_ENV, "").strip() == "1"
     lookups = Lookups(
-        BarcodeList(barcode_transport, barcode_clock), OpenFoodFacts(transport) if off_enabled else None
+        BarcodeList(barcode_transport, barcode_clock),
+        data_dir,
+        OpenFoodFacts(transport) if off_enabled else None,
     )
     server = MCPServer("food")
     log_tools.register(server, data_dir, now, lookups)
