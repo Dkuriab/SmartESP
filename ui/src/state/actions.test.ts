@@ -59,10 +59,10 @@ describe('actions', () => {
     ])
   })
 
-  it('setDispatcher шлёт executors целиком, меняя модель только у входного', async () => {
+  it('updateExecutor шлёт executors целиком, меняя только своего', async () => {
     const { client, actions, dispatched } = setup(config())
     client.PATCH.mockResolvedValue(ok(accepted))
-    await actions.setDispatcher({ model: 'x' })
+    await actions.updateExecutor('dispatcher', { model: 'x' })
     expect(client.PATCH).toHaveBeenCalledWith('/api/v1/config', {
       body: {
         executors: [
@@ -74,17 +74,9 @@ describe('actions', () => {
     expect(dispatched).toContainEqual({ type: 'changeSent', changeId: 3, description: expect.any(String), at: 42 })
   })
 
-  it('setDispatcher: поле undefined не затирает текущее значение', async () => {
-    const { client, actions } = setup(config())
-    client.PATCH.mockResolvedValue(ok(accepted))
-    await actions.setDispatcher({ model: 'x', system_prompt: undefined })
-    const body = (client.PATCH.mock.calls[0]?.[1] as { body: { executors: unknown[] } }).body
-    expect(body.executors[0]).toMatchObject({ model: 'x', system_prompt: 'p' })
-  })
-
-  it('setDispatcher без загруженных настроек — notice, без запроса', async () => {
+  it('правка исполнителей без загруженных настроек — notice, без запроса', async () => {
     const { client, actions, dispatched } = setup()
-    await actions.setDispatcher({ system_prompt: 'новый' })
+    await actions.updateExecutor('dispatcher', { systemPrompt: 'новый' })
     expect(client.PATCH).not.toHaveBeenCalled()
     expect(dispatched[0]).toMatchObject({ type: 'notice', notice: { tone: 'error' } })
   })

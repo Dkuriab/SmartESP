@@ -270,3 +270,30 @@
   background: var(--red-bg);
   color: var(--red-text);
 }
+
+.btn-plain {
+  background: var(--panel2);
+  color: var(--text);
+}
+
+/* Подтверждение удаления на месте кнопки. */
+.remove-ask {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.remove-ask .set-text {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.remove-ask .btn-danger {
+  margin-top: 0;
+}
+
+.set-fine.link-hint {
+  margin: 0;
+}

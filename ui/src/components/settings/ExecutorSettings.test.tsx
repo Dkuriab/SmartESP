@@ -168,6 +168,12 @@ describe('ExecutorSettings: «Может передавать»', () => {
     expect(within(linkRow('Большая модель')).queryByText(/неактивна/)).not.toBeInTheDocument()
   })
 
+  it('у выключенной связи — подсказка, что ввод условия её включит', () => {
+    setup()
+    expect(within(linkRow('Малая')).getByText('ввод условия включит связь')).toBeInTheDocument()
+    expect(within(linkRow('Большая модель')).queryByText('ввод условия включит связь')).not.toBeInTheDocument()
+  })
+
   it('модель без инструментов — пометка и неактивные связи', () => {
     setup('dispatcher', { config: config([{ ...dispatcher, model: 'tiny' }, big, small]) })
     expect(screen.getByText('эта модель не умеет передавать задачи')).toBeInTheDocument()
@@ -177,15 +183,15 @@ describe('ExecutorSettings: «Может передавать»', () => {
 })
 
 describe('ExecutorSettings: удаление', () => {
-  it('«Удалить» — после подтверждения removeExecutor', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+  it('«Удалить» спрашивает на месте; «Отмена» — ничего, «Удалить» — removeExecutor', async () => {
     const { actions } = setup('big')
-    const remove = screen.getByRole('button', { name: 'Удалить' })
-    await userEvent.click(remove)
+    await userEvent.click(screen.getByRole('button', { name: 'Удалить' }))
+    expect(screen.getByText('Удалить «Большая модель»? Связи на него тоже уберутся.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Отмена' }))
     expect(actions.removeExecutor).not.toHaveBeenCalled()
-    await userEvent.click(remove)
+    expect(screen.queryByText(/Связи на него/)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Удалить' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Удалить' }))
     expect(actions.removeExecutor).toHaveBeenCalledWith('big')
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Большая модель'))
-    confirm.mockRestore()
   })
 })

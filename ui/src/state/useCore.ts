@@ -12,6 +12,7 @@ import type { CoreState } from './model'
 import { initialState } from './model'
 import { reduce } from './reducer'
 import type { Dispatch } from './request'
+import { createSentExecutors } from './sentExecutors'
 
 /** Ядро закрывает WebSocket с этим кодом при неверном токене. */
 const AUTH_FAILED = 4401
@@ -114,9 +115,10 @@ export function useCore(): [CoreState, CoreActions] {
   const [state, dispatch] = useReducer(reduce, token.value, (t) =>
     initialState(t ? 'connecting' : 'unauthorized'),
   )
-  // клиент и его ворота — на каждый токен: ответы старого клиента не меняют состояние
-  const { client, gate } = useMemo(
-    () => ({ client: createClient(token.value ?? ''), gate: createGate(dispatch) }),
+  // клиент и его ворота — на каждый токен: ответы старого клиента не меняют состояние;
+  // отправленные исполнители переживают пересоздание действий
+  const { client, gate, sent } = useMemo(
+    () => ({ client: createClient(token.value ?? ''), gate: createGate(dispatch), sent: createSentExecutors() }),
     [token],
   )
   const onToken = useCallback((value: string) => {
@@ -129,14 +131,19 @@ export function useCore(): [CoreState, CoreActions] {
     return gate.close
   }, [gate])
   const config = state.config
-  // действия пересоздаются при новых настройках: setDispatcher правит текущие executors
+  // действия пересоздаются при новых настройках: правки исполнителей строятся на текущих executors
   const actions = useMemo(
-    () => createActions({ client, dispatch: gate.dispatch, getConfig: () => config, onToken }),
-    [client, gate, config, onToken],
+    () => createActions({ client, dispatch: gate.dispatch, getConfig: () => config, onToken, sentExecutors: sent }),
+    [client, gate, config, onToken, sent],
   )
   useEffect(() => {
     if (!token.value) return
-    return connect(token.value, client, dispatch)
-  }, [client, token])
+    // события и загрузки видит и память отправленных исполнителей
+    const observed: Dispatch = (action) => {
+      sent.observe(action)
+      dispatch(action)
+    }
+    return connect(token.value, client, observed)
+  }, [client, token, sent])
   return [state, actions]
 }

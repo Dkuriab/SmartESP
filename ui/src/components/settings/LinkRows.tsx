@@ -38,6 +38,7 @@ function LinkRow({ target, link, disabled, onLink }: RowProps) {
         onBlur={save}
       />
       {link && !link.active && <div className="set-note warn">неактивна — укажите, когда вызывать</div>}
+      {!link && !disabled && <div className="set-fine link-hint">ввод условия включит связь</div>}
     </div>
   )
 }

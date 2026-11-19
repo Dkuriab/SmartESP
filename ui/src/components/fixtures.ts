@@ -72,7 +72,6 @@ export function makeActions(): CoreActions {
     selectVoice: vi.fn(),
     renameDevice: vi.fn(),
     setStages: vi.fn(),
-    setDispatcher: vi.fn(),
     addExecutor: vi.fn().mockResolvedValue(null),
     updateExecutor: vi.fn(),
     removeExecutor: vi.fn(),

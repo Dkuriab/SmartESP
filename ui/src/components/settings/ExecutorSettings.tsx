@@ -1,5 +1,6 @@
 // Настройки исполнителя: имя, модель, описание, промпт, связи «Может передавать:»,
-// итоговый промпт и «Удалить». Входной (диспетчер) — частный случай: удалить нельзя.
+// итоговый промпт и «Удалить» (с подтверждением на месте). Входной (диспетчер) — частный случай: удалить нельзя.
+import { useState } from 'react'
 import type { ExecutorItem } from '../../schema/blocks'
 import { isApplying, listExecutors } from '../../schema/blocks'
 import type { CoreActions } from '../../state/actions'
@@ -12,15 +13,29 @@ type Props = { state: CoreState; actions: CoreActions; executor: ExecutorItem }
 
 type RemoveProps = { name: string; disabled: boolean; onRemove: () => void }
 
-/** «Удалить» с подтверждением через window.confirm. */
+/**
+ * «Удалить» с подтверждением на месте: первый клик спрашивает, второй удаляет.
+ * Не системный диалог подтверждения: в WKWebView приложения без делегата он всегда отвечает «нет».
+ */
 function RemoveButton({ name, disabled, onRemove }: RemoveProps) {
-  const ask = () => {
-    if (window.confirm(`Удалить исполнителя «${name}»? Связи других исполнителей на него тоже уберутся.`)) onRemove()
+  const [asking, setAsking] = useState(false)
+  if (!asking) {
+    return (
+      <button type="button" className="btn btn-danger" disabled={disabled} onClick={() => setAsking(true)}>
+        Удалить
+      </button>
+    )
   }
   return (
-    <button type="button" className="btn btn-danger" disabled={disabled} onClick={ask}>
-      Удалить
-    </button>
+    <div className="remove-ask">
+      <span className="set-text">{`Удалить «${name}»? Связи на него тоже уберутся.`}</span>
+      <button type="button" className="btn btn-danger" disabled={disabled} onClick={onRemove}>
+        Удалить
+      </button>
+      <button type="button" className="btn btn-plain" onClick={() => setAsking(false)}>
+        Отмена
+      </button>
+    </div>
   )
 }
 
