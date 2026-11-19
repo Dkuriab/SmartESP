@@ -1,0 +1,66 @@
+"""Проверка с настоящей моделью: правильно ли диспетчер (Gemma) выбирает, кому передать вопрос."""
+
+import httpx
+import ollama
+import pytest
+
+from smartesp.config.models import DEFAULT_SYSTEM_PROMPT
+from smartesp.contracts import ChatMessage
+from smartesp.executors import OllamaExecutor
+from smartesp.network import DELEGATE_TOOL, Target, delegate_rule, delegate_tool
+
+MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
+TARGETS = (
+    Target(
+        "big",
+        "Большая модель",
+        "сложные вопросы: рассуждения, расчёты, подробные объяснения, знания, которых может не быть у тебя",
+    ),
+    Target("coder", "Программист", "вопросы про программирование, код, ошибки в программах"),
+)
+# (ожидаемая цель или "" — отвечает сам, вопрос)
+QUESTIONS = [
+    ("", "Привет!"),
+    ("", "Спасибо большое"),
+    ("", "Как тебя зовут?"),
+    ("big", "Почему пала Римская империя? Главные причины"),
+    ("big", "Посчитай 17 процентов от 2384 и умножь на 3"),
+    ("big", "Объясни подробно, как работает фотосинтез"),
+    ("coder", "Как в питоне развернуть список?"),
+    ("coder", "Напиши функцию сортировки пузырьком на C"),
+]
+MIN_RIGHT = 7
+
+
+async def ask(executor: OllamaExecutor, question: str) -> tuple[str, str]:
+    """Возвращает (выбранная цель или "", фраза до вызова/ответ)."""
+    text = ""
+    chosen = ""
+    tools = [delegate_tool(TARGETS)]
+    async for part in executor.run([ChatMessage("user", question)], tools):
+        text += part.text
+        if part.tool_call is not None and part.tool_call.name == DELEGATE_TOOL and not chosen:
+            chosen = str(part.tool_call.arguments.get("executor", "?"))
+    return chosen, text.strip()
+
+
+@pytest.mark.models
+async def test_gemma_routes_to_right_target() -> None:
+    prompt = f"{DEFAULT_SYSTEM_PROMPT}\n{delegate_rule(TARGETS)}"
+    executor = OllamaExecutor(MODEL, prompt, "5m")
+    try:
+        await executor.warm_up()
+        await ollama.AsyncClient().show(MODEL)
+    except (httpx.HTTPError, ConnectionError, ollama.ResponseError):
+        pytest.skip("Ollama или модель недоступны")
+    right = 0
+    silent_calls: list[str] = []
+    for want, question in QUESTIONS:
+        got, text = await ask(executor, question)
+        print(f"\nwant={want or 'self'} got={got or 'self'} q={question!r} phrase={text[:80]!r}")
+        right += got == want
+        if got and not text:
+            silent_calls.append(question)
+    print(f"right={right} of {len(QUESTIONS)}")
+    assert right >= MIN_RIGHT
+    assert not silent_calls, f"вызов без фразы: {silent_calls}"
