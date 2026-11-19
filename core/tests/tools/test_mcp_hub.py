@@ -55,6 +55,21 @@ async def test_tool_error_is_error_result(hub: McpHub):
     assert result.text
 
 
+async def test_sdk_prefix_is_stripped_from_tool_error(hub: McpHub):
+    await hub.start([spec("a")])
+    result = await hub.call("refuse", {}, None)
+    assert result.is_error
+    assert result.text == "Место не задано: укажите город."
+
+
+async def test_crashed_tool_error_has_no_english_prefix(hub: McpHub):
+    await hub.start([spec("a")])
+    result = await hub.call("fail", {}, None)
+    assert result.is_error
+    assert "Error executing tool" not in result.text
+    assert result.text == "Ошибка инструмента."
+
+
 async def test_unknown_tool_is_error(hub: McpHub):
     await hub.start([spec("a")])
     result = await hub.call("nope", {}, None)

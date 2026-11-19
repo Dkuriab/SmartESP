@@ -17,6 +17,7 @@ from pathlib import Path
 
 from mcp import types
 from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 server = MCPServer("test")
 _background: set[asyncio.Task[None]] = set()  # фоновые задачи (держим ссылки)
@@ -53,6 +54,11 @@ async def sleep(seconds: float) -> str:
 @server.tool(description="Ошибка инструмента")
 def fail() -> str:
     raise ValueError("сломалось")
+
+
+@server.tool(description="Понятная ошибка для модели (ToolError)")
+def refuse() -> str:
+    raise ToolError("Место не задано: укажите город.")
 
 
 @server.tool(description="Падает весь процесс")

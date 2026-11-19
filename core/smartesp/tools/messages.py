@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, cast
 
 from mcp import types
@@ -16,6 +17,11 @@ logger = logging.getLogger("smartesp.tools")
 
 ANNOUNCE_LOGGER = "smartesp"  # имя журнала MCP, в котором коннектор шлёт объявления
 ANNOUNCE_TYPE = "announce"
+TOOL_FAILED = "Ошибка инструмента."  # ошибка без текста (или текст только из приставки SDK)
+
+# приставка SDK к ошибкам инструментов (по-английски; вложенный вызов — ещё раз)
+_SDK_PREFIX = re.compile(r"^(?:Error executing tool [^:]+: )+")
+_SDK_BARE = re.compile(r"^Error executing tool [^:]+$")  # упавший инструмент: SDK прячет текст
 
 # уровни журнала MCP → уровни журнала ядра
 _LEVELS: dict[str, int] = {
@@ -34,14 +40,24 @@ def tool_result(result: types.CallToolResult) -> ToolResult:
     """Переводит ответ MCP-инструмента в ToolResult: текстовые части через перевод строки.
 
     Нет текста — структурный ответ в JSON, а если нет и его — короткое «Готово.»/«Ошибка инструмента.».
+    У ошибки снимается английская приставка SDK «Error executing tool <имя>: »: модель
+    отвечает по-русски и пересказала бы её человеку.
     """
     texts = [part.text for part in result.content if isinstance(part, types.TextContent)]
     text = "\n".join(texts).strip()
+    if result.is_error:
+        text = _without_sdk_prefix(text)
     if not text and result.structured_content is not None:
         text = json.dumps(result.structured_content, ensure_ascii=False)
     if not text:
-        text = "Ошибка инструмента." if result.is_error else "Готово."
+        text = TOOL_FAILED if result.is_error else "Готово."
     return ToolResult(text=text, is_error=bool(result.is_error))
+
+
+def _without_sdk_prefix(text: str) -> str:
+    """Текст ошибки без приставки SDK; от упавшего инструмента остаётся пустая строка."""
+    text = _SDK_PREFIX.sub("", text).strip()
+    return "" if _SDK_BARE.match(text) else text
 
 
 def handle_log(
