@@ -118,6 +118,12 @@ describe('Feed', () => {
     expect(screen.getByText('Пора пить воду')).toBeInTheDocument()
   })
 
+  it('ход через API: источник и кто спрашивал', () => {
+    const api = { turn_id: 'api1', device_id: 'api', device_name: 'Telegram', origin: 'api' as const }
+    setup([makeTurn(1, { ...api, source: 'telegram', person: 'Аня' })])
+    expect(screen.getByText('Telegram · Аня')).toBeInTheDocument()
+  })
+
   it('не доставлено и ответ на вопрос Кузи', () => {
     setup([makeTurn(2, { status: 'undelivered' }), makeTurn(1, { origin: 'listen' })])
     expect(screen.getByText('не доставлено')).toBeInTheDocument()

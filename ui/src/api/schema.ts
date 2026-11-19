@@ -158,6 +158,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask */
+        post: operations["ask_api_v1_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ask/voice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask Voice */
+        post: operations["ask_voice_api_v1_ask_voice_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/access": {
         parameters: {
             query?: never;
@@ -196,6 +230,52 @@ export interface components {
             source: string;
             /** Text */
             text: string;
+        };
+        /**
+         * AskIn
+         * @description Вопрос через API текстом: текст, кто спрашивает ("" — неизвестно) и откуда (для ленты).
+         */
+        AskIn: {
+            /** Text */
+            text: string;
+            /**
+             * Person
+             * @default
+             */
+            person: string;
+            /**
+             * Source
+             * @default api
+             */
+            source: string;
+        };
+        /**
+         * AskOut
+         * @description Ответ на вопрос через API: текст ответа и номер хода в ленте.
+         */
+        AskOut: {
+            /** Answer */
+            answer: string;
+            /** Turn Id */
+            turn_id: string;
+        };
+        /** Body_ask_voice_api_v1_ask_voice_post */
+        Body_ask_voice_api_v1_ask_voice_post: {
+            /**
+             * Audio
+             * @description голосовое: OGG/Opus или WAV, до 10 МБ
+             */
+            audio: string;
+            /**
+             * Person
+             * @default
+             */
+            person: string;
+            /**
+             * Source
+             * @default api
+             */
+            source: string;
         };
         /**
          * ChangeOut
@@ -464,7 +544,17 @@ export interface components {
              * @default wake
              * @enum {string}
              */
-            origin: "wake" | "listen" | "core";
+            origin: "wake" | "listen" | "core" | "api";
+            /**
+             * Source
+             * @default
+             */
+            source: string;
+            /**
+             * Person
+             * @default
+             */
+            person: string;
             /**
              * Kind
              * @default turn
@@ -916,6 +1006,117 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    ask_api_v1_ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    ask_voice_api_v1_ask_voice_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_ask_voice_api_v1_ask_voice_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

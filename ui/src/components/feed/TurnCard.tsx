@@ -2,7 +2,7 @@
 import type { Turn } from '../../state/model'
 import './feed.css'
 import type { ExecutorName } from './names'
-import { executorName } from './names'
+import { executorName, turnPlace } from './names'
 import { formatTime } from './time'
 import { ToolTag } from './tools'
 
@@ -19,7 +19,7 @@ export default function TurnCard({ turn, executors, full = false, onClose }: Pro
     <div className={`panel turn-card${full ? ' turn-card-full' : ''}`} role="dialog" aria-label="Ход">
       <div className="card-head">
         <span className="cap">
-          {formatTime(turn.at)} · {turn.device_name || turn.device_id}
+          {formatTime(turn.at)} · {turnPlace(turn)}
         </span>
         <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
           ×

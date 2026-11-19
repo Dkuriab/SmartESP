@@ -444,6 +444,132 @@
         }
       }
     },
+    "/api/v1/ask": {
+      "post": {
+        "summary": "Ask",
+        "operationId": "ask_api_v1_ask_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ask/voice": {
+      "post": {
+        "summary": "Ask Voice",
+        "operationId": "ask_voice_api_v1_ask_voice_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ask_voice_api_v1_ask_voice_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request Entity Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/access": {
       "get": {
         "summary": "Get Access",
@@ -510,6 +636,80 @@
         ],
         "title": "AnnotationOut",
         "description": "Пометка этапа к реплике."
+      },
+      "AskIn": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "person": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Person",
+            "default": ""
+          },
+          "source": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{1,32}$",
+            "title": "Source",
+            "default": "api"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "AskIn",
+        "description": "Вопрос через API текстом: текст, кто спрашивает (\"\" — неизвестно) и откуда (для ленты)."
+      },
+      "AskOut": {
+        "properties": {
+          "answer": {
+            "type": "string",
+            "title": "Answer"
+          },
+          "turn_id": {
+            "type": "string",
+            "title": "Turn Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer",
+          "turn_id"
+        ],
+        "title": "AskOut",
+        "description": "Ответ на вопрос через API: текст ответа и номер хода в ленте."
+      },
+      "Body_ask_voice_api_v1_ask_voice_post": {
+        "properties": {
+          "audio": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Audio",
+            "description": "голосовое: OGG/Opus или WAV, до 10 МБ"
+          },
+          "person": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Person",
+            "default": ""
+          },
+          "source": {
+            "type": "string",
+            "pattern": "^[a-z0-9_-]{1,32}$",
+            "title": "Source",
+            "default": "api"
+          }
+        },
+        "type": "object",
+        "required": [
+          "audio"
+        ],
+        "title": "Body_ask_voice_api_v1_ask_voice_post"
       },
       "ChangeOut": {
         "properties": {
@@ -1079,10 +1279,21 @@
             "enum": [
               "wake",
               "listen",
-              "core"
+              "core",
+              "api"
             ],
             "title": "Origin",
             "default": "wake"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": ""
+          },
+          "person": {
+            "type": "string",
+            "title": "Person",
+            "default": ""
           },
           "kind": {
             "type": "string",

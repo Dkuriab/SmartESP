@@ -22,6 +22,8 @@ function turn(id: number | string, text = `вопрос ${id}`): Turn {
     first_text_ms: null,
     first_audio_ms: null,
     origin: 'wake',
+    source: '',
+    person: '',
     kind: 'turn',
   }
 }

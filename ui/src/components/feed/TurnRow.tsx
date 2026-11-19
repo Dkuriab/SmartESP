@@ -2,7 +2,7 @@
 import type { Turn } from '../../state/model'
 import './feed.css'
 import type { ExecutorName } from './names'
-import { executorName } from './names'
+import { executorName, turnPlace } from './names'
 import { formatTime } from './time'
 import { ToolTag, usedTools } from './tools'
 
@@ -29,7 +29,7 @@ export default function TurnRow({ turn, executors, selected, onSelect }: Props) 
       onClick={() => onSelect(turn.turn_id)}
     >
       <span className="time">{formatTime(turn.at)}</span>
-      <span className="when cut">{turn.device_name || turn.device_id}</span>
+      <span className="when cut">{turnPlace(turn)}</span>
       <span className="msg-body">
         <span className="line">
           {turn.kind === 'announcement' ? (

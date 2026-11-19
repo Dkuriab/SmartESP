@@ -19,6 +19,8 @@ export function makeTurn(id: number, over: Partial<Turn> = {}): Turn {
     delegations: [],
     tools: [],
     origin: 'wake',
+    source: '',
+    person: '',
     kind: 'turn',
     ...over,
   }
