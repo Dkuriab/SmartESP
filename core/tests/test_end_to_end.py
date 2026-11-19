@@ -2,22 +2,36 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import pytest
-from core_harness import fake_kinds, make_core
+from core_harness import eventually, fake_kinds, make_core
 from starlette.testclient import TestClient, WebSocketTestSession
 
+from fakes.fake_connection import FakeConnection
 from fakes.fake_executor import FakeExecutor
+from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
-from smartesp.contracts import Executor
+from smartesp.contracts import (
+    Annotation,
+    ChatMessage,
+    Delivery,
+    Executor,
+    Handoff,
+    ReplyPart,
+    ToolSpec,
+    Utterance,
+)
+from smartesp.conversation import History, Orchestrator
+from smartesp.devices import DeviceHub
 from smartesp.wiring import Assembly
 
 FRAME = bytes(1024)  # кадр колонки: 512 отсчётов s16le
@@ -189,3 +203,91 @@ def test_two_speakers_louder_one_answers(tmp_path: Path) -> None:
 
     assert len(executor.calls) == 1
     assert "Колонка: Спальня" in executor.calls[0][-1].content
+
+
+class _LateNetwork:
+    """Сеть исполнителей: «Минутку…», передача большой модели, её ответ — только после gate."""
+
+    def __init__(self) -> None:
+        self.id = "dispatcher"
+        self.gate = asyncio.Event()
+
+    async def run(
+        self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
+    ) -> AsyncIterator[ReplyPart]:
+        yield ReplyPart("Минутку, сейчас узнаю.")
+        yield ReplyPart(handoff=Handoff("dispatcher", "big", "Большая модель", "сложный вопрос"))
+        await self.gate.wait()
+        yield ReplyPart("Ответ сорок два.")
+
+
+class _HubAnnouncer:
+    """Простейшая очередь объявлений поверх хаба: синтез ядром и announce (настоящая — модуль notify)."""
+
+    def __init__(self, hub: DeviceHub, speak: Callable[[str], AsyncIterator[bytes]]) -> None:
+        self._hub = hub
+        self._speak = speak
+        self.results: list[Delivery] = []
+        self._tasks: set[asyncio.Task[None]] = set()
+
+    def say(self, device_id: str, text: str, source: str) -> None:
+        task = asyncio.create_task(self._deliver(device_id, text))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    async def _deliver(self, device_id: str, text: str) -> None:
+        self.results.append(await self._hub.announce(device_id, self._speak(text)))
+
+
+async def _no_annotations(utterance: Utterance) -> list[Annotation]:
+    return []
+
+
+async def test_end_to_end_late_answer() -> None:
+    # колонка v3: ответ не успел → «долго думает» → ответ объявлен на ту же колонку
+    hub = DeviceHub(0.02, 0.2, {"kitchen": "Кухня"})
+    network = _LateNetwork()
+    orchestrator = Orchestrator(
+        hub,
+        FakeSTT("сложный вопрос"),
+        _no_annotations,
+        network,
+        FakeTTS(bytes_per_char=32),
+        History(10, 600),
+        thinking_interval_s=0.05,
+        delegate_limit_s=0.2,
+    )
+    announcer = _HubAnnouncer(hub, orchestrator.speech)
+    orchestrator.use_announcer(announcer)
+    conn = FakeConnection()
+    tasks = [asyncio.create_task(hub.handle(conn)), asyncio.create_task(orchestrator.run())]
+    try:
+        conn.feed_json("hello", fw="3.0", device_id="kitchen", protocol=3)
+        await eventually(lambda: hub.supports_proactive("kitchen"))
+        conn.feed_json("wake", turn=1, level=-30.0)
+        for _ in range(5):
+            conn.feed(FRAME)
+        conn.feed_json("utterance_end", turn=1, reason="vad")
+        await eventually(lambda: {"type": "reply_end", "turn": 1} in conn.sent_json())
+        reply_audio = conn.sent_audio()
+        assert len(reply_audio) > 0  # «Минутку…» и «Большая модель долго думает…»
+        conn.feed_json("playback_done", turn=1)
+
+        network.gate.set()
+        core_turn = 0x80000001
+        await eventually(lambda: {"type": "reply_end", "turn": core_turn} in conn.sent_json())
+        frames = [m for m in conn.sent_json() if m.get("turn") == core_turn or m["type"] == "tone"]
+        assert frames[-4:] == [
+            {"type": "announce", "turn": core_turn},
+            {"type": "tone", "name": "attention"},
+            {"type": "reply_start", "turn": core_turn},
+            {"type": "reply_end", "turn": core_turn},
+        ]
+        assert len(conn.sent_audio()) > len(reply_audio)  # «Большая модель отвечает: …»
+        conn.feed_json("playback_done", turn=core_turn)
+        await eventually(lambda: announcer.results == ["delivered"])
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await hub.aclose()

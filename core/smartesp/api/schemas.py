@@ -131,13 +131,15 @@ class TurnOut(BaseModel):
     annotations: list[AnnotationOut]
     style: str
     answer: str
-    status: Literal["ok", "error", "interrupted", "meaningless"]
+    status: Literal["ok", "error", "interrupted", "meaningless", "undelivered"]
     at: float
     stt_ms: float | None = None
     first_text_ms: float | None = None
     first_audio_ms: float | None = None
     path: list[str] = []  # id исполнителей хода по порядку
     delegations: list[DelegationOut] = []
+    origin: Literal["wake", "listen", "core"] = "wake"  # слово, прослушивание после вопроса, ядро само
+    kind: Literal["turn", "announcement"] = "turn"  # ход разговора или объявление ядра
 
 
 class DownloadIn(BaseModel):

@@ -132,6 +132,21 @@ async def test_turns_path_and_delegations(client: httpx.AsyncClient, core: FakeC
     assert (turns[1]["path"], turns[1]["delegations"]) == ([], [])  # ходы до передачи задач
 
 
+async def test_turns_origin_kind_and_undelivered(client: httpx.AsyncClient, core: FakeCore) -> None:
+    late = {"origin": "core", "kind": "announcement", "status": "undelivered", "path": ["big"]}
+    core.turn_items = [
+        {**make_turn(6), **late, "turn_id": "late5"},
+        {**make_turn(5), "origin": "listen"},
+        make_turn(4),
+    ]
+    turns = (await client.get(f"{P}/turns", headers=HEADERS)).json()
+    assert [(t["turn_id"], t["origin"], t["kind"], t["status"]) for t in turns] == [
+        ("late5", "core", "announcement", "undelivered"),
+        (5, "listen", "turn", "ok"),
+        (4, "wake", "turn", "ok"),  # ходы до речи по инициативе
+    ]
+
+
 async def test_restart(client: httpx.AsyncClient, core: FakeCore) -> None:
     response = await client.post(f"{P}/restart", headers=HEADERS)
     assert response.status_code == 202

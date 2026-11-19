@@ -2,7 +2,9 @@
 
 Исполнитель (сеть исполнителей) отдаёт ReplyPart(handoff=…) и сразу за ним
 куски цели. Первый кусок цели ждём как первый кусок ответа: с сигналом «думаю»
-и своим пределом; не дождались — звучит фраза «Не получилось ответить вовремя…», ход — ошибка.
+и своим пределом; не дождались — поток цели берёт фоновая задача (Waiting.defer) и
+звучит «<Имя> долго думает…», а если не взяла — «Не получилось ответить вовремя…»,
+ход — ошибка.
 """
 
 import asyncio
@@ -13,7 +15,7 @@ from dataclasses import dataclass
 from smartesp.contracts import Executor, ExecutorError, Handoff, Identified, ReplyPart
 
 from .sentences import DEFAULT_STYLE, clean_for_speech, split_sentences, strip_style_tag, take_style
-from .streams import closing, first_part, next_part
+from .streams import LateFirstPart, closing, drop, first_part_or_late, next_part
 from .turn import Turn
 
 _log = logging.getLogger(__name__)
@@ -21,6 +23,7 @@ _log = logging.getLogger(__name__)
 DELEGATE_FIRST_PART_LIMIT_S = 90.0  # дольше первого куска цели передачи не ждём
 LIVE_POLL_S = 0.1  # как часто проверять, актуален ли ход, пока ждём цель
 TIMEOUT_PHRASE = "Не получилось ответить вовремя, спроси попозже."  # цель не ответила в срок
+LATER_PHRASE = "{name} долго думает. Скажу, когда будет готово."  # ответ цели объявим потом
 SILENT_PHRASE = "{name} сейчас не отвечает."  # цель ничего не сказала
 CANNED_PHRASE = "Минутку, сейчас узнаю."  # вызов передачи без фразы: говорим за диспетчера
 ENTRY_ID = "entry"  # id входного исполнителя, который своего id не знает
@@ -33,6 +36,8 @@ class Waiting:
     thinking — сигнал «думаю» колонке; is_live — актуален ли ход;
     thinking_interval_s — период «думаю»; part_idle_s — предел паузы между
     кусками; delegate_limit_s — предел первого куска цели после передачи.
+    defer — цель не уложилась в delegate_limit_s: отдать (передача, начатое
+    чтение первого куска, поток) фоновой задаче; True — поток взят ею.
     """
 
     thinking: Callable[[], Awaitable[None]]
@@ -41,6 +46,7 @@ class Waiting:
     part_idle_s: float
     delegate_limit_s: float
     live_poll_s: float = LIVE_POLL_S
+    defer: Callable[[Handoff, asyncio.Task[ReplyPart | None], AsyncIterator[ReplyPart]], bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -70,7 +76,8 @@ async def collect(
 
     После куска с handoff первый кусок цели ждём с «думаю» (без сказанного до
     передачи текста — «думаю» сразу) не дольше delegate_limit_s; не дождались —
-    фраза TIMEOUT_PHRASE с failure и конец. Цель так ничего и не сказала (поток
+    поток цели берёт waiting.defer: фраза LATER_PHRASE и конец (turn.deferred);
+    не взял — фраза TIMEOUT_PHRASE с failure и конец. Цель так ничего и не сказала (поток
     кончился или замолк дольше part_idle_s) — фраза SILENT_PHRASE с failure.
     Ход стал неактуальным, пока ждём цель, — заканчиваем сразу. Пауза между
     кусками дольше part_idle_s в остальных случаях — ExecutorError.
@@ -85,6 +92,8 @@ async def collect(
             target_start = len(turn.answer)
         _take(turn, part)
         yield part
+        if turn.deferred:  # поток цели больше не наш
+            return
         try:
             part = await _following(turn, part, parts, waiting)
         except ExecutorError as error:
@@ -159,7 +168,8 @@ async def _following(
 async def _target_first(turn: Turn, parts: AsyncIterator[ReplyPart], waiting: Waiting) -> ReplyPart | None:
     """Первый кусок цели передачи или None (цель промолчала или ход стал неактуальным).
 
-    Не дождались за delegate_limit_s — ExecutorError.
+    Не дождались за delegate_limit_s: поток взял waiting.defer — кусок LATER_PHRASE
+    и turn.deferred; не взял — ExecutorError.
     """
     if not _spoken(turn):  # до передачи ничего не сказано — колонка не должна ждать молча
         await waiting.thinking()
@@ -167,7 +177,7 @@ async def _target_first(turn: Turn, parts: AsyncIterator[ReplyPart], waiting: Wa
         async with asyncio.timeout(None) as deadline:
             watcher = asyncio.create_task(_watch(waiting.is_live, deadline, waiting.live_poll_s))
             try:
-                return await first_part(
+                return await first_part_or_late(
                     parts, waiting.thinking, waiting.thinking_interval_s, waiting.delegate_limit_s
                 )
             finally:
@@ -176,6 +186,26 @@ async def _target_first(turn: Turn, parts: AsyncIterator[ReplyPart], waiting: Wa
     except TimeoutError:
         _log.info("Колонка %s: ход прерван, пока ждали цель передачи", turn.device_name)
         return None
+    except LateFirstPart as late:
+        return await _late(turn, parts, waiting, late)
+
+
+async def _late(
+    turn: Turn, parts: AsyncIterator[ReplyPart], waiting: Waiting, late: LateFirstPart
+) -> ReplyPart:
+    """Цель не уложилась в предел: LATER_PHRASE, если поток взяла фоновая задача, иначе ExecutorError."""
+    handoff = turn.delegations[-1]
+    try:
+        turn.deferred = bool(
+            waiting.defer and waiting.is_live() and waiting.defer(handoff, late.pending, parts)
+        )
+    finally:
+        if not turn.deferred:  # поток останется нашим: до его закрытия чтение не должно идти
+            await drop(late.pending)
+    if not turn.deferred:
+        raise ExecutorError(str(late)) from late
+    _log.info("Колонка %s: %s долго думает — ответ объявим потом", turn.device_name, handoff.target)
+    return ReplyPart(LATER_PHRASE.format(name=handoff.target_name))
 
 
 async def _watch(is_live: Callable[[], bool], deadline: asyncio.Timeout, poll_s: float) -> None:

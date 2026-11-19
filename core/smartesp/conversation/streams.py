@@ -1,4 +1,4 @@
-"""Потоки хода: закрытие итераторов, пустой звук и ожидание кусков исполнителя с таймаутами."""
+"""Потоки хода: закрытие итераторов, пустой звук и ожидание кусков исполнителя с пределами."""
 
 import asyncio
 import itertools
@@ -11,13 +11,27 @@ from smartesp.contracts import ExecutorError, ReplyPart
 _log = logging.getLogger(__name__)
 
 
+class LateFirstPart(Exception):
+    """Первый кусок не пришёл за предел; ожидание anext не отменено и продолжается в pending."""
+
+    def __init__(self, pending: asyncio.Task[ReplyPart | None], limit_s: float) -> None:
+        """pending — задача чтения первого куска (None — исполнитель закончил молча)."""
+        super().__init__(f"исполнитель не ответил за {limit_s:g} с")
+        self.pending = pending
+
+
 @asynccontextmanager
-async def closing[T](iterator: AsyncIterator[T]) -> AsyncIterator[AsyncIterator[T]]:
-    """Как contextlib.aclosing, но для любого AsyncIterator: закрывает его, если это генератор."""
+async def closing[T](
+    iterator: AsyncIterator[T], keep: Callable[[], bool] = lambda: False
+) -> AsyncIterator[AsyncIterator[T]]:
+    """Как contextlib.aclosing, но для любого AsyncIterator: закрывает его, если это генератор.
+
+    keep() истинно на выходе — поток не закрывается (его взял кто-то другой).
+    """
     try:
         yield iterator
     finally:
-        if isinstance(iterator, AsyncGenerator):
+        if isinstance(iterator, AsyncGenerator) and not keep():
             await iterator.aclose()
 
 
@@ -51,6 +65,45 @@ async def first_part(
     finally:
         ticker.cancel()
         await asyncio.gather(ticker, return_exceptions=True)
+
+
+async def first_part_or_late(
+    parts: AsyncIterator[ReplyPart],
+    keep_waiting: Callable[[], Awaitable[None]],
+    interval_s: float,
+    limit_s: float,
+) -> ReplyPart | None:
+    """Ждёт первый кусок ответа, как first_part, но предел не обрывает чтение.
+
+    Возвращает кусок или None (исполнитель закончил молча). Нет куска за limit_s —
+    LateFirstPart с задачей pending, которая продолжает ждать кусок: генератор
+    исполнителя жив, его можно дочитать (сначала дождавшись pending) или закрыть
+    (сначала отменив pending — drop). Отмена самого ожидания отменяет и чтение.
+    """
+    pending = asyncio.create_task(_read(parts))
+    ticker = asyncio.create_task(_tick(keep_waiting, interval_s, asyncio.get_running_loop().time()))
+    try:
+        done, _ = await asyncio.wait((pending,), timeout=limit_s)
+    except asyncio.CancelledError:
+        await drop(pending)
+        raise
+    finally:
+        ticker.cancel()
+        await asyncio.gather(ticker, return_exceptions=True)
+    if pending in done:
+        return pending.result()
+    raise LateFirstPart(pending, limit_s)
+
+
+async def drop(pending: asyncio.Task[ReplyPart | None]) -> None:
+    """Отменяет чтение куска и ждёт его конца: после этого генератор исполнителя можно закрывать."""
+    pending.cancel()
+    await asyncio.gather(pending, return_exceptions=True)
+
+
+async def _read(parts: AsyncIterator[ReplyPart]) -> ReplyPart | None:
+    """Следующий кусок или None в конце потока."""
+    return await anext(parts, None)
 
 
 async def next_part(parts: AsyncIterator[ReplyPart], idle_s: float) -> ReplyPart | None:

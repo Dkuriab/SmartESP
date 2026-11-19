@@ -18,6 +18,7 @@ from .executor import (
     UsesModels,
     WarmsUp,
 )
+from .notify import Announcer
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
 from .tts import TextToSpeech, VoiceInfo, VoiceNotDownloadedError
@@ -26,6 +27,7 @@ __all__ = [
     "DELEGATE_TOOL",
     "SAMPLE_RATE",
     "Analyzer",
+    "Announcer",
     "Annotation",
     "ChangeResult",
     "ChatMessage",

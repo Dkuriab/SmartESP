@@ -4,6 +4,7 @@ import time
 
 from smartesp.contracts import Handoff
 
+from .sentences import DEFAULT_STYLE
 from .turn import Turn, answer_text
 
 
@@ -55,4 +56,27 @@ def finished_data(turn: Turn) -> dict[str, object]:
         "stt_ms": _ms(turn.stt_ms),
         "first_text_ms": _ms(turn.first_text_ms),
         "first_audio_ms": _ms(turn.first_audio_ms),
+        "origin": turn.utterance.origin,
+        "kind": "turn",
+    }
+
+
+def undelivered_data(turn: Turn, handoff: Handoff) -> dict[str, object]:
+    """Данные turn_finished «запоздавший ответ не дождались»: объявление ядра, вслух ничего.
+
+    turn_id — "late<номер хода>", чтобы не путать с ходами и связать с исходным ходом.
+    """
+    return {
+        **started_data(turn),
+        "turn_id": f"late{turn.utterance.turn}",
+        "at": time.time(),
+        "text": "",
+        "annotations": [],
+        "style": DEFAULT_STYLE,
+        "answer": "",
+        "status": "undelivered",
+        "path": [handoff.target],
+        "delegations": [],
+        "origin": "core",
+        "kind": "announcement",
     }

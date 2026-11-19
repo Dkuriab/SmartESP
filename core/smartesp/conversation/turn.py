@@ -19,6 +19,8 @@ from .sentences import DEFAULT_STYLE, strip_style_tag
 
 _log = logging.getLogger(__name__)
 
+_CLOSERS = " \t\n\"'»“”)"  # кавычки и скобки после знака конца предложения
+
 
 @dataclass(frozen=True)
 class Parts:
@@ -53,6 +55,8 @@ class Turn:
     breaks: list[int] = field(
         default_factory=list[int]
     )  # где в answer начинается ответ цели или фраза об ошибке
+    deferred: bool = False  # поток ответа цели взяла фоновая задача запоздавшего ответа
+    last_sentence: str = ""  # последнее озвученное предложение (после clean_for_speech)
 
     def elapsed_ms(self) -> float:
         """Сколько миллисекунд прошло с прихода реплики."""
@@ -72,6 +76,11 @@ def answer_text(turn: Turn) -> str:
     bounds = [0, *turn.breaks, len(turn.answer)]
     texts = (strip_style_tag("".join(turn.answer[a:b]))[1].strip() for a, b in itertools.pairwise(bounds))
     return " ".join(text for text in texts if text)
+
+
+def asks_question(turn: Turn) -> bool:
+    """True, если ход доведён до конца без ошибки и последнее озвученное предложение — вопрос."""
+    return turn.completed and not turn.failed and turn.last_sentence.rstrip(_CLOSERS).endswith("?")
 
 
 def status(turn: Turn) -> str:
