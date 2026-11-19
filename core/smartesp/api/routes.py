@@ -22,6 +22,9 @@ from smartesp.contracts import (
 from .access import lan_addresses
 from .ask import add_ask_routes
 from .auth import require_token, token_matches
+from .core_routes import add_core_routes
+from .log_buffer import LogBuffer
+from .logs import add_logs_route
 from .play import add_play_routes
 from .schemas import (
     AccessOut,
@@ -48,10 +51,13 @@ def _change_response(result: ChangeResult, codes: dict[str, int]) -> JSONRespons
     return JSONResponse(body.model_dump(), status_code=codes.get(result.status, 200))
 
 
-def create_api(core: CorePort, feed: EventFeed, token: str, *, port: int, files: FilePlayback) -> APIRouter:
+def create_api(
+    core: CorePort, feed: EventFeed, token: str, *, port: int, files: FilePlayback, logs: LogBuffer
+) -> APIRouter:
     """Собирает роутер `/api/v1`; все ресурсы требуют токен.
 
-    `port` — порт сервера для адресов входа; `files` — проигрывание файлов на колонках.
+    `port` — порт сервера для адресов входа; `files` — проигрывание файлов на колонках;
+    `logs` — журнал для WebSocket `/logs`.
     """
     router = APIRouter(prefix="/api/v1")
     secured = APIRouter(dependencies=[Depends(require_token(token))], responses=_UNAUTHORIZED)
@@ -59,9 +65,11 @@ def create_api(core: CorePort, feed: EventFeed, token: str, *, port: int, files:
     _add_voice_routes(secured, core)
     add_ask_routes(secured, core)
     add_play_routes(secured, files)
+    add_core_routes(secured, core, port)
     _add_access_route(secured, token, port)
     router.include_router(secured)
     _add_events_route(router, feed, token)
+    add_logs_route(router, logs, token)
     return router
 
 

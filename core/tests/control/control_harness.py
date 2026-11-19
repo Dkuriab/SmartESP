@@ -95,6 +95,7 @@ class Harness:
         self.tool_models = {"qwen"}
         self.executor_states: dict[str, str | None] = {}  # итог фонового прогрева участников
         self.connector_states: list[ConnectorState] = []
+        self.unloaded: list[str] = []  # что пульт просил выгрузить из Ollama
         self.core = Core(
             self.store,
             {name: s.section() for name, s in self.sections.items()},
@@ -111,7 +112,12 @@ class Harness:
             supports_tools=self._supports_tools,
             executor_states=lambda: self.executor_states,
             connectors=lambda: self.connector_states,
+            unload=self._unload,
+            data_dir="/data/smartesp",
         )
+
+    async def _unload(self, name: str) -> None:
+        self.unloaded.append(name)
 
     async def _supports_tools(self, model: str) -> bool:
         return model in self.tool_models

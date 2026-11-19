@@ -13,6 +13,7 @@ from fakes.fake_executor import FakeOllama
 from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
 from fakes.no_connectors import NO_CONNECTORS_YAML
+from smartesp.api import LogBuffer
 from smartesp.config import ConfigFile, ExecutorConfig
 from smartesp.contracts import Executor, TextToSpeech
 from smartesp.kinds import Kinds
@@ -82,7 +83,17 @@ def make_core(
     put_voice(home)
     store = ConfigFile(home / "config.yaml")
     config = store.load()
-    return assemble(store, config, home, kinds, ollama, version="test", token=TOKEN, ui_dir=home / "no-ui")
+    return assemble(
+        store,
+        config,
+        home,
+        kinds,
+        ollama,
+        version="test",
+        token=TOKEN,
+        ui_dir=home / "no-ui",
+        logs=LogBuffer(),
+    )
 
 
 def ollama_factory(

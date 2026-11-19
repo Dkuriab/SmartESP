@@ -218,3 +218,22 @@ class StopOut(BaseModel):
     """Остановка файла: stopped=False — файл не играл."""
 
     stopped: bool
+
+
+class CoreInfoOut(BaseModel):
+    """Ядро: версия, время работы, состояние, порт сервера из настроек и папка данных."""
+
+    version: str
+    uptime_s: float
+    state: Literal["warming", "ready", "stopping"]
+    port: int
+    data_dir: str
+
+
+MODEL_PATTERN = r"^[^\x00-\x1f\x7f]+$"  # имя модели Ollama: одна строка без управляющих символов
+
+
+class UnloadIn(BaseModel):
+    """Какую модель выгрузить из памяти Ollama (имя как в status.ollama.loaded)."""
+
+    name: Annotated[str, StringConstraints(min_length=1, max_length=200, pattern=MODEL_PATTERN)]

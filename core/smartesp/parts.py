@@ -113,6 +113,7 @@ def voice_manager(
 
 def control(
     parts: Assembly,
+    home: Path,
     store: ConfigFile,
     ollama: Ollama,
     version: str,
@@ -154,4 +155,6 @@ def control(
         connectors=tools.states,
         ask=parts.orchestrator.ask,  # ход через API: тот же путь, что с колонки, ответ текстом
         decode=decode_audio,  # голосовое (OGG/Opus, WAV) → PCM для распознавания
+        unload=ollama.unload,  # «Выгрузить» в интерфейсе: только модель, что сейчас в памяти
+        data_dir=str(home),
     )

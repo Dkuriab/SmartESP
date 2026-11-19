@@ -20,7 +20,7 @@ from pathlib import Path
 
 import uvicorn
 
-from smartesp.api import HideToken, load_or_create_token
+from smartesp.api import LOG_FORMAT, HideToken, LogBuffer, load_or_create_token
 from smartesp.config import (
     Config,
     ConfigFile,
@@ -30,7 +30,7 @@ from smartesp.config import (
     data_dir,
 )
 from smartesp.contracts import Executor, SpeechToText, Stage, TextToSpeech
-from smartesp.executors import OllamaExecutor, list_models, loaded_models, model_capabilities
+from smartesp.executors import OllamaExecutor, list_models, loaded_models, model_capabilities, unload_model
 from smartesp.kinds import Kinds, StartupError, check_kinds
 from smartesp.lifecycle import GracefulServer, exit_code, run_loop, watch_parent
 from smartesp.stages import Clock, WhisperDetect
@@ -38,7 +38,6 @@ from smartesp.stt import MlxWhisperSTT
 from smartesp.tts import PiperTTS, SileroTTS, VoskTTS
 from smartesp.wiring import Ollama, assemble, stop
 
-LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 LOG_MAX_BYTES = 1_000_000
 LOG_BACKUPS = 5
 GRACE_S = 2  # uvicorn после нашей остановки ждёт соединения API не дольше этого
@@ -65,11 +64,12 @@ STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
     "clock": lambda c: Clock(),
 }
 KINDS = Kinds(STT_KINDS, TTS_KINDS, EXECUTOR_KINDS, STAGE_KINDS)
-OLLAMA = Ollama(list_models, loaded_models, model_capabilities)
+OLLAMA = Ollama(list_models, loaded_models, model_capabilities, unload_model)
 
 
-def _setup_logging(logs: Path, *, quiet_console: bool = False) -> None:
-    """Журнал в консоль и в logs/core.log (5 файлов по 1 МБ); токен из адресов спрятан.
+def _setup_logging(logs: Path, *, quiet_console: bool = False) -> LogBuffer:
+    """Журнал в консоль, в logs/core.log (5 файлов по 1 МБ) и в память для интерфейса
+    (возвращается: его читает WebSocket /api/v1/logs); токен из адресов спрятан.
 
     quiet_console — в консоль только WARNING и выше: под приложением stderr идёт в
     core-stderr.log, и полный журнал там дублировал бы core.log.
@@ -88,6 +88,9 @@ def _setup_logging(logs: Path, *, quiet_console: bool = False) -> None:
         handler.setFormatter(formatter)
         handler.addFilter(HideToken())
         root.addHandler(handler)
+    memory = LogBuffer()  # свой формат и сокрытие токена
+    root.addHandler(memory)
+    return memory
 
 
 def _flush_logs() -> None:
@@ -127,17 +130,20 @@ def _write_openapi(path: Path) -> None:
         version=_version(),
         token="",
         ui_dir=UI_DIR,
+        logs=LogBuffer(),
     )
     path.write_text(json.dumps(parts.app.openapi(), ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-async def _serve(store: ConfigFile, config: Config, home: Path, parent_watch: bool) -> bool:
+async def _serve(store: ConfigFile, config: Config, home: Path, parent_watch: bool, logs: LogBuffer) -> bool:
     """Сервер сразу, прогрев в фоне, работа до остановки.
 
-    True — просили перезапуск, и никто не просил выхода (сигнал, закрытый stdin).
+    True — просили перезапуск, и никто не просил выхода (сигнал, закрытый stdin, POST /core/stop).
     """
     token = load_or_create_token(home)
-    parts = assemble(store, config, home, KINDS, OLLAMA, version=_version(), token=token, ui_dir=UI_DIR)
+    parts = assemble(
+        store, config, home, KINDS, OLLAMA, version=_version(), token=token, ui_dir=UI_DIR, logs=logs
+    )
     host, port = config.server.host, config.server.port
     # log_config=None: uvicorn пишет через корневой журнал (консоль + core.log)
     uv_config = uvicorn.Config(
@@ -145,6 +151,7 @@ async def _serve(store: ConfigFile, config: Config, home: Path, parent_watch: bo
     )
     server = GracefulServer(uv_config, functools.partial(stop, parts), on_started=parts.run_file.write)
     server.stop_after(parts.core.wait_restart())
+    server.stop_after(parts.core.wait_stop())  # остановка из интерфейса: выход с кодом 0
     if parent_watch:
         watch_parent(sys.stdin.fileno(), server.request_stop)
     logger.info("Запускаю сервер на %s:%d (/device, /api/v1)", host, port)
@@ -152,7 +159,7 @@ async def _serve(store: ConfigFile, config: Config, home: Path, parent_watch: bo
         await server.serve()
     finally:
         parts.run_file.remove()
-    return parts.core.restart_requested and not server.exit_requested
+    return parts.core.restart_requested and not parts.core.stop_requested and not server.exit_requested
 
 
 def main(
@@ -173,7 +180,7 @@ def main(
         _write_openapi(args.openapi)
         return
     home = data_dir()
-    _setup_logging(home / "logs", quiet_console=args.parent_watch)
+    logs = _setup_logging(home / "logs", quiet_console=args.parent_watch)
     store = ConfigFile(home / "config.yaml")
     try:
         config = store.load()
@@ -184,7 +191,7 @@ def main(
         raise SystemExit(f"Ядро не запущено: {error}") from error
     restart, code = False, 0
     try:
-        restart = run_loop(_serve(store, config, home, args.parent_watch))
+        restart = run_loop(_serve(store, config, home, args.parent_watch, logs))
     except KeyboardInterrupt:
         pass
     except BaseException as error:  # noqa: BLE001 — процесс должен выйти через exit_process

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 
-from smartesp.api import BodyLimit, create_api, mount_ui
+from smartesp.api import BodyLimit, LogBuffer, create_api, mount_ui
 from smartesp.config import Config, ConfigFile
 from smartesp.contracts import Analyzer
 from smartesp.conversation import tool_observer
@@ -83,8 +83,12 @@ def assemble(
     version: str,
     token: str,
     ui_dir: Path,
+    logs: LogBuffer,
 ) -> Assembly:
-    """Создаёт части без моделей (их греет start) и приложение: /device, /api/v1, интерфейс."""
+    """Создаёт части без моделей (их греет start) и приложение: /device, /api/v1, интерфейс.
+
+    logs — журнал процесса для WebSocket /api/v1/logs.
+    """
     bus = EventBus()
     hub, history, orchestrator, announcer, files, use_speech = conversation(config, bus)
     live = live_answering(orchestrator, turn_wait_s=TURN_WAIT_S, unload_s=UNLOAD_S, warm_s=WARM_UP_TIMEOUT_S)
@@ -114,17 +118,17 @@ def assemble(
     build = functools.partial(_build_answering, kinds, live, capabilities, tools)  # (настройки) → пара
     # Ollama поднялась позже ядра — пересборка, как правка executors
     parts.retry = CapabilityRetry(live, capabilities.probe, lambda: build(store.config))
-    parts.core = control(parts, store, ollama, version, build, use_speech)
+    parts.core = control(parts, home, store, ollama, version, build, use_speech)
     # инструменты сменились — пересборка в очереди правок: не гоняется с ними
     parts.refresh = ToolsRefresh(
         lambda: live.executor is not None, lambda: parts.core.rebuild(ANSWERING_SECTIONS)
     )
     parts.files = files
-    parts.app = _build_app(parts, token, ui_dir, version)
+    parts.app = _build_app(parts, token, ui_dir, version, logs)
     return parts
 
 
-def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str) -> FastAPI:
+def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str, logs: LogBuffer) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         start(parts)  # до приёма соединений: голос открывается раньше любого PATCH
@@ -140,7 +144,8 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str) -> FastA
         await ws.accept()
         await parts.hub.handle(WebSocketConnection(ws))
 
-    api = create_api(parts.core, parts.bus, token, port=parts.config.server.port, files=parts.files)
+    port = parts.config.server.port
+    api = create_api(parts.core, parts.bus, token, port=port, files=parts.files, logs=logs)
     app.include_router(api)
     app.add_middleware(BodyLimit, token=token)  # предел тела и токен ходов через API — до чтения тела
     mount_ui(app, ui_dir)  # последним: монтирование на / перехватывает всё, что объявлено позже

@@ -1,4 +1,4 @@
-"""Список моделей Ollama: установленные и загруженные в память."""
+"""Модели Ollama: установленные, загруженные в память, выгрузка из памяти."""
 
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -26,12 +26,12 @@ def _name(item: Any) -> str:
     return str(_field(item, "model") or _field(item, "name") or "")
 
 
-def _wrap(exc: Exception) -> ExecutorError:
+def _wrap(exc: Exception, what: str) -> ExecutorError:
     """Превращает ошибку ollama/сети в ExecutorError."""
-    return ExecutorError(f"Не удалось получить список моделей Ollama: {exc!r}")
+    return ExecutorError(f"Не удалось {what}: {exc!r}")
 
 
-async def _call(client: Any, method: str) -> Any:
+async def _call(client: Any, method: str, what: str = "получить список моделей Ollama", **kwargs: Any) -> Any:
     """Вызывает метод клиента; свой клиент (если не передан) закрывает после вызова.
 
     Переданный снаружи клиент не закрывается.
@@ -39,10 +39,10 @@ async def _call(client: Any, method: str) -> Any:
     own = client is None
     c: Any = ollama.AsyncClient(timeout=LIST_TIMEOUT_S) if own else client
     try:
-        call: Callable[[], Awaitable[Any]] = getattr(c, method)
-        return await call()
+        call: Callable[..., Awaitable[Any]] = getattr(c, method)
+        return await call(**kwargs)
     except (httpx.HTTPError, ConnectionError, ollama.ResponseError) as exc:
-        raise _wrap(exc) from exc
+        raise _wrap(exc, what) from exc
     finally:
         if own:
             await c.close()
@@ -64,6 +64,14 @@ async def loaded_models(client: Any = None) -> list[str]:
     """
     response = await _call(client, "ps")
     return [_name(m) for m in _items(response)]
+
+
+async def unload_model(name: str, client: Any = None) -> None:
+    """Выгружает модель из памяти (keep_alive=0); не загруженную такой запрос сначала загрузит.
+
+    Кидает ExecutorError, если Ollama недоступна или ответила ошибкой.
+    """
+    await _call(client, "generate", f"выгрузить модель {name}", model=name, prompt="", keep_alive=0)
 
 
 async def model_capabilities(model: str, client: Any = None) -> frozenset[str]:

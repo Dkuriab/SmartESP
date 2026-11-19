@@ -68,6 +68,10 @@ class ExecutorError(Exception):
     """Исполнитель недоступен (нет сервера или модели)."""
 
 
+class ModelNotLoadedError(Exception):
+    """Модели нет среди загруженных в память Ollama: выгружать нечего."""
+
+
 class Executor(Protocol):
     """Исполнитель: по сообщениям выдаёт ответ по кускам."""
 

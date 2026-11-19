@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from control_harness import Harness
 
-import smartesp.control.core as core_module
+import smartesp.control.ollama as ollama_module
 from smartesp.contracts import ChangeResult, ConnectorState, CorePort, DeviceInfo, ExecutorError
 from smartesp.control import RESTART_SECTIONS
 
@@ -86,7 +86,7 @@ async def test_status_survives_unexpected_ollama_error() -> None:
 
 
 async def test_status_does_not_wait_for_hung_ollama(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(core_module, "OLLAMA_TIMEOUT_S", 0.01)
+    monkeypatch.setattr(ollama_module, "OLLAMA_TIMEOUT_S", 0.01)
     h = Harness()
     h.loaded_gate = asyncio.Event()  # никогда не откроется
     assert (await h.core.status())["ollama"] == {"reachable": False, "loaded": []}

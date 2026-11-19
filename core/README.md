@@ -288,6 +288,7 @@ curl -X PATCH -H "Authorization: Bearer $(cat ~/SmartEsp/token)" \
 | `GET /config` | `effective` — настройки целиком, `overridden` — изменённые ключи через точку (`tts.kind`), `restart_sections`, `dispatcher_prompt` — итоговый промпт диспетчера (`system_prompt` входного исполнителя + правила включённых обработчиков и передачи), `executor_prompts` — итоговые промпты всех исполнителей по id; только для чтения |
 | `PATCH /config` | частичные настройки в форме `config.yaml`: словари сливаются вглубь, списки заменяются целиком, `null` сбрасывает ключ к умолчанию. Ответ `{change_id, status, error}`: `accepted` или `restart_required` — 200, `invalid` — 422 (неизвестный ключ, неверное значение, неизвестный вид `kind` у `stt`, `tts`, исполнителя или обработчика), `stopping` — 503 |
 | `GET /models` | модели Ollama: `{name, size_bytes, supports_tools}` (Ollama недоступна — 502) |
+| `POST /models/unload` | `{name}` → 204: выгрузить модель из памяти Ollama. Только модель, которая сейчас в памяти (`status.ollama.loaded`), иначе 404: запрос выгрузки загрузил бы её. Ollama недоступна — 502. Имя — в теле: в именах моделей бывает `/`. Модель живого исполнителя загрузится снова на следующем ходе |
 | `GET /voices` | голоса: `{kind, voice, title, size_mb, downloaded, current}` |
 | `POST /voices/download` | `{kind, voice}` → 202, `{change_id, status: "accepted"}`; ход скачивания — события `voice_download`, `voice_ready`. Голоса нет в каталоге `GET /voices` — 422 (`status: "invalid"`, текст в `error`), ядро останавливается — 503 (`status: "stopping"`) |
 | `POST /voices/preview` | `{kind, voice, style="normal", text=null}` → `audio/wav` (16 кГц, 16 бит, моно); голос не скачан (или ещё качается) — 409, неизвестный голос — 404, модель не озвучила образец — 500; тело ошибки `{detail}` |
@@ -297,7 +298,10 @@ curl -X PATCH -H "Authorization: Bearer $(cat ~/SmartEsp/token)" \
 | `POST /devices/{id}/play` | звуковой файл на колонке: multipart `audio` (MP3, WAV, OGG, M4A, FLAC; до 50 МБ) → 202 `{status: "started"}` (см. «Файл на колонке») |
 | `DELETE /devices/{id}/play` | остановить файл на колонке → `{stopped}` (`false` — файл не играл); колонки нет — 404 |
 | `GET /access` | `{urls}` — адреса `http://<ip>:<порт>/?token=…` для входа с других компьютеров сети (без `127.*`) |
+| `GET /core` | `{version, uptime_s, state, port, data_dir}`; `port` — из настроек `server.port` |
 | `POST /restart` | перезапуск ядра, ответ 202 |
+| `POST /core/stop` | честная остановка и выход с кодом 0, ответ 202; приложение такое ядро не перезапускает |
+| `WS /logs?token=` | журнал ядра: сначала последние 500 строк, затем новые; сообщение — JSON `{"at", "level", "text"}` (`level` — `INFO`, `WARNING`, `ERROR`…; токен из `?token=` спрятан). Медленный клиент теряет самые старые строки (очередь — 1000), память не растёт |
 | `WS /events?token=` | поток событий JSON `{"kind", "data", "at"}`: `core_state`, `device_connected`, `device_disconnected`, `wake`, `arbitration`, `turn_started`, `turn_heard`, `executor_active`, `tool_call`, `turn_finished`, `change_applied`, `voice_download`, `voice_ready`, `playback_started`, `playback_finished` |
 
 Схема OpenAPI для интерфейса: `uv run python -m smartesp --openapi ../ui/openapi.json`.
@@ -389,8 +393,8 @@ curl -H "Authorization: Bearer $(cat ~/SmartEsp/token)" -F audio=@song.mp3 \
 
 ## Остановка и перезапуск
 
-Остановка (Ctrl+C, SIGTERM, закрытый stdin при `--parent-watch` или
-`POST /restart`) идёт по порядку и занимает не дольше 15 с:
+Остановка (Ctrl+C, SIGTERM, закрытый stdin при `--parent-watch`, `POST /core/stop`
+или `POST /restart`) идёт по порядку и занимает не дольше 15 с:
 
 1. состояние `stopping`; новые фразы и правки настроек не принимаются: колонка
    на фразу получает отмену хода (`cancel_turn`), правка — ответ 503. Колонки
@@ -404,8 +408,8 @@ curl -H "Authorization: Bearer $(cat ~/SmartEsp/token)" -F audio=@song.mp3 \
 Повторный Ctrl+C во время остановки — немедленный выход.
 
 `POST /restart` делает ту же остановку и затем запускает ядро заново (с теми же
-флагами). Если одновременно пришла просьба выйти (сигнал, закрытый stdin),
-перезапуска нет — ядро просто выходит.
+флагами). Если одновременно пришла просьба выйти (сигнал, закрытый stdin,
+`POST /core/stop`), перезапуска нет — ядро просто выходит.
 
 ## Речь по инициативе
 

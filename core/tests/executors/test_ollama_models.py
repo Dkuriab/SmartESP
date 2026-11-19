@@ -8,7 +8,7 @@ import ollama
 import pytest
 
 from smartesp.contracts import ExecutorError
-from smartesp.executors import list_models, loaded_models
+from smartesp.executors import list_models, loaded_models, unload_model
 
 
 class FakeClient:
@@ -93,3 +93,27 @@ async def test_injected_client_not_closed() -> None:
     await list_models(c)
     await loaded_models(c)
     assert c.closed == 0
+
+
+class GenerateClient:
+    def __init__(self, error: Exception | None = None) -> None:
+        self.error = error
+        self.calls: list[dict[str, Any]] = []
+
+    async def generate(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        if self.error:
+            raise self.error
+        return {}
+
+
+async def test_unload_model_sends_keep_alive_zero() -> None:
+    client = GenerateClient()
+    await unload_model("hf.co/a/b:Q4", client)
+    assert client.calls == [{"model": "hf.co/a/b:Q4", "prompt": "", "keep_alive": 0}]
+
+
+@pytest.mark.parametrize("error", [httpx.ConnectError("x"), ollama.ResponseError("bad")])
+async def test_unload_model_errors_become_executor_error(error: Exception) -> None:
+    with pytest.raises(ExecutorError):
+        await unload_model("qwen", GenerateClient(error))

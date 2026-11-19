@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from smartesp.contracts import Answer, ChangeResult, ExecutorError, Question, VoiceNotDownloadedError
+from smartesp.contracts import (
+    Answer,
+    ChangeResult,
+    ExecutorError,
+    ModelNotLoadedError,
+    Question,
+    VoiceNotDownloadedError,
+)
 
 
 def make_turn(turn_id: int) -> dict[str, object]:
@@ -29,6 +36,10 @@ class FakeCore:
     def __init__(self) -> None:
         self.patches: list[dict[str, Any]] = []
         self.restarts = 0
+        self.stops = 0
+        self.loaded = ["qwen3:8b", "hf.co/user/model:Q4"]  # модели в памяти Ollama
+        self.unloaded: list[str] = []
+        self.unload_error: ExecutorError | None = None
         self.voice_state: dict[str, object] = {
             "kind": "piper",
             "voice": "irina",
@@ -122,6 +133,19 @@ class FakeCore:
 
     def request_restart(self) -> None:
         self.restarts += 1
+
+    def request_stop(self) -> None:
+        self.stops += 1
+
+    def info(self) -> dict[str, Any]:
+        return {"version": "0.1.0", "uptime_s": 12.5, "state": "ready", "data_dir": "/tmp/smartesp"}
+
+    async def unload_model(self, name: str) -> None:
+        if self.unload_error:
+            raise self.unload_error
+        if name not in self.loaded:
+            raise ModelNotLoadedError(name)
+        self.unloaded.append(name)
 
     async def ask(self, question: Question) -> Answer:
         self.questions.append(question)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import logging
@@ -149,6 +150,29 @@ def test_restart_request_stops_and_execs_same_command(home: Path, monkeypatch: p
     assert "Остановка: готово" in (home / "logs" / "core.log").read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize("restart_after", [False, True])
+def test_stop_request_exits_zero_without_restart(
+    home: Path, monkeypatch: pytest.MonkeyPatch, restart_after: bool
+) -> None:
+    """POST /core/stop: честная остановка и выход с кодом 0; перезапуск после неё не выполняется."""
+    fake_core(home, monkeypatch)
+    calls: list[ExecCall] = []
+    thread = run_main([], calls)
+    run = wait_run_file(home)
+    token = (home / "token").read_text(encoding="utf-8").strip()
+    base, headers = f"http://127.0.0.1:{run['port']}/api/v1", {"Authorization": f"Bearer {token}"}
+    info = httpx.get(f"{base}/core", headers=headers).json()
+    assert info["data_dir"] == str(home) and info["port"] == 0  # порт из настроек
+    assert httpx.post(f"{base}/core/stop", headers=headers).status_code == 202
+    if restart_after:
+        with contextlib.suppress(httpx.TransportError):  # сервер мог уже закрыться
+            httpx.post(f"{base}/restart", headers=headers)
+    thread.join(10)
+    assert not thread.is_alive()
+    assert calls == [("exit", ["0"])]
+    assert not (home / "run" / "core.json").exists()
+
+
 def test_parent_watch_closed_stdin_stops_core(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     fake_core(home, monkeypatch)
     read_fd, write_fd = os.pipe()
@@ -258,10 +282,11 @@ def test_quiet_console_keeps_full_file_log(home: Path, quiet: bool, console_leve
     """Под приложением (--parent-watch) в консоль только WARNING+, в core.log — всё с INFO."""
     root = logging.getLogger()
     before = list(root.handlers)
-    _setup_logging(home / "logs", quiet_console=quiet)
+    memory = _setup_logging(home / "logs", quiet_console=quiet)
     added = [h for h in root.handlers if h not in before]
+    assert memory in added and memory.level == logging.NOTSET  # журнал для интерфейса — тоже с INFO
     files = [h for h in added if isinstance(h, logging.FileHandler)]
-    consoles = [h for h in added if not isinstance(h, logging.FileHandler)]
+    consoles = [h for h in added if not isinstance(h, logging.FileHandler) and h is not memory]
     assert len(files) == 1 and len(consoles) == 1
     assert files[0].level == logging.NOTSET and root.level == logging.INFO
     assert consoles[0].level == console_level

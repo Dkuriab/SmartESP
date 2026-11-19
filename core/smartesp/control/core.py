@@ -19,18 +19,17 @@ from smartesp.contracts import (
     DeviceInfo,
     EventFeed,
     EventSink,
-    ExecutorError,
     Question,
     Section,
     VoicePort,
 )
 
 from .changes import RESTART_SECTIONS, STOPPING, ChangeQueue
+from .ollama import model_list, no_unload, ollama_state, unload_loaded
 
 _log = logging.getLogger(__name__)
 
 STATES = ("warming", "ready", "stopping")
-OLLAMA_TIMEOUT_S = 2.0  # сколько status ждёт ответа Ollama о загруженных моделях
 
 
 async def _no_tools(model: str) -> bool:
@@ -76,6 +75,8 @@ class Core:
         connectors: Callable[[], Sequence[ConnectorState]] = list,
         ask: Callable[[Question], Awaitable[Answer]] = _no_asking,
         decode: Callable[[bytes], Awaitable[bytes]] = _no_decoding,
+        unload: Callable[[str], Awaitable[None]] = no_unload,
+        data_dir: str = "",
     ) -> None:
         """validate(настройки) — проверка правки целиком; ValueError — status invalid.
 
@@ -84,7 +85,8 @@ class Core:
         supports_tools(модель) — умеет ли модель инструменты (для списка моделей);
         executor_states() — итог фонового прогрева исполнителей: {id: None — готов, иначе ошибка};
         connectors() — состояния MCP-коннекторов в порядке настроек;
-        ask(вопрос) — ход через API; decode(звук) — OGG/Opus или WAV в PCM 16 кГц моно.
+        ask(вопрос) — ход через API; decode(звук) — OGG/Opus или WAV в PCM 16 кГц моно;
+        unload(модель) — выгрузить модель из памяти Ollama; data_dir — папка данных (для info).
         """
         self._store = store
         self._events = events
@@ -101,12 +103,15 @@ class Core:
         self._connectors = connectors
         self._ask = ask
         self._decode = decode
+        self._unload = unload
+        self._data_dir = data_dir
         self._clock = clock
         self._started = clock()
         self._state = "warming"
         self._ids = itertools.count(1)
         self._changes = ChangeQueue(store, sections, voices=voices, events=events, validate=validate)
         self._restart = asyncio.Event()
+        self._stop = asyncio.Event()
         self._downloads: set[asyncio.Task[None]] = set()
 
     # ---- состояние и перезапуск ----
@@ -136,6 +141,29 @@ class Core:
         """Ждёт просьбы о перезапуске."""
         await self._restart.wait()
 
+    @property
+    def stop_requested(self) -> bool:
+        """True, если попросили остановку с выходом (она важнее перезапуска)."""
+        return self._stop.is_set()
+
+    def request_stop(self) -> None:
+        """Просит остановку с выходом: будит wait_stop()."""
+        self._stop.set()
+
+    async def wait_stop(self) -> None:
+        """Ждёт просьбы об остановке."""
+        await self._stop.wait()
+
+    def info(self) -> dict[str, Any]:
+        """Сведения о ядре: version, uptime_s, state, data_dir."""
+        uptime = self._clock() - self._started
+        return {
+            "version": self._version,
+            "uptime_s": uptime,
+            "state": self._state,
+            "data_dir": self._data_dir,
+        }
+
     async def aclose(self) -> None:
         """Останавливает очередь изменений (текущее отменяется) и фоновые скачивания."""
         await self._changes.aclose()
@@ -158,7 +186,7 @@ class Core:
             "version": self._version,
             "uptime_s": self._clock() - self._started,
             "state": self._state,
-            "ollama": await self._ollama(),
+            "ollama": await ollama_state(self._loaded),
             "devices": [dataclasses.asdict(device) for device in self._devices()],
             "voice": self._voices.state(),
             "applying": self._changes.applying,
@@ -200,12 +228,14 @@ class Core:
 
     async def models(self) -> list[dict[str, Any]]:
         """Модели Ollama: [{name, size_bytes, supports_tools}]; Ollama недоступна — ExecutorError."""
-        listed = await self._models()
-        tools = await asyncio.gather(*(self._supports_tools(name) for name, _ in listed))
-        return [
-            {"name": name, "size_bytes": size, "supports_tools": ok}
-            for (name, size), ok in zip(listed, tools, strict=True)
-        ]
+        return await model_list(self._models, self._supports_tools)
+
+    async def unload_model(self, name: str) -> None:
+        """Выгружает модель из памяти Ollama.
+
+        Нет в памяти — ModelNotLoadedError; Ollama недоступна — ExecutorError.
+        """
+        await unload_loaded(self._loaded, self._unload, name)
 
     def voices(self) -> list[dict[str, Any]]:
         """Каталог голосов в форме API."""
@@ -246,17 +276,6 @@ class Core:
         return await self._ask(Question(pcm=pcm, person=person, source=source))
 
     # ---- внутреннее ----
-
-    async def _ollama(self) -> dict[str, object]:
-        try:
-            async with asyncio.timeout(OLLAMA_TIMEOUT_S):
-                loaded = await self._loaded()
-        except (ExecutorError, TimeoutError):
-            return {"reachable": False, "loaded": []}
-        except Exception:  # status не должен падать из-за Ollama
-            _log.warning("Ollama: список загруженных моделей не получен", exc_info=True)
-            return {"reachable": False, "loaded": []}
-        return {"reachable": True, "loaded": loaded}
 
     async def _download(self, kind: str, voice: str) -> None:
         try:

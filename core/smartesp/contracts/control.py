@@ -137,6 +137,21 @@ class CorePort(Protocol):
         """Просит ядро перезапуститься."""
         ...
 
+    def request_stop(self) -> None:
+        """Просит ядро честно остановиться и выйти с кодом 0 (без перезапуска)."""
+        ...
+
+    def info(self) -> dict[str, Any]:
+        """Возвращает {version, uptime_s, state, data_dir} — сведения о самом ядре."""
+        ...
+
+    async def unload_model(self, name: str) -> None:
+        """Выгружает модель из памяти Ollama.
+
+        Модели нет среди загруженных — ModelNotLoadedError; Ollama недоступна — ExecutorError.
+        """
+        ...
+
     async def ask(self, question: Question) -> Answer:
         """Ход через API текстом: тот же путь, что с колонки, но без звука; ответ текстом.
 

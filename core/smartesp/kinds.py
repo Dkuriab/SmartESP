@@ -13,7 +13,16 @@ from pathlib import Path
 from typing import cast
 
 from smartesp.config import Config, ExecutorConfig, StageConfig, SttConfig
-from smartesp.contracts import Analyzer, Executor, SpeechToText, Stage, TextToSpeech, ToolBox, ToolObserver
+from smartesp.contracts import (
+    Analyzer,
+    Executor,
+    ExecutorError,
+    SpeechToText,
+    Stage,
+    TextToSpeech,
+    ToolBox,
+    ToolObserver,
+)
 from smartesp.network import ExecutorNetwork, MemberSpec, build_network
 from smartesp.stages import run_stages
 from smartesp.tools import ConnectorSpec
@@ -33,13 +42,18 @@ class Kinds:
     stages: Mapping[str, Callable[[StageConfig], Stage]]
 
 
+async def _no_unload(name: str) -> None:
+    raise ExecutorError("выгрузка моделей не подключена")
+
+
 @dataclass(frozen=True)
 class Ollama:
-    """Сведения Ollama для status, списка моделей и проверки умения инструментов."""
+    """Сведения Ollama для status, списка моделей, проверки умения инструментов и выгрузки из памяти."""
 
     models: Callable[[], Awaitable[list[tuple[str, int]]]]
     loaded: Callable[[], Awaitable[list[str]]]
     capabilities: Callable[[str], Awaitable[frozenset[str]]]
+    unload: Callable[[str], Awaitable[None]] = _no_unload
 
 
 def pick[T](registry: Mapping[str, T], kind: str, what: str) -> T:
