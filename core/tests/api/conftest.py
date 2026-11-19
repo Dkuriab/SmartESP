@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 
 from fakes.fake_core import FakeCore
-from smartesp.api import create_api, mount_ui
+from smartesp.api import BodyLimit, create_api, mount_ui
 from smartesp.events import EventBus
 
 TOKEN = "secret-token"
@@ -19,6 +19,7 @@ HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 def make_app(core: FakeCore, bus: EventBus, ui_dir: Path) -> FastAPI:
     app = FastAPI()
     app.include_router(create_api(core, bus, TOKEN, port=PORT))
+    app.add_middleware(BodyLimit, token=TOKEN)
     mount_ui(app, ui_dir)
     return app
 

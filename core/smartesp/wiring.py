@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 
-from smartesp.api import create_api, mount_ui
+from smartesp.api import BodyLimit, create_api, mount_ui
 from smartesp.config import Config, ConfigFile
 from smartesp.contracts import Analyzer
 from smartesp.conversation import tool_observer
@@ -140,6 +140,7 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str) -> FastA
         await parts.hub.handle(WebSocketConnection(ws))
 
     app.include_router(create_api(parts.core, parts.bus, token, port=parts.config.server.port))
+    app.add_middleware(BodyLimit, token=token)  # предел тела и токен ходов через API — до чтения тела
     mount_ui(app, ui_dir)  # последним: монтирование на / перехватывает всё, что объявлено позже
     return app
 
