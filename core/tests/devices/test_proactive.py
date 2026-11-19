@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 
+import pytest
 from hub_helpers import LATE_S, WINDOW_S, FakeClock, accepted_turn, chunks, connect, eventually, make_hub
 
 from fakes.fake_connection import FakeConnection
@@ -88,6 +89,28 @@ async def test_announce_lost_on_disconnect() -> None:
     await eventually(lambda: b"\x01" * 100 in conn.sent)
     conn.fail()
     assert await asyncio.wait_for(task, 1) == "lost"  # звук ещё не кончился, но ждать нечего
+
+
+async def test_announce_cancelled_mid_stream_frees_device() -> None:
+    hub = make_hub(FakeClock())
+    conn = await v3(hub)
+    gated = Gated()
+    task = asyncio.create_task(hub.announce("A", gated.audio()))
+    await eventually(lambda: b"\x01" * 100 in conn.sent)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await eventually(lambda: {"type": "cancel_turn", "turn": T1} in conn.sent_json())
+    assert not hub.is_active("A", 1)
+    assert hub.supports_proactive("A") and await hub.listen("A")  # колонка снова свободна
+
+
+async def test_announce_refused_after_stop_accepting() -> None:
+    hub = make_hub(FakeClock())
+    conn = await v3(hub)
+    hub.stop_accepting()
+    assert await hub.announce("A", chunks(bytes(100))) == "lost"
+    assert conn.sent == []
 
 
 async def test_announce_lost_without_playback_done() -> None:

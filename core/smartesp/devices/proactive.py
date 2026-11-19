@@ -1,11 +1,13 @@
-"""Ходы ядра поверх сессий: объявление и прослушивание (протокол 3) и итог доставки."""
+"""Основа хаба: общее состояние (сессии, номера ходов, фоновые отправки) и ходы ядра —
+объявление и прослушивание (протокол 3) с итогом доставки."""
 
 from __future__ import annotations
 
 import asyncio
 import itertools
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Coroutine
+from typing import Any
 
 from smartesp.contracts import Delivery
 
@@ -26,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class CoreTurns:
-    """Основа DeviceHub: сессии, номера ходов хаба и ходы, которые начинает ядро.
+    """Основа DeviceHub: общее состояние хаба (его читает и hub.py) и ходы, которые начинает ядро.
 
     Ход объявления в арбитраже не участвует: слово на другой колонке его не обрывает.
     Ход прослушивания арбитр не решает, но учитывает: новый ход другой колонки его отменит.
@@ -42,6 +44,7 @@ class CoreTurns:
         self._sessions: dict[str, Session] = {}
         self._turn_ids = itertools.count(1)
         self._last_active: str | None = None
+        self._background: set[asyncio.Task[object]] = set()  # отправки, которых никто не ждёт
 
     def supports_proactive(self, device_id: str) -> bool:
         """True, если колонка подключена и её протокол ≥ 3."""
@@ -55,13 +58,14 @@ class CoreTurns:
     async def announce(self, device_id: str, audio: AsyncIterator[bytes]) -> Delivery:
         """announce → tone attention → reply_start → звук → reply_end новым ходом ядра; ждёт итог.
 
-        Колонка не подключена или протокол < 3 — "lost" без кадров; у хаба на ней идёт ход — "busy".
-        Поток audio закрывается при любом выходе.
+        Колонка не подключена, протокол < 3 или хаб останавливается — "lost" без кадров; у хаба на
+        ней идёт ход — "busy". Поток audio закрывается при любом выходе. Отмена посреди звука
+        снимает ход и шлёт колонке cancel_turn.
         """
         session = self._idle_session(device_id)
-        if session is None:
+        if session is None or not self._accepting:
             await close_audio(audio)
-            return "busy" if self.supports_proactive(device_id) else "lost"
+            return "busy" if session is None and self.supports_proactive(device_id) else "lost"
         turn_id, esp_turn = next(self._turn_ids), session.next_core_turn()
         session.active = ActiveTurn(turn_id, esp_turn)
         outcome = session.outcome(turn_id)
@@ -69,6 +73,10 @@ class CoreTurns:
         sending = asyncio.create_task(self._send_announcement(session, turn_id, esp_turn, audio))
         try:
             await asyncio.wait((sending, outcome), return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:  # колонка без reply_end ждала бы вечно — освобождаем её
+            if self._end_turn(session, esp_turn, "lost"):
+                self._spawn(session.send(cancel_turn(esp_turn)), f"cancel_turn to {device_id}")
+            raise
         finally:
             sending.cancel()  # итог уже известен (busy, обрыв…) — дальше звук не нужен
             (sent,) = await asyncio.gather(sending, return_exceptions=True)
@@ -77,7 +85,7 @@ class CoreTurns:
         if isinstance(sent, BaseException):
             logger.warning("announcement audio for %s failed", device_id, exc_info=sent)
             return await self._give_up(session, esp_turn, outcome)
-        try:
+        try:  # sent — сколько секунд звука колонке ещё играть
             return await asyncio.wait_for(asyncio.shield(outcome), sent + self._reply_grace_s)
         except TimeoutError:
             return await self._give_up(session, esp_turn, outcome)
@@ -102,7 +110,7 @@ class CoreTurns:
         """Ждёт playback_done хода хаба turn (не дольше LISTEN_WAIT_S), затем listen.
 
         Ход кончился иначе (перебили, отменили, busy, обрыв), колонка v2 или переподключилась —
-        ничего не делает.
+        ничего не делает. Звать сразу после play: ход, уже доигранный к моменту вызова, не ждётся.
         """
         session = self._sessions.get(device_id) if self.supports_proactive(device_id) else None
         outcome = session.outcome(turn) if session is not None else None
@@ -120,10 +128,22 @@ class CoreTurns:
         session = self._sessions.get(device_id) if self.supports_proactive(device_id) else None
         return session if session is not None and session.is_idle() else None
 
+    def _spawn(self, coro: Coroutine[Any, Any, object], what: str) -> None:
+        """Запускает отправку в фоне: зависшая колонка не должна тормозить хаб и других."""
+        task = asyncio.create_task(coro)
+        self._background.add(task)
+
+        def done(t: asyncio.Task[object]) -> None:
+            self._background.discard(t)
+            if not t.cancelled() and t.exception() is not None:
+                logger.error("%s failed", what, exc_info=t.exception())
+
+        task.add_done_callback(done)
+
     async def _send_announcement(
         self, session: Session, turn_id: int, esp_turn: int, audio: AsyncIterator[bytes]
     ) -> float:
-        """Кадры объявления по порядку; возвращает секунды отправленного звука."""
+        """Кадры объявления по порядку; возвращает, сколько секунд звука колонке ещё играть."""
         try:
             if await session.send(announce_frame(esp_turn), turn_id) and await session.send(
                 tone(ATTENTION_TONE), turn_id

@@ -5,8 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator, Callable, Coroutine, Iterable
-from typing import Any
+from collections.abc import AsyncIterator, Callable, Iterable
 
 from smartesp.contracts import DeviceInfo, EventSink, Utterance
 
@@ -57,7 +56,6 @@ class DeviceHub(CoreTurns):
         self._wall_clock = wall_clock
         self._utterances: asyncio.Queue[Utterance] = asyncio.Queue()
         self._poll_task: asyncio.Task[None] | None = None
-        self._background: set[asyncio.Task[object]] = set()  # отправки, которых никто не ждёт
 
     async def handle(self, conn: DeviceConnection) -> None:
         """Обслуживает одно соединение, пока колонка подключена. Обрыв связи — не ошибка."""
@@ -152,18 +150,6 @@ class DeviceHub(CoreTurns):
                 self._apply(self._arbiter.poll(self._clock()))
             except Exception:  # таймер не должен умирать от одной ошибки
                 logger.exception("arbiter poll failed")
-
-    def _spawn(self, coro: Coroutine[Any, Any, object], what: str) -> None:
-        """Запускает отправку в фоне: зависшая колонка не должна тормозить хаб и других."""
-        task = asyncio.create_task(coro)
-        self._background.add(task)
-
-        def done(t: asyncio.Task[object]) -> None:
-            self._background.discard(t)
-            if not t.cancelled() and t.exception() is not None:
-                logger.error("%s failed", what, exc_info=t.exception())
-
-        task.add_done_callback(done)
 
     def _send_cancel(self, session: Session, esp_turn: int) -> None:
         """Шлёт cancel_turn в фоне и сообщает арбитру, что ход закончен."""
