@@ -1,10 +1,19 @@
 """Состояние одного хода разговора и его итог для журнала."""
 
+import itertools
 import logging
 import time
 from dataclasses import dataclass, field
 
-from smartesp.contracts import Analyzer, Annotation, Executor, SpeechToText, TextToSpeech, Utterance
+from smartesp.contracts import (
+    Analyzer,
+    Annotation,
+    Executor,
+    Handoff,
+    SpeechToText,
+    TextToSpeech,
+    Utterance,
+)
 
 from .sentences import DEFAULT_STYLE, strip_style_tag
 
@@ -39,6 +48,10 @@ class Turn:
     meaningless: bool = False  # распознан бессмысленный текст — ответ пустой
     play_started: bool = False  # хабу уже отдан поток (он сам закончит ответ reply_end)
     style: str = DEFAULT_STYLE  # стиль озвучки, выбранный моделью
+    path: list[str] = field(default_factory=list[str])  # id исполнителей хода по порядку
+    delegations: list[Handoff] = field(default_factory=list[Handoff])  # передачи задачи в ходе
+    breaks: list[int] = field(default_factory=list[int])  # номера кусков answer, где начался ответ цели
+    failure_phrase: bool = False  # прозвучала фраза об ошибке — после звука нужен сигнал ошибки
 
     def elapsed_ms(self) -> float:
         """Сколько миллисекунд прошло с прихода реплики."""
@@ -51,8 +64,13 @@ def format_ms(value: float | None) -> str:
 
 
 def answer_text(turn: Turn) -> str:
-    """Полный текст ответа исполнителя без метки стиля (то, что успели получить)."""
-    return strip_style_tag("".join(turn.answer))[1].strip()
+    """Полный текст ответа (то, что успели получить): ответы исполнителей хода через пробел.
+
+    Метка стиля снимается с начала ответа каждого исполнителя.
+    """
+    bounds = [0, *turn.breaks, len(turn.answer)]
+    texts = (strip_style_tag("".join(turn.answer[a:b]))[1].strip() for a, b in itertools.pairwise(bounds))
+    return " ".join(text for text in texts if text)
 
 
 def status(turn: Turn) -> str:
@@ -67,12 +85,13 @@ def status(turn: Turn) -> str:
 def log_turn(turn: Turn) -> None:
     """Пишет в журнал итог хода: вопрос, пометки, задержки и ответ."""
     _log.info(
-        "Колонка %s: ход %s; вопрос %r; пометки %s; стиль %s; "
+        "Колонка %s: ход %s; вопрос %r; пометки %s; путь %s; стиль %s; "
         "stt_ms=%s first_text_ms=%s first_audio_ms=%s; ответ %r",
         turn.device_name,
         status(turn),
         turn.text,
         [f"[{a.source}] {a.text}" for a in turn.annotations],
+        " → ".join(turn.path) or "—",
         turn.style,
         format_ms(turn.stt_ms),
         format_ms(turn.first_text_ms),

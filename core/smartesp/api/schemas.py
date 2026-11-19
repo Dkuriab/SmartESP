@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class OllamaOut(BaseModel):
@@ -96,6 +96,17 @@ class AnnotationOut(BaseModel):
     text: str
 
 
+class DelegationOut(BaseModel):
+    """Передача задачи в ходе: от кого, кому, какая задача; auto — по фразе без вызова."""
+
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    from_: str = Field(alias="from")
+    to: str
+    task: str
+    auto: bool = False
+
+
 class TurnOut(BaseModel):
     """Данные события turn_finished."""
 
@@ -111,6 +122,8 @@ class TurnOut(BaseModel):
     stt_ms: float | None = None
     first_text_ms: float | None = None
     first_audio_ms: float | None = None
+    path: list[str] = []  # id исполнителей хода по порядку
+    delegations: list[DelegationOut] = []
 
 
 class DownloadIn(BaseModel):

@@ -6,7 +6,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from fakes.fake_core import FakeCore
+from fakes.fake_core import FakeCore, make_turn
 from smartesp.contracts import ExecutorError, VoiceNotDownloadedError
 from smartesp.events import EventBus
 
@@ -115,6 +115,18 @@ async def test_turns(client: httpx.AsyncClient) -> None:
     assert [t["turn_id"] for t in response.json()] == [3, 2]
     assert response.json()[0]["first_audio_ms"] is None
     assert response.json()[0]["at"] == 1700000000.5
+
+
+async def test_turns_path_and_delegations(client: httpx.AsyncClient, core: FakeCore) -> None:
+    delegation = {"from": "dispatcher", "to": "big", "task": "посчитай", "auto": False}
+    core.turn_items = [
+        {**make_turn(5), "path": ["dispatcher", "big"], "delegations": [delegation]},
+        make_turn(4),
+    ]
+    turns = (await client.get(f"{P}/turns", headers=HEADERS)).json()
+    assert turns[0]["path"] == ["dispatcher", "big"]
+    assert turns[0]["delegations"] == [delegation]
+    assert (turns[1]["path"], turns[1]["delegations"]) == ([], [])  # ходы до передачи задач
 
 
 async def test_restart(client: httpx.AsyncClient, core: FakeCore) -> None:

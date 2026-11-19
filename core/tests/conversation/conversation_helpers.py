@@ -51,9 +51,10 @@ class Setup:
         analyzer: RecordingAnalyzer | None = None,
         tts: CountingTTS | None = None,
         events: EventSink | None = None,
+        port: FakeDevicePort | None = None,
         **timing: float,
     ) -> None:
-        self.port = FakeDevicePort(names={"kitchen": "Кухня"})
+        self.port = port or FakeDevicePort(names={"kitchen": "Кухня"})
         self.tts = tts or CountingTTS()
         self.history = History(max_turns=10, max_age_s=600)
         self.analyzer = analyzer or RecordingAnalyzer()

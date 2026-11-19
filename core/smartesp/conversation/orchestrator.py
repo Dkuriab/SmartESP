@@ -13,16 +13,16 @@ from smartesp.contracts import (
     EventSink,
     Executor,
     ExecutorError,
-    ReplyPart,
     SpeechToText,
     TextToSpeech,
     Utterance,
 )
 
+from . import handoffs
 from .history import History
 from .prompt import build_messages
-from .sentences import clean_for_speech, is_meaningless, split_sentences, take_style
-from .streams import closing, first_part, next_part, no_audio
+from .sentences import is_meaningless
+from .streams import closing, first_part, no_audio
 from .turn import Parts, Turn, answer_text, log_turn
 from .turn_events import finished_data, heard_data, started_data
 from .turn_tasks import TurnTasks
@@ -52,6 +52,7 @@ class Orchestrator:
         thinking_interval_s: float = THINKING_INTERVAL_S,
         first_part_limit_s: float = FIRST_PART_LIMIT_S,
         part_idle_s: float = PART_IDLE_S,
+        delegate_limit_s: float = handoffs.DELEGATE_FIRST_PART_LIMIT_S,
     ) -> None:
         """Запоминает колонки, распознавание, обработчики, исполнителя, синтез и историю.
 
@@ -59,7 +60,8 @@ class Orchestrator:
         получает сигнал ошибки и пустой ответ. events — куда публиковать события хода.
         thinking_interval_s — период сигнала «думаю», пока ждём первый кусок ответа;
         first_part_limit_s — сколько всего ждать первый кусок; part_idle_s — сколько
-        ждать каждый следующий кусок. Всё в секундах.
+        ждать каждый следующий кусок; delegate_limit_s — сколько ждать первый кусок
+        цели после передачи задачи. Всё в секундах.
         """
         self._devices = devices
         self._stt = stt
@@ -72,6 +74,7 @@ class Orchestrator:
         self._thinking_interval_s = thinking_interval_s
         self._first_part_limit_s = first_part_limit_s
         self._part_idle_s = part_idle_s
+        self._delegate_limit_s = delegate_limit_s
         self._tasks = TurnTasks()
 
     def use_stt(self, stt: SpeechToText) -> None:
@@ -205,6 +208,7 @@ class Orchestrator:
         недоступен или молчит дольше first_part_limit_s — сигнал ошибки и пустой
         ответ. Генератор исполнителя закрывается при любом выходе.
         """
+        turn.path = [handoffs.entry_id(parts.executor)]
         async with closing(parts.executor.run(messages)) as stream:
             try:
                 first = await first_part(
@@ -222,8 +226,8 @@ class Orchestrator:
             if first is not None:
                 turn.first_text_ms = turn.elapsed_ms()
             async with (
-                closing(self._collect(turn, first, stream)) as texts,
-                closing(split_sentences(texts)) as sentences,
+                closing(handoffs.collect(turn, first, stream, self._waiting(turn))) as texts,
+                closing(handoffs.answer_sentences(texts)) as sentences,
             ):
                 await self._play(turn, self._speak(turn, parts.tts, sentences))
         await self._finish_reply(turn)
@@ -231,14 +235,14 @@ class Orchestrator:
     async def _finish_reply(self, turn: Turn) -> None:
         """Итог проигранного ответа.
 
-        Пустой ответ модели — сбой. Сигнал ошибки — только если звука не было:
-        оборванного на полуслове ответа колонке достаточно.
+        Пустой ответ модели — сбой. Сигнал ошибки — если звука не было или
+        прозвучала фраза об ошибке: оборванного на полуслове ответа колонке достаточно.
         """
         if turn.completed and not answer_text(turn):
             _log.warning("Колонка %s: модель вернула пустой ответ", turn.device_name)
             turn.completed = False
             turn.failed = True
-        if turn.failed and turn.first_audio_ms is None:
+        if turn.failed and (turn.first_audio_ms is None or turn.failure_phrase):
             await self._error_tone(turn)
 
     async def _thinking(self, turn: Turn) -> None:
@@ -246,21 +250,18 @@ class Orchestrator:
         if self._is_live(turn):
             await self._devices.send_tone(turn.utterance.device_id, THINKING_TONE)
 
-    async def _collect(
-        self, turn: Turn, first: ReplyPart | None, parts: AsyncIterator[ReplyPart]
-    ) -> AsyncIterator[ReplyPart]:
-        """Отдаёт заранее взятый первый кусок и остальные; копит текст ответа.
-
-        Исполнитель молчит между кусками дольше part_idle_s — ExecutorError.
-        """
-        part = first
-        while part is not None:
-            turn.answer.append(part.text)
-            yield part
-            part = await next_part(parts, self._part_idle_s)
+    def _waiting(self, turn: Turn) -> handoffs.Waiting:
+        """Как ждать куски ответа этого хода: «думаю», актуальность и пределы оркестратора."""
+        return handoffs.Waiting(
+            functools.partial(self._thinking, turn),
+            functools.partial(self._is_live, turn),
+            self._thinking_interval_s,
+            self._part_idle_s,
+            self._delegate_limit_s,
+        )
 
     async def _speak(
-        self, turn: Turn, tts: TextToSpeech, sentences: AsyncIterator[str]
+        self, turn: Turn, tts: TextToSpeech, sentences: AsyncIterator[handoffs.Sentence]
     ) -> AsyncIterator[bytes]:
         """Озвучивает предложения по одному и отдаёт PCM; останавливается, как только ход неактуален.
 
@@ -268,15 +269,11 @@ class Orchestrator:
         (колонка получит reply_end, а не застрянет в «говорю») и помечает ход
         как упавший; сигнал ошибки (если звука не было) шлёт _finish_reply.
         """
-        first = True
         try:
             async for sentence in sentences:
                 if not self._is_live(turn):
                     return
-                if first:  # метка стиля — только в начале ответа
-                    turn.style, sentence = take_style(sentence, tts.styles())
-                    first = False
-                text = clean_for_speech(sentence)
+                text = handoffs.speech_text(turn, sentence, tts.styles())
                 if not text:
                     continue
                 async with closing(tts.synthesize(text, turn.style)) as audio:
@@ -294,4 +291,4 @@ class Orchestrator:
             _log.error("Колонка %s: ошибка посреди ответа", turn.device_name, exc_info=True)
             turn.failed = True
             return
-        turn.completed = self._is_live(turn)
+        turn.completed = self._is_live(turn) and not turn.failed
