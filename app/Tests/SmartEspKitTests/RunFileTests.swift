@@ -122,3 +122,36 @@ private func tempFile(_ text: String?) -> URL {
         #expect(text.contains("run"))
     }
 }
+
+@MainActor @Suite struct ProcessCoreTerminateTests {
+    /// Поддельный `uv`: запускает потомка в своей группе процессов и, как `uv`, сам сигнал
+    /// не пересылает. Потомок отмечает в файле, если SIGTERM дошёл до него напрямую.
+    private static let fakeUv = """
+        #!/bin/sh
+        sh -c 'echo $$ > "$DIR/child.pid"; trap "echo got >> \\"$DIR/child.term\\"; exit 0" TERM; \
+        while :; do sleep 0.05; done' &
+        trap 'exit 0' TERM
+        wait
+        """
+
+    @Test func terminateSignalsOnlyUvItself() async throws {
+        // Иначе ядро получает SIGTERM дважды (от uv и напрямую) и выходит без очереди остановки
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("smartesp-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let uv = dir.appendingPathComponent("uv")
+        try Self.fakeUv.write(to: uv, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: uv.path)
+        let handle = try ProcessCoreLauncher().launch(uv: uv, cwd: dir, env: ["DIR": dir.path, "PATH": "/bin:/usr/bin"])
+        let pidFile = dir.appendingPathComponent("child.pid")
+        for _ in 0..<100 where !FileManager.default.fileExists(atPath: pidFile.path) {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let child = Int32((try String(contentsOf: pidFile, encoding: .utf8)).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        defer { if child > 0 { Darwin.kill(child, SIGKILL) } }
+        handle.terminate()
+        _ = await withCheckedContinuation { cont in handle.onExit { cont.resume(returning: $0) } }
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(child > 0)
+        #expect(!FileManager.default.fileExists(atPath: dir.appendingPathComponent("child.term").path))
+    }
+}

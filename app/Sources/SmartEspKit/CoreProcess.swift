@@ -89,7 +89,9 @@ public func isProcessAlive(_ pid: Int32) -> Bool {
     var isRunning: Bool { process.isRunning }
 
     func terminate() {
-        if process.isRunning { process.terminate() }
+        // Только сам uv: Process.terminate() достаёт и потомков в группе процессов,
+        // и Python получал SIGTERM дважды (напрямую и от uv) — второй раз значит «выйти сразу»
+        if process.isRunning { Darwin.kill(pid, SIGTERM) }
     }
 
     func kill() {
