@@ -36,24 +36,29 @@ function leftNodes(state: CoreState, kinds: string[], configured: string[], turn
   kinds.forEach((kind, i) => {
     const enabled = configured.includes(kind)
     const label = KNOWN_STAGES.find((k) => k.kind === kind)?.title ?? kind
-    const data = { label, enabled, lit: enabled && sources.has(kind), kind: 'stage', id: kind }
+    // включённый обработчик — на пути любого хода; оставил пометку — выделен сильнее
+    const data = { label, enabled, lit: enabled && !!turn, strong: enabled && sources.has(kind), kind: 'stage', id: kind }
     nodes.push({ id: `stage:${kind}`, type: 'stage', position: column(kinds.length, X_1, i), data })
   })
   return nodes
 }
 
-/** Связи: колонки → включённые обработчики (или сразу диспетчер) → диспетчер → голос. */
+/**
+ * Связи: колонки → включённые обработчики (или сразу диспетчер) → диспетчер → голос.
+ * Ход проходит через все включённые обработчики (data.lit); через оставивший
+ * пометку — выделенно (data.strong).
+ */
 function buildEdges(state: CoreState, configured: string[], turn?: Turn): Edge[] {
   const sources = new Set(turn?.annotations.map((a) => a.source))
   const edges: Edge[] = []
-  const link = (source: string, target: string, lit: boolean) =>
-    edges.push({ id: `${source}->${target}`, source, target, data: { lit }, animated: lit })
+  const link = (source: string, target: string, lit: boolean, strong = false) =>
+    edges.push({ id: `${source}->${target}`, source, target, data: { lit, strong: lit && strong }, animated: lit })
   for (const { device_id: id } of listDevices(state)) {
     const mine = turn?.device_id === id
     if (configured.length === 0) link(`device:${id}`, 'dispatcher', mine)
-    for (const k of configured) link(`device:${id}`, `stage:${k}`, mine && sources.has(k))
+    for (const k of configured) link(`device:${id}`, `stage:${k}`, mine, sources.has(k))
   }
-  for (const k of configured) link(`stage:${k}`, 'dispatcher', sources.has(k))
+  for (const k of configured) link(`stage:${k}`, 'dispatcher', !!turn, sources.has(k))
   link('dispatcher', 'voice', !!turn)
   return edges
 }

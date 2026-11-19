@@ -72,7 +72,9 @@ describe('buildGraph', () => {
     for (const id of ['device:a', 'stage:whisper_detect', 'dispatcher', 'voice'])
       expect(node(g, id)?.data.lit, id).toBe(true)
     expect(node(g, 'device:b')?.data.lit).toBe(false)
-    expect(edge(g, 'device:a', 'stage:whisper_detect')?.data?.lit).toBe(true)
+    expect(node(g, 'stage:whisper_detect')?.data.strong).toBe(true)
+    expect(edge(g, 'device:a', 'stage:whisper_detect')?.data).toMatchObject({ lit: true, strong: true })
+    expect(edge(g, 'stage:whisper_detect', 'dispatcher')?.data).toMatchObject({ lit: true, strong: true })
     expect(edge(g, 'device:b', 'stage:whisper_detect')?.data?.lit).toBe(false)
   })
 
@@ -83,9 +85,18 @@ describe('buildGraph', () => {
     expect(node(g, 'device:b')?.data.lit).toBe(false)
   })
 
-  it('stage without annotations is not lit', () => {
+  it('enabled stage without notes keeps the path lit, but not strong', () => {
     const g = buildGraph(makeState({ config: config([{ kind: 'whisper_detect' }]), turns: [makeTurn(1, { device_id: 'a' })] }))
-    expect(node(g, 'stage:whisper_detect')?.data.lit).toBe(false)
+    expect(node(g, 'stage:whisper_detect')?.data).toMatchObject({ lit: true, strong: false })
     expect(node(g, 'device:a')?.data.lit).toBe(true)
+    expect(edge(g, 'device:a', 'stage:whisper_detect')?.data).toMatchObject({ lit: true, strong: false })
+    expect(edge(g, 'stage:whisper_detect', 'dispatcher')?.data).toMatchObject({ lit: true, strong: false })
+    expect(edge(g, 'device:b', 'stage:whisper_detect')?.data?.lit).toBe(false)
+  })
+
+  it('without a turn nothing is lit', () => {
+    const g = buildGraph(makeState({ config: config([{ kind: 'whisper_detect' }]) }))
+    expect(node(g, 'stage:whisper_detect')?.data.lit).toBe(false)
+    expect(edge(g, 'stage:whisper_detect', 'dispatcher')?.data?.lit).toBe(false)
   })
 })

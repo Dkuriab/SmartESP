@@ -7,12 +7,18 @@ import { buildGraph } from '../../schema/buildGraph'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState, Selection } from '../../state/model'
 import { nodeTypes } from './nodes'
+import Refit from './Refit'
 
 type Props = { state: CoreState; actions: CoreActions }
 
+/** Меньше умолчания React Flow (0,5): на узком экране схема в четыре столбца целиком. */
+const MIN_ZOOM = 0.2
+
+/** Цвет связи: не на пути — линия, на пути — акцент, через пометку обработчика — фиолетовый. */
 function styled(edge: Edge): Edge {
-  const lit = (edge.data as { lit?: boolean } | undefined)?.lit
-  return { ...edge, style: { stroke: lit ? 'var(--accent)' : 'var(--line)', strokeWidth: lit ? 2.5 : 1.5 } }
+  const { lit, strong } = (edge.data ?? {}) as { lit?: boolean; strong?: boolean }
+  const stroke = strong ? 'var(--purple)' : lit ? 'var(--accent)' : 'var(--line)'
+  return { ...edge, style: { stroke, strokeWidth: strong ? 3 : lit ? 2.5 : 1.5 } }
 }
 
 export default function SchemaView({ state, actions }: Props) {
@@ -37,6 +43,7 @@ export default function SchemaView({ state, actions }: Props) {
       nodeTypes={nodeTypes}
       onNodeClick={onClick}
       fitView
+      minZoom={MIN_ZOOM}
       nodesDraggable={false}
       nodesConnectable={false}
       selectNodesOnDrag={false}
@@ -46,6 +53,7 @@ export default function SchemaView({ state, actions }: Props) {
       proOptions={{ hideAttribution: true }}
     >
       <Background variant={BackgroundVariant.Dots} color="var(--dot)" gap={22} size={1} />
+      <Refit count={nodes.length} />
     </ReactFlow>
   )
 }

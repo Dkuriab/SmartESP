@@ -6,6 +6,8 @@ import './schema.css'
 type Data = {
   label: string
   lit?: boolean
+  /** Обработчик оставил пометку в выбранном ходе. */
+  strong?: boolean
   offline?: boolean
   enabled?: boolean
   voiceState?: string
@@ -29,6 +31,7 @@ const VOICE_STATES: Record<string, string> = {
 function Card({ type, data, selected }: { type: string; data: Data; selected: boolean }) {
   const cls = ['node', `node-${type}`]
   if (data.lit) cls.push('lit')
+  if (data.strong) cls.push('strong')
   if (data.offline) cls.push('offline')
   if (data.enabled === false) cls.push('disabled')
   if (selected) cls.push('picked')
