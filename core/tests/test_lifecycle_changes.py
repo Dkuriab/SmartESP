@@ -143,7 +143,7 @@ async def test_network_rebuilt_with_delegation_once_ollama_is_up(tmp_path: Path)
         return frozenset({"completion", "tools"})
 
     made: list[FakeOllama] = []
-    ollama = wiring.Ollama(TOOLS_OLLAMA.models, TOOLS_OLLAMA.loaded, capabilities)
+    ollama = wiring.Ollama(TOOLS_OLLAMA.models, TOOLS_OLLAMA.loaded, capabilities, TOOLS_OLLAMA.unload)
     core = make_core(tmp_path, fake_kinds(ollama_factory(made)), ollama=ollama)
     start(core)
     await eventually(lambda: core.core.state == "ready")

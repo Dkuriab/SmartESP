@@ -61,7 +61,7 @@ def create_api(
     """
     router = APIRouter(prefix="/api/v1")
     secured = APIRouter(dependencies=[Depends(require_token(token))], responses=_UNAUTHORIZED)
-    _add_core_routes(secured, core)
+    _add_resource_routes(secured, core)
     _add_voice_routes(secured, core)
     add_ask_routes(secured, core)
     add_play_routes(secured, files)
@@ -73,7 +73,7 @@ def create_api(
     return router
 
 
-def _add_core_routes(secured: APIRouter, core: CorePort) -> None:
+def _add_resource_routes(secured: APIRouter, core: CorePort) -> None:
     """Сводка, настройки, коннекторы, модели, ходы, перезапуск."""
 
     @secured.get("/status")

@@ -16,7 +16,6 @@ from smartesp.config import Config, ExecutorConfig, StageConfig, SttConfig
 from smartesp.contracts import (
     Analyzer,
     Executor,
-    ExecutorError,
     SpeechToText,
     Stage,
     TextToSpeech,
@@ -42,10 +41,6 @@ class Kinds:
     stages: Mapping[str, Callable[[StageConfig], Stage]]
 
 
-async def _no_unload(name: str) -> None:
-    raise ExecutorError("выгрузка моделей не подключена")
-
-
 @dataclass(frozen=True)
 class Ollama:
     """Сведения Ollama для status, списка моделей, проверки умения инструментов и выгрузки из памяти."""
@@ -53,7 +48,7 @@ class Ollama:
     models: Callable[[], Awaitable[list[tuple[str, int]]]]
     loaded: Callable[[], Awaitable[list[str]]]
     capabilities: Callable[[str], Awaitable[frozenset[str]]]
-    unload: Callable[[str], Awaitable[None]] = _no_unload
+    unload: Callable[[str], Awaitable[None]]
 
 
 def pick[T](registry: Mapping[str, T], kind: str, what: str) -> T:

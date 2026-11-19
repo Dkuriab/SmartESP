@@ -9,6 +9,11 @@ _TOKEN = re.compile(r"token=[^&\s\"']+")
 HIDDEN = "token=***"
 
 
+def hide_token(text: str) -> str:
+    """Заменяет `token=<значение>` на `token=***` в готовом тексте (например, с traceback)."""
+    return _TOKEN.sub(HIDDEN, text) if "token=" in text else text
+
+
 class HideToken(logging.Filter):
     """Заменяет `token=<значение>` на `token=***` в итоговом тексте записи.
 

@@ -14,12 +14,13 @@ import threading
 from collections import deque
 from dataclasses import dataclass
 
-from .redact import HideToken
+from .redact import HideToken, hide_token
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 RECENT_LINES = 500  # столько последних строк получает новый подписчик
 QUEUE_LINES = 1000  # очередь подписчика; переполнилась — выбрасываются самые старые
-MAX_TEXT = 8000  # длиннее (огромный traceback) — обрезается
+MAX_TEXT = 8000  # длиннее (огромный traceback) — середина вырезается: конец с текстом ошибки остаётся
+CUT = "\n…\n"
 
 
 @dataclass(frozen=True)
@@ -29,6 +30,14 @@ class LogLine:
     at: float
     level: str
     text: str
+
+
+def _shorten(text: str) -> str:
+    """Начало и конец длинной строки; середина — «…»."""
+    if len(text) <= MAX_TEXT:
+        return text
+    half = (MAX_TEXT - len(CUT)) // 2
+    return text[:half] + CUT + text[-half:]
 
 
 class LogSubscription:
@@ -92,7 +101,7 @@ class LogBuffer(logging.Handler):
         except Exception:  # noqa: BLE001 — кривая запись не должна ронять журнал
             self.handleError(record)
             return
-        line = LogLine(record.created, record.levelname, text[:MAX_TEXT])
+        line = LogLine(record.created, record.levelname, _shorten(hide_token(text)))
         with self._guard:
             self._recent.append(line)
             for subscriber in self._subscribers:

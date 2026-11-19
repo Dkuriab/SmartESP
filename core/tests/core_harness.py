@@ -42,8 +42,12 @@ async def with_tools(model: str) -> frozenset[str]:
     return frozenset({"completion", "tools"})
 
 
-NO_OLLAMA = Ollama(no_models, no_loaded, no_capabilities)
-TOOLS_OLLAMA = Ollama(no_models, no_loaded, with_tools)  # все модели умеют инструменты
+async def no_unload(model: str) -> None:
+    return None
+
+
+NO_OLLAMA = Ollama(no_models, no_loaded, no_capabilities, no_unload)
+TOOLS_OLLAMA = Ollama(no_models, no_loaded, with_tools, no_unload)  # все модели умеют инструменты
 
 
 def put_voice(home: Path) -> None:

@@ -101,3 +101,23 @@ def test_logs_ws_sends_recent_then_live_and_unsubscribes(app: FastAPI, logs: Log
             live = ws.receive_json()
             assert live["text"].endswith("потом token=***")
         assert _wait(lambda: logs.subscriber_count == 0)
+
+
+def test_token_in_traceback_is_hidden_and_long_text_keeps_end() -> None:
+    buffer = LogBuffer()
+    try:
+        raise RuntimeError("GET /api/v1/logs?token=секрет")
+    except RuntimeError:
+        import sys
+
+        info = sys.exc_info()
+    buffer.handle(logging.LogRecord("smartesp", logging.ERROR, __file__, 1, "сбой", None, info))
+    emit(buffer, "x" * 20000 + " КОНЕЦ")
+
+    async def check() -> None:
+        recent, subscription = buffer.subscribe()
+        await subscription.aclose()
+        assert "секрет" not in recent[0].text and "token=***" in recent[0].text
+        assert len(recent[1].text) <= 8000 and recent[1].text.endswith("КОНЕЦ") and "\n…\n" in recent[1].text
+
+    asyncio.run(check())
