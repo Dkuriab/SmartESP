@@ -104,21 +104,35 @@ class ApiTurns:
         self._limit_s = limit_s
         self._numbers = itertools.count(1)
         self._slots = asyncio.Semaphore(MAX_CONCURRENT)
-        self.accepting = True  # ядро останавливается — новых ходов не берём
+        self._stopped = asyncio.Event()  # ядро останавливается: будит вопросы в очереди
+
+    @property
+    def accepting(self) -> bool:
+        """True, пока ходы принимаются; False — ядро останавливается."""
+        return not self._stopped.is_set()
+
+    @accepting.setter
+    def accepting(self, value: bool) -> None:
+        """False — новых ходов не берём, вопросы в очереди сразу получают STOPPING."""
+        if value:
+            self._stopped.clear()
+        else:
+            self._stopped.set()
 
     async def ask(self, question: Question) -> Answer:
         """Проводит ход отдельной задачей и возвращает ответ текстом.
 
         Ядро не готово (нет частей, а голосу — распознавания) или останавливается —
-        AskUnavailable; не дождался места за QUEUE_WAIT_S — тоже (BUSY). Отмена ожидания
-        отменяет и ход.
+        AskUnavailable; не дождался места за QUEUE_WAIT_S — тоже (BUSY). Готовность и части
+        проверяются и до очереди, и после неё: за ожидание ядро могло начать остановку или
+        сменить исполнителя. Отмена ожидания отменяет и ход.
         """
-        parts = self._parts() if self.accepting else None
-        if parts is None or (question.pcm and parts.stt is None):
-            raise AskUnavailable(NOT_READY if self.accepting else STOPPING)
+        self._ready_parts(question)  # не готово — отказ сразу, без очереди
         received = time.monotonic()
-        await self._admit()
+        if not await self._admit():
+            raise AskUnavailable(BUSY if self.accepting else STOPPING)
         try:
+            parts = self._ready_parts(question)  # свежий снимок после очереди
             turn = self._new_turn(question, received)
             task = self._tasks.start(
                 self._handle(turn, parts), name=f"turn {API_DEVICE}#{turn.utterance.turn}"
@@ -136,14 +150,30 @@ class ApiTurns:
             raise AskUnavailable(STOPPING)
         return Answer(reply_text(turn), str(turn_id(turn)))
 
-    async def _admit(self) -> None:
-        """Ждёт место среди идущих ходов через API не дольше QUEUE_WAIT_S; не дождался — BUSY."""
+    def _ready_parts(self, question: Question) -> AskParts:
+        """Текущие части; ядро останавливается, не готово или голосу нет распознавания — AskUnavailable."""
+        parts = self._parts() if self.accepting else None
+        if parts is None or (question.pcm and parts.stt is None):
+            raise AskUnavailable(NOT_READY if self.accepting else STOPPING)
+        return parts
+
+    async def _admit(self) -> bool:
+        """Ждёт место среди идущих ходов через API: True — место занято за нами.
+
+        False — не дождались за QUEUE_WAIT_S или ядро начало останавливаться (тогда сразу).
+        """
+        acquire = asyncio.create_task(self._slots.acquire())
+        stopped = asyncio.create_task(self._stopped.wait())
         try:
-            async with asyncio.timeout(QUEUE_WAIT_S):
-                await self._slots.acquire()
-        except TimeoutError as error:
-            _log.warning("Ход через API отклонён: идут %d других", MAX_CONCURRENT)
-            raise AskUnavailable(BUSY) from error
+            await asyncio.wait((acquire, stopped), timeout=QUEUE_WAIT_S, return_when=asyncio.FIRST_COMPLETED)
+        except BaseException:  # отменили ожидающего: занятое место возвращаем
+            if await _settle(acquire, stopped):
+                self._slots.release()
+            raise
+        acquired = await _settle(acquire, stopped)
+        if not acquired:
+            _log.warning("Ход через API отклонён: %s", "очередь" if self.accepting else "остановка")
+        return acquired
 
     def _new_turn(self, question: Question, received: float) -> Turn:
         """Ход вопроса с новым номером; received — когда вопрос пришёл (от него считается limit_s)."""
@@ -212,6 +242,14 @@ class ApiTurns:
             self._part_idle_s,
             self._limit_s,
         )
+
+
+async def _settle(acquire: asyncio.Task[bool], stopped: asyncio.Task[bool]) -> bool:
+    """Снимает ожидания места и остановки; True — место всё-таки занято (его надо вернуть или занять)."""
+    for task in (acquire, stopped):
+        task.cancel()
+    await asyncio.gather(acquire, stopped, return_exceptions=True)
+    return not acquire.cancelled()
 
 
 def _context(turn: Turn) -> list[Annotation]:

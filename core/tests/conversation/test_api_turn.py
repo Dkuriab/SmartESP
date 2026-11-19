@@ -234,8 +234,54 @@ async def test_at_most_two_api_turns_third_waits_then_busy(monkeypatch: pytest.M
 
 async def test_third_turn_runs_when_a_place_frees_and_waits_in_its_limit() -> None:
     sink = RecordingSink()
-    executor = FakeExecutor(["Ответ."], delay=0.2)
-    setup = Setup(executor, events=sink, ask_limit_s=0.3)
+    executor = FakeExecutor(["Ответ."], delay=0.4)
+    setup = Setup(executor, events=sink, ask_limit_s=0.6)
     answers = await asyncio.gather(*(setup.orchestrator.ask(Question(text=f"В{i}")) for i in (1, 2, 3)))
     assert [a.text for a in answers[:2]] == ["Ответ.", "Ответ."]
-    assert answers[2].text == LATE_PHRASE  # ждал места ~0,2 с из своих 0,3 с — ответ не успел
+    assert answers[2].text == LATE_PHRASE  # ждал места ~0,4 с из своих 0,6 с — ответ не успел
+
+
+async def test_stop_wakes_queued_question_without_a_turn() -> None:
+    executor = FakeExecutor(["Долго."], delay=1.0)
+    setup = Setup(executor)
+    running_turns = [asyncio.create_task(setup.orchestrator.ask(Question(text=f"В{i}"))) for i in (1, 2)]
+    await until(lambda: len(executor.calls) == 2)
+    queued = asyncio.create_task(setup.orchestrator.ask(Question(text="Третий")))
+    await asyncio.sleep(0.05)
+    started = time.monotonic()
+    setup.orchestrator.stop_accepting()
+    with pytest.raises(AskUnavailable, match="останавливается"):
+        await queued
+    assert time.monotonic() - started < 0.5  # не сидит свои 10 с
+    await setup.orchestrator.drain(0.01)
+    assert len(executor.calls) == 2  # после остановки ход не начинался
+    for task in running_turns:
+        with pytest.raises(AskUnavailable):
+            await task
+
+
+async def test_place_freed_by_drain_does_not_start_queued_turn() -> None:
+    executor = FakeExecutor(["Долго."], delay=1.0)
+    setup = Setup(executor)
+    running_turns = [asyncio.create_task(setup.orchestrator.ask(Question(text=f"В{i}"))) for i in (1, 2)]
+    await until(lambda: len(executor.calls) == 2)
+    queued = asyncio.create_task(setup.orchestrator.ask(Question(text="Третий")))
+    await asyncio.sleep(0.05)
+    setup.orchestrator.stop_accepting()
+    await setup.orchestrator.drain(0.01)
+    results = await asyncio.gather(*running_turns, queued, return_exceptions=True)
+    assert all(isinstance(result, AskUnavailable) for result in results)
+    assert len(executor.calls) == 2
+
+
+async def test_queued_question_uses_executor_swapped_while_waiting() -> None:
+    old, new = FakeExecutor(["Старый."], delay=0.2), FakeExecutor(["Новый."])
+    setup = Setup(old)
+    running_turns = [asyncio.create_task(setup.orchestrator.ask(Question(text=f"В{i}"))) for i in (1, 2)]
+    await until(lambda: len(old.calls) == 2)
+    queued = asyncio.create_task(setup.orchestrator.ask(Question(text="Третий")))
+    await asyncio.sleep(0.05)
+    setup.orchestrator.use_executor(new)
+    assert (await queued).text == "Новый."
+    assert (len(old.calls), len(new.calls)) == (2, 1)
+    assert [(await task).text for task in running_turns] == ["Старый.", "Старый."]
