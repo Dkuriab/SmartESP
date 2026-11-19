@@ -8,6 +8,7 @@ import SmartEspKit
     private var statusMenu: StatusMenu?
     private var window: MainWindow?
     private var quitting = false
+    private let loginItem: any LoginItemControlling = LoginItemService()
 
     /// Состояние для меню и окна; без путей — ошибка вместо надзора.
     private var state: CoreState { supervisor?.state ?? .failed(CoreErrors.repoNotSet) }
@@ -20,6 +21,7 @@ import SmartEspKit
         window.onClose = { NSApp.setActivationPolicy(.accessory) }
         self.window = window
         SingleInstance.listen { [weak self] in self?.openWindow() }
+        applyFirstLaunchLoginDefault()
         startSupervisor()
         render()
         openWindow()
@@ -73,11 +75,30 @@ import SmartEspKit
         try? process.run()
     }
 
+    func toggleLoginItem() {
+        do {
+            try loginItem.setEnabled(!loginItem.isEnabled)
+            UserDefaults.standard.set(true, forKey: loginItemDecidedKey)
+        } catch {
+            showAlert("Не удалось изменить автозапуск", error.localizedDescription)
+        }
+        render()
+    }
+
     func openAccessSettings() {
         NSWorkspace.shared.open(accessSettingsURL)
     }
 
     // MARK: - Внутреннее
+
+    /// Первый запуск из `/Applications` включает автозапуск; сборки из других мест — нет.
+    private func applyFirstLaunchLoginDefault() {
+        let defaults = UserDefaults.standard
+        let decided = defaults.bool(forKey: loginItemDecidedKey)
+        guard firstLaunchDefault(bundlePath: Bundle.main.bundlePath, alreadyDecided: decided) else { return }
+        defaults.set(true, forKey: loginItemDecidedKey)
+        try? loginItem.setEnabled(true)
+    }
 
     private func startSupervisor() {
         let env = ProcessInfo.processInfo.environment
@@ -99,9 +120,8 @@ import SmartEspKit
     private func render() {
         guard !quitting else { return }
         let current = state
-        // «Запускать при входе» — задача 4; пока всегда выключено
         statusMenu?.show(
-            menuModel(state: current, loginEnabled: false), canRestart: supervisor != nil)
+            menuModel(state: current, loginEnabled: loginItem.isEnabled), canRestart: supervisor != nil)
         window?.show(windowContent(state: current, token: supervisor?.token))
     }
 

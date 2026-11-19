@@ -112,6 +112,17 @@ private let documentsRepo = "Documents/SmartEsp"
         #expect(logging.supervisor.state == .starting)
     }
 
+    @Test func restartDuringAccessPromptDoesNothing() async {
+        let rig = Rig(repo: documentsRepo)
+        rig.access.answerAt = .infinity
+        rig.supervisor.start()
+        while rig.supervisor.state != .waitingForAccess(folder: "Документы") { await Task.yield() }
+        await rig.supervisor.restart()
+        #expect(rig.launcher.handles.isEmpty)
+        #expect(rig.supervisor.state == .waitingForAccess(folder: "Документы"))
+        await rig.supervisor.stop()
+    }
+
     @Test func quitDuringRestartDoesNotLaunchAgain() async {
         let rig = Rig()
         rig.launcher.exitsOnTerminate = false
@@ -143,7 +154,7 @@ private let documentsRepo = "Documents/SmartEsp"
         #expect(model.symbolName == "exclamationmark.triangle.fill")
         #expect(model.hint == accessHint(folder: "Документы"))
         #expect(model.hint?.contains("нажмите «Разрешить»") == true)
-        #expect(model.hint?.contains("Файлы и папки → SmartEsp → «Папка Документы»") == true)
+        #expect(model.hint?.contains("Файлы и папки → SmartEsp → «Папка „Документы\"»") == true)
         #expect(model.showsAccessSettings && model.canRestart && model.canOpen)
     }
 

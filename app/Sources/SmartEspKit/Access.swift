@@ -51,7 +51,7 @@ public func protectedFolderName(of url: URL, home: URL) -> String? {
 public func accessHint(folder: String) -> String {
     "macOS спрашивает доступ — нажмите «Разрешить».\n"
         + "Если окна нет: Системные настройки → Конфиденциальность и безопасность → "
-        + "Файлы и папки → SmartEsp → «Папка \(folder)»."
+        + "Файлы и папки → SmartEsp → «Папка „\(folder)\"»."
 }
 
 /// Настоящая проверка: чтение списка файлов папки в фоновом потоке. Пока macOS

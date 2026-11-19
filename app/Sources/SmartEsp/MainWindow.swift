@@ -104,8 +104,8 @@ import WebKit
 
     /// Ядро отвечает на `status`, а страница не загрузилась — пробуем ещё раз через 1 с.
     private func retryLoad(after error: Error) {
-        let code = (error as NSError).code
-        guard code != NSURLErrorCancelled, case let .page(url) = shown, retries < Self.maxRetries else { return }
+        let nsError = error as NSError
+        guard shouldRetryLoad(domain: nsError.domain, code: nsError.code), case let .page(url) = shown, retries < Self.maxRetries else { return }
         retries += 1
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(1))

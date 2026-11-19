@@ -7,6 +7,7 @@ import SmartEspKit
     func restartCore()
     func openLog()
     func openAccessSettings()
+    func toggleLoginItem()
 }
 
 /// Значок SmartESP в строке меню и его меню.
@@ -19,6 +20,7 @@ import SmartEspKit
     private let settingsItem = NSMenuItem(title: "Открыть настройки доступа", action: nil, keyEquivalent: "")
     private let openItem = NSMenuItem(title: "Открыть SmartESP", action: nil, keyEquivalent: "o")
     private let restartItem = NSMenuItem(title: "Перезапустить ядро", action: nil, keyEquivalent: "")
+    private let loginItem = NSMenuItem(title: "Запускать при входе", action: nil, keyEquivalent: "")
     private let logItem = NSMenuItem(title: "Журнал", action: nil, keyEquivalent: "")
     private let quitItem = NSMenuItem(title: "Выйти", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
     private weak var actions: StatusMenuActions?
@@ -40,6 +42,7 @@ import SmartEspKit
         settingsItem.isHidden = !model.showsAccessSettings
         openItem.isEnabled = model.canOpen
         restartItem.isEnabled = model.canRestart && canRestart
+        loginItem.state = model.loginChecked ? .on : .off
         let image = NSImage(systemSymbolName: model.symbolName, accessibilityDescription: "SmartESP")
         image?.isTemplate = true
         item.button?.image = image
@@ -51,6 +54,7 @@ import SmartEspKit
         statusLine.title = "Останавливаю ядро…"
         item.button?.toolTip = statusLine.title
         restartItem.isEnabled = false
+        loginItem.isEnabled = false
         quitItem.isEnabled = false
     }
 
@@ -72,14 +76,14 @@ import SmartEspKit
         menu.autoenablesItems = false
         statusLine.isEnabled = false
         settingsItem.isHidden = true
-        for entry in [settingsItem, openItem, restartItem, logItem] { entry.target = self }
+        for entry in [settingsItem, openItem, restartItem, logItem, loginItem] { entry.target = self }
         settingsItem.action = #selector(settings)
         openItem.action = #selector(open)
         restartItem.action = #selector(restart)
         logItem.action = #selector(log)
+        loginItem.action = #selector(login)
         quitItem.target = NSApp
-        // «Запускать при входе» с галочкой — в задаче 4, отдельной секцией перед «Выйти»
-        let items = [statusLine, settingsItem, .separator(), openItem, restartItem, logItem, .separator(), quitItem]
+        let items = [statusLine, settingsItem, .separator(), openItem, restartItem, logItem, .separator(), loginItem, .separator(), quitItem]
         items.forEach(menu.addItem)
         item.menu = menu
     }
@@ -87,5 +91,6 @@ import SmartEspKit
     @objc private func settings() { actions?.openAccessSettings() }
     @objc private func open() { actions?.openWindow() }
     @objc private func restart() { actions?.restartCore() }
+    @objc private func login() { actions?.toggleLoginItem() }
     @objc private func log() { actions?.openLog() }
 }
