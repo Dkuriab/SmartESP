@@ -100,6 +100,67 @@ describe('правки исполнителей подряд', () => {
     expect(sent.base()).toBeNull()
   })
 
+  it('применена первая, пока вторая без ответа: перечитывание не теряет вторую', async () => {
+    const { actions, releases, body, sent, clock } = setup()
+    const first = actions.updateExecutor('big', { name: 'Умная' })
+    releases[0]?.(accepted(1))
+    await first
+    const second = actions.setLink('dispatcher', 'big', true, 'код') // PATCH без ответа
+    clock.t = 200
+    sent.observe(appliedEvent(1))
+    sent.observe(configLoaded(200)) // настройки только с первой правкой
+    releases[1]?.(accepted(2))
+    await second
+    void actions.updateExecutor('big', { description: 'всё' })
+    expect(body(2).body.executors[0]?.delegates).toEqual([{ to: 'big', when: 'код' }])
+    expect(body(2).body.executors[1]).toMatchObject({ name: 'Умная', description: 'всё' })
+    sent.observe(appliedEvent(2))
+    sent.observe(configLoaded(200))
+    expect(sent.base()).not.toBeNull() // третья ещё не принята
+  })
+
+  it('отклонена вторая, первая принята и не применена: база — список первой', async () => {
+    const { actions, releases, body, sent } = setup()
+    const first = actions.updateExecutor('big', { name: 'Умная' })
+    releases[0]?.(accepted(1))
+    await first
+    const second = actions.setLink('dispatcher', 'big', true, 'код')
+    releases[1]?.(invalid)
+    await second
+    expect(sent.base()?.[1]).toMatchObject({ name: 'Умная' })
+    void actions.updateExecutor('big', { description: 'всё' })
+    expect(body(2).body.executors[0]?.delegates).toEqual([])
+    expect(body(2).body.executors[1]).toMatchObject({ name: 'Умная', description: 'всё' })
+  })
+
+  it('отклонена вторая, а первая уже применена и перечитана — база снова из настроек', async () => {
+    const { actions, releases, sent, clock } = setup()
+    const first = actions.updateExecutor('big', { name: 'Умная' })
+    releases[0]?.(accepted(1))
+    await first
+    const second = actions.setLink('dispatcher', 'big', true, 'код')
+    clock.t = 200
+    sent.observe(appliedEvent(1))
+    sent.observe(configLoaded(200))
+    expect(sent.base()).not.toBeNull() // вторая ещё без ответа
+    releases[1]?.(invalid)
+    await second
+    expect(sent.base()).toBeNull()
+  })
+
+  it('отклонена вторая, пока первая без ответа: база — список первой', async () => {
+    const { actions, releases, sent } = setup()
+    const first = actions.updateExecutor('big', { name: 'Умная' })
+    const second = actions.setLink('dispatcher', 'big', true, 'код')
+    releases[1]?.(invalid)
+    await second
+    expect(sent.base()?.[0]?.delegates).toEqual([])
+    expect(sent.base()?.[1]).toMatchObject({ name: 'Умная' })
+    releases[0]?.(accepted(1))
+    await first
+    expect(sent.base()?.[1]).toMatchObject({ name: 'Умная' })
+  })
+
   it('ошибка применения или переподключение — забывается сразу', async () => {
     const { actions, releases, sent } = setup()
     const first = actions.updateExecutor('big', { name: 'Умная' })

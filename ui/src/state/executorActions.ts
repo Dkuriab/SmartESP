@@ -40,9 +40,9 @@ export function createExecutorActions({ dispatch, getConfig, sent }: ExecutorDep
     }
     const next = edit(list)
     if (next === list) return false
-    sent.sending(next)
+    const ticket = sent.sending(next)
     const id = await sendPatch({ executors: next }, description)
-    if (id === null) sent.clear()
+    if (id === null) sent.rejected(ticket)
     else sent.accepted(id)
     return id !== null
   }

@@ -8,74 +8,114 @@ import type { Action } from './model'
 /** Сколько ранних событий о применении помнить (событие может обогнать ответ PATCH). */
 const MAX_EARLY = 50
 
+/** Одна отправка: её список и база до неё (чтобы вернуть, если PATCH отклонят). */
+export type SentTicket = { list: Executor[]; before: Executor[] | null }
+
 export type SentExecutors = {
   /** База для следующей правки; null — брать из настроек. */
   base(): Executor[] | null
   /** Список уходит в PATCH: следующие правки строятся на нём. */
-  sending(list: Executor[]): void
+  sending(list: Executor[]): SentTicket
   /** Ядро приняло правку с этим change_id. */
   accepted(changeId: number): void
-  /** Забыть отправленное (PATCH отклонён и т. п.). */
-  clear(): void
+  /** PATCH отклонён: база — как до него; других ждущих правок нет — забыть всё. */
+  rejected(ticket: SentTicket): void
   /** Действие редьюсера: события о применении, загрузки настроек, переподключение. */
   observe(action: Action): void
 }
 
-/** Запоминает исход применения, забывая самые старые сверх MAX_EARLY. */
-function remember(early: Map<number, boolean>, id: number, ok: boolean) {
-  early.set(id, ok)
-  if (early.size > MAX_EARLY) early.delete(early.keys().next().value as number)
+/**
+ * Забывается, когда ядро применило все наши правки (ни одного PATCH без ответа)
+ * и пришли настройки, запрошенные после последнего применения; а также при
+ * ошибке применения и переподключении.
+ */
+class SentMemory implements SentExecutors {
+  private list: Executor[] | null = null
+  /** PATCH без ответа. */
+  private inFlight = 0
+  /** Принятые, но ещё не применённые change_id. */
+  private unapplied = new Set<number>()
+  /** Когда применена последняя наша правка. */
+  private appliedAt = -Infinity
+  /** Когда запрошены последние полученные настройки. */
+  private configAt = -Infinity
+  /** change_id → ok: события, обогнавшие ответ PATCH. */
+  private early = new Map<number, boolean>()
+
+  constructor(private readonly now: () => number) {}
+
+  base(): Executor[] | null {
+    return this.list
+  }
+
+  sending(list: Executor[]): SentTicket {
+    const ticket = { list, before: this.list }
+    this.list = list
+    this.inFlight += 1
+    return ticket
+  }
+
+  accepted(id: number): void {
+    this.inFlight = Math.max(0, this.inFlight - 1)
+    if (this.list === null) return // уже забыто (ошибка применения, переподключение)
+    this.unapplied.add(id)
+    const ok = this.early.get(id)
+    if (ok !== undefined) this.applied(id, ok)
+    this.settle()
+  }
+
+  rejected(ticket: SentTicket): void {
+    this.inFlight = Math.max(0, this.inFlight - 1)
+    // после отклонённой ушли новые правки — они уже построены на ней, их список оставляем
+    if (this.list === ticket.list) this.list = ticket.before
+    if (this.list === null) this.clear()
+    else this.settle()
+  }
+
+  observe(action: Action): void {
+    if (action.type === 'opened') this.clear() // ядро могло перезапуститься
+    else if (action.type === 'event' && action.event.kind === 'change_applied') this.onApplied(action.event.data)
+    else if (action.type === 'loaded' && action.resource === 'config') {
+      this.configAt = Math.max(this.configAt, action.requestedAt ?? -Infinity)
+      this.settle()
+    }
+  }
+
+  private onApplied(data: Record<string, unknown>): void {
+    const id = data.change_id
+    if (this.list === null || typeof id !== 'number') return
+    if (!this.unapplied.has(id)) return this.remember(id, data.ok === true)
+    this.applied(id, data.ok === true)
+    this.settle()
+  }
+
+  /** Ошибка применения — забыть всё; иначе правка больше не ждёт. */
+  private applied(id: number, ok: boolean): void {
+    if (!ok) return this.clear()
+    this.unapplied.delete(id)
+    this.early.delete(id)
+    this.appliedAt = this.now()
+  }
+
+  /** Ничего не ждёт и настройки новее последнего применения — база снова из настроек. */
+  private settle(): void {
+    const idle = this.inFlight === 0 && this.unapplied.size === 0
+    if (this.list !== null && idle && this.configAt >= this.appliedAt) this.clear()
+  }
+
+  private remember(id: number, ok: boolean): void {
+    this.early.set(id, ok)
+    if (this.early.size > MAX_EARLY) this.early.delete(this.early.keys().next().value as number)
+  }
+
+  private clear(): void {
+    this.list = null
+    this.unapplied.clear()
+    this.early.clear()
+  }
 }
 
 /** now — часы, те же, что у загрузчика (requestedAt). */
 export function createSentExecutors(now: () => number = Date.now): SentExecutors {
-  let list: Executor[] | null = null
-  let ids = new Set<number>()
-  let last = -1
-  let appliedAt: number | null = null
-  const early = new Map<number, boolean>()
-
-  function clear() {
-    list = null
-    ids = new Set()
-    last = -1
-    appliedAt = null
-    early.clear()
-  }
-
-  /** Ошибка любой нашей правки — забыть; применена последняя — ждать настроек новее. */
-  function applied(id: number, ok: boolean) {
-    if (!ok) clear()
-    else if (id === last) appliedAt = now()
-  }
-
-  function onApplied(data: Record<string, unknown>) {
-    const id = data.change_id
-    if (list === null || typeof id !== 'number') return
-    if (ids.has(id)) applied(id, data.ok === true)
-    else remember(early, id, data.ok === true)
-  }
-
-  return {
-    base: () => list,
-    sending(next) {
-      list = next
-      appliedAt = null
-    },
-    accepted(id) {
-      if (list === null) return
-      ids.add(id)
-      last = Math.max(last, id)
-      const ok = early.get(id)
-      if (ok !== undefined) applied(id, ok)
-    },
-    clear,
-    observe(action) {
-      if (action.type === 'opened') clear() // ядро могло перезапуститься
-      else if (action.type === 'event' && action.event.kind === 'change_applied') onApplied(action.event.data)
-      else if (action.type === 'loaded' && action.resource === 'config') {
-        if (appliedAt !== null && (action.requestedAt ?? -Infinity) >= appliedAt) clear()
-      }
-    },
-  }
+  return new SentMemory(now)
 }
