@@ -18,10 +18,16 @@ public struct AppPaths: Equatable, Sendable {
     public var runFile: URL { dataDir.appendingPathComponent("run/core.json") }
     /// Файл с токеном доступа.
     public var tokenFile: URL { dataDir.appendingPathComponent("token") }
+    /// Настройки ядра.
+    public var configFile: URL { dataDir.appendingPathComponent("config.yaml") }
+    /// Папка журналов.
+    public var logsDir: URL { dataDir.appendingPathComponent("logs") }
     /// Журнал ядра.
-    public var logFile: URL { dataDir.appendingPathComponent("logs/core.log") }
+    public var logFile: URL { logsDir.appendingPathComponent("core.log") }
+    /// Вывод `ollama serve`, если Ollama запустило приложение.
+    public var ollamaLogFile: URL { logsDir.appendingPathComponent("ollama.log") }
     /// stderr процесса ядра (`uv` и Python до настройки журнала); очищается при каждом запуске.
-    public var stderrLogFile: URL { dataDir.appendingPathComponent("logs/core-stderr.log") }
+    public var stderrLogFile: URL { logsDir.appendingPathComponent("core-stderr.log") }
 
     /// Определяет пути.
     /// - Parameters:
@@ -50,14 +56,23 @@ public struct AppPaths: Equatable, Sendable {
 ///   - fileExists: проверка наличия исполняемого файла по пути.
 /// - Returns: путь к `uv` или `nil`.
 public func findUv(env: [String: String], home: URL, fileExists: (String) -> Bool) -> URL? {
-    var candidates = [
-        home.appendingPathComponent(".local/bin/uv").path,
-        "/opt/homebrew/bin/uv",
-        "/usr/local/bin/uv",
-    ]
-    let dirs = (env["PATH"] ?? "").split(separator: ":").map(String.init)
-    candidates += dirs.map { URL(fileURLWithPath: $0).appendingPathComponent("uv").path }
-    return candidates.first(where: fileExists).map { URL(fileURLWithPath: $0) }
+    let known = [home.appendingPathComponent(".local/bin").path, "/opt/homebrew/bin", "/usr/local/bin"]
+    return findExecutable("uv", in: known, env: env, fileExists: fileExists)
+}
+
+/// Ищет программу сначала в известных папках, затем в `PATH`.
+/// - Parameters:
+///   - name: имя файла программы.
+///   - known: папки, которые смотреть первыми.
+///   - env: переменные окружения (берётся `PATH`).
+///   - fileExists: проверка наличия исполняемого файла по пути.
+/// - Returns: путь к программе или `nil`.
+func findExecutable(
+    _ name: String, in known: [String], env: [String: String], fileExists: (String) -> Bool
+) -> URL? {
+    let dirs = known + (env["PATH"] ?? "").split(separator: ":").map(String.init)
+    return dirs.map { URL(fileURLWithPath: $0).appendingPathComponent(name).path }
+        .first(where: fileExists).map { URL(fileURLWithPath: $0) }
 }
 
 /// Окружение процесса ядра: в начало `PATH` — папка `uv`, `/opt/homebrew/bin`

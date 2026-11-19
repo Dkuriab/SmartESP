@@ -1,8 +1,10 @@
+import Darwin
 import Foundation
 
 /// Надзор за ядром: запуск или подключение к уже запущенному, опрос раз в секунду,
 /// перезапуск после падений (не больше 3 за 60 с), остановка SIGTERM → 15 с → SIGKILL.
-/// Запуск, опрос и падения — в `CoreSupervisor+Polling.swift`.
+/// Запуск, опрос и падения — в `CoreSupervisor+Polling.swift`; «Взять управление» —
+/// в `CoreSupervisor+Control.swift`.
 @MainActor public final class CoreSupervisor {
     /// Сколько ждать выхода ядра (своего после SIGTERM или прежнего, которое ещё останавливается), секунд.
     public static let stopTimeout: TimeInterval = 15
@@ -51,6 +53,8 @@ import Foundation
     let env: [String: String]
     let home: URL
     let autoPoll: Bool
+    let commandLine: (Int32) -> [String]?
+    let sendSignal: (Int32, Int32) -> Bool
 
     var mode: Mode = .idle
     var crashTimes: [TimeInterval] = []
@@ -63,10 +67,11 @@ import Foundation
     var generation = 0
     var pollTask: Task<Void, Never>?
     private var ticking = false
-    private var startInProgress = false
+    /// Идёт запуск или «Взять управление»: второй запуск не начинаем.
+    var startInProgress = false
     private var stopTask: Task<Void, Never>?
-    /// Задача, которую создал последний `start()`.
-    private(set) var startTask: Task<Void, Never>?
+    /// Задача, которую создал последний `start()` или `takeOver()`; её ждёт `stop()`.
+    var startTask: Task<Void, Never>?
 
     /// - Parameters:
     ///   - paths: пути репозитория и папки данных.
@@ -80,6 +85,8 @@ import Foundation
     ///   - env: окружение для поиска `uv` и для процесса ядра.
     ///   - home: домашняя папка (поиск `uv`).
     ///   - autoPoll: сам опрашивать раз в секунду; в тестах `false` и `tick()` вручную.
+    ///   - commandLine: аргументы процесса по pid (проверка перед «Взять управление»).
+    ///   - sendSignal: послать сигнал процессу; `true` — получилось.
     public init(
         paths: AppPaths,
         launcher: any CoreLaunching,
@@ -91,7 +98,9 @@ import Foundation
         pidAlive: @escaping (Int32) -> Bool = isProcessAlive,
         env: [String: String] = ProcessInfo.processInfo.environment,
         home: URL = FileManager.default.homeDirectoryForCurrentUser,
-        autoPoll: Bool = true
+        autoPoll: Bool = true,
+        commandLine: @escaping (Int32) -> [String]? = processArguments,
+        sendSignal: @escaping (Int32, Int32) -> Bool = { Darwin.kill($0, $1) == 0 }
     ) {
         self.paths = paths
         self.launcher = launcher
@@ -104,10 +113,15 @@ import Foundation
         self.env = env
         self.home = home
         self.autoPoll = autoPoll
+        self.commandLine = commandLine
+        self.sendSignal = sendSignal
     }
 
     /// Подключается к живому чужому ядру или запускает своё; сразу возвращается.
+    /// Это и «Запустить ядро»: из остановки или ошибки счётчик падений сбрасывается.
+    /// Если надзор уже ведёт ядро — ничего не делает.
     public func start() {
+        if case .idle = mode, !startInProgress { crashTimes = [] }
         startTask = Task { await self.performStart() }
     }
 
@@ -135,6 +149,7 @@ import Foundation
 
     /// Останавливает своё ядро: SIGTERM, до 15 с ожидания, затем SIGKILL.
     /// Чужое ядро не трогает. Повторный вызов во время остановки ждёт первую.
+    /// После остановки надзор ядро сам не запускает — только `start()` или `restart()`.
     public func stop() async {
         generation += 1
         await startTask?.value
@@ -163,7 +178,13 @@ import Foundation
         case .idle:
             return
         case .own(let handle):
-            if handle.isRunning { await refreshOwn(handle) } else { await handleCrash() }
+            if handle.isRunning {
+                await refreshOwn(handle)
+            } else if handle.exitCode == 0 {
+                stoppedByItself()
+            } else {
+                await handleCrash()
+            }
         case .external(let pid):
             await refreshExternal(pid)
         }

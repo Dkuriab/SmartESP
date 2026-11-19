@@ -8,6 +8,10 @@ import SmartEspKit
     func openLog()
     func openAccessSettings()
     func toggleLoginItem()
+    /// Кнопка пульта: запустить, остановить ядро, взять управление, запустить Ollama.
+    func perform(_ action: ControlAction)
+    /// Меню открывается — пора проверить Ollama.
+    func menuWillOpen()
     /// Состояние автозапуска прямо сейчас; `nil` — не трогать пункт (идёт выход).
     func liveLoginState() -> LoginMenuState?
 }
@@ -22,6 +26,10 @@ import SmartEspKit
     private let settingsItem = NSMenuItem(title: "Открыть настройки доступа", action: nil, keyEquivalent: "")
     private let openItem = NSMenuItem(title: "Открыть SmartESP", action: nil, keyEquivalent: "o")
     private let restartItem = NSMenuItem(title: "Перезапустить ядро", action: nil, keyEquivalent: "")
+    /// Пункты пульта; видны только доступные.
+    private let controlItems: [ControlAction: NSMenuItem] = Dictionary(
+        uniqueKeysWithValues: ControlAction.allCases.map { ($0, NSMenuItem(title: $0.title, action: nil, keyEquivalent: "")) })
+    private let ollamaLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private let loginItem = NSMenuItem(title: "Запускать при входе", action: nil, keyEquivalent: "")
     private let logItem = NSMenuItem(title: "Журнал", action: nil, keyEquivalent: "")
     private let quitItem = NSMenuItem(title: "Выйти", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -37,13 +45,17 @@ import SmartEspKit
     /// Показывает модель: строка состояния, подсказка, значок, доступность пунктов.
     /// - Parameters:
     ///   - model: модель меню из `menuModel`.
+    ///   - controls: доступные кнопки пульта (из `controlActions`).
+    ///   - ollama: строка состояния Ollama.
     ///   - canRestart: можно ли вообще перезапускать (нет надзора — нет и перезапуска).
-    func show(_ model: MenuModel, canRestart: Bool, login: LoginMenuState) {
+    func show(_ model: MenuModel, controls: [ControlAction], ollama: String, canRestart: Bool, login: LoginMenuState) {
         statusLine.title = model.statusText
         showHint(model.hint)
         settingsItem.isHidden = !model.showsAccessSettings
         openItem.isEnabled = model.canOpen
         restartItem.isEnabled = model.canRestart && canRestart
+        for (action, entry) in controlItems { entry.isHidden = !(canRestart && controls.contains(action)) }
+        ollamaLine.title = ollama
         showLogin(login)
         let image = NSImage(systemSymbolName: model.symbolName, accessibilityDescription: "SmartESP")
         image?.isTemplate = true
@@ -56,6 +68,7 @@ import SmartEspKit
         statusLine.title = "Останавливаю ядро…"
         item.button?.toolTip = statusLine.title
         restartItem.isEnabled = false
+        controlItems.values.forEach { $0.isHidden = true }
         loginItem.isEnabled = false
         quitItem.isEnabled = false
     }
@@ -63,6 +76,7 @@ import SmartEspKit
     /// Автозапуск могли поменять в Системных настройках — перед открытием меню берём живое состояние.
     func menuWillOpen(_ menu: NSMenu) {
         if let login = actions?.liveLoginState() { showLogin(login) }
+        actions?.menuWillOpen()
     }
 
     /// Пункт «Запускать при входе»: заголовок, отметка, доступность.
@@ -94,7 +108,13 @@ import SmartEspKit
         menu.autoenablesItems = false
         menu.delegate = self
         statusLine.isEnabled = false
+        ollamaLine.isEnabled = false
         settingsItem.isHidden = true
+        for entry in controlItems.values {
+            entry.target = self
+            entry.action = #selector(control(_:))
+            entry.isHidden = true
+        }
         for entry in [settingsItem, openItem, restartItem, logItem, loginItem] { entry.target = self }
         settingsItem.action = #selector(settings)
         openItem.action = #selector(open)
@@ -102,7 +122,10 @@ import SmartEspKit
         logItem.action = #selector(log)
         loginItem.action = #selector(login)
         quitItem.target = NSApp
-        let items = [statusLine, settingsItem, .separator(), openItem, restartItem, logItem, .separator(), loginItem, .separator(), quitItem]
+        let core = [ControlAction.startCore, .stopCore, .takeOver].compactMap { controlItems[$0] }
+        let ollama = [ollamaLine] + [controlItems[.startOllama]].compactMap { $0 }
+        let items = [statusLine, settingsItem, .separator(), openItem] + core + [restartItem, logItem, .separator()]
+            + ollama + [.separator(), loginItem, .separator(), quitItem]
         items.forEach(menu.addItem)
         item.menu = menu
     }
@@ -112,4 +135,8 @@ import SmartEspKit
     @objc private func restart() { actions?.restartCore() }
     @objc private func login() { actions?.toggleLoginItem() }
     @objc private func log() { actions?.openLog() }
+    @objc private func control(_ sender: NSMenuItem) {
+        guard let action = controlItems.first(where: { $0.value === sender })?.key else { return }
+        actions?.perform(action)
+    }
 }
