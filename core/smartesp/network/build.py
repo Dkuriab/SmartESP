@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 
-from smartesp.contracts import Executor, Stage, UsesModels
+from smartesp.contracts import Executor, Stage, ToolBox, UsesModels
 
 from .network import ExecutorNetwork, Member
 from .rules import Target, delegate_rule
@@ -83,6 +83,7 @@ async def build_network(
     stages: Sequence[Stage],
     make: Callable[[str, str], Executor],
     capabilities: Capabilities,
+    toolbox: ToolBox | None = None,
 ) -> ExecutorNetwork:
     """Сеть из описаний; модели не греются.
 
@@ -94,17 +95,22 @@ async def build_network(
     промпт без правила): на глубине max_depth инструмента у него нет, и правило
     только заставило бы его обещать передачу. Модели, чьи возможности узнать не
     удалось (пустой ответ), сеть помнит в unknown_models.
+
+    toolbox — инструменты коннекторов: участники, чья модель умеет инструменты,
+    получают toolbox.specs() (снимок на момент сборки) вместе с delegate.
     """
     found = await _capabilities_by_model(specs, capabilities)
+    tools = tuple(toolbox.specs()) if toolbox is not None else ()
     members: dict[str, Member] = {}
     for spec in specs:
         tools_ok = TOOLS in found[spec.model]
         targets = active_targets(spec, specs)
         executor = make(spec.id, _prompt(spec, stages, targets, tools_ok))
         plain = make(spec.id, _prompt(spec, stages, targets, False)) if tools_ok and targets else None
-        members[spec.id] = Member(executor, spec.name, targets, tools_ok, plain)
+        own_tools = tools if tools_ok else ()
+        members[spec.id] = Member(executor, spec.name, targets, tools_ok, plain, own_tools)
     unknown = frozenset(model for model, caps in found.items() if not caps)
-    return ExecutorNetwork(entry_id, members, unknown=unknown)
+    return ExecutorNetwork(entry_id, members, unknown=unknown, toolbox=toolbox)
 
 
 class NetworkPrompts:
