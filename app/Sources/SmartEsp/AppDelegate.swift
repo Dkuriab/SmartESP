@@ -76,8 +76,11 @@ import SmartEspKit
     }
 
     func toggleLoginItem() {
+        let click = loginItem.menuState.click
+        if click == .openSettings { NSWorkspace.shared.open(loginItemsSettingsURL) }
+        guard click == .enable || click == .disable else { return }
         do {
-            try loginItem.setEnabled(!loginItem.isEnabled)
+            try loginItem.setEnabled(click == .enable)
             UserDefaults.standard.set(true, forKey: loginItemDecidedKey)
         } catch {
             showAlert("Не удалось изменить автозапуск", error.localizedDescription)
@@ -96,6 +99,8 @@ import SmartEspKit
         let defaults = UserDefaults.standard
         let decided = defaults.bool(forKey: loginItemDecidedKey)
         guard firstLaunchDefault(bundlePath: Bundle.main.bundlePath, alreadyDecided: decided) else { return }
+        // «Решено» ставим до попытки намеренно: не удалось — не пытаемся при каждом запуске,
+        // а пользователь включит вручную через меню
         defaults.set(true, forKey: loginItemDecidedKey)
         try? loginItem.setEnabled(true)
     }
@@ -121,7 +126,8 @@ import SmartEspKit
         guard !quitting else { return }
         let current = state
         statusMenu?.show(
-            menuModel(state: current, loginEnabled: loginItem.isEnabled), canRestart: supervisor != nil)
+            menuModel(state: current, loginEnabled: loginItem.isEnabled), canRestart: supervisor != nil,
+            login: loginItem.menuState)
         window?.show(windowContent(state: current, token: supervisor?.token))
     }
 

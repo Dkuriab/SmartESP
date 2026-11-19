@@ -123,20 +123,6 @@ public func windowContent(state: CoreState, token: String?) -> WindowContent {
     }
 }
 
-/// Открывать ли ссылку во внешнем браузере, а не в окне приложения.
-/// - Parameter url: адрес перехода.
-/// - Returns: `true` для http(s) и mailto не на 127.0.0.1/localhost.
-public func opensExternally(_ url: URL) -> Bool {
-    switch url.scheme?.lowercased() {
-    case "mailto":
-        return true
-    case "http", "https":
-        return !["127.0.0.1", "localhost"].contains(url.host?.lowercased() ?? "")
-    default:
-        return false
-    }
-}
-
 /// Адрес веб-интерфейса ядра с токеном в запросе.
 private func coreURL(port: Int, token: String) -> URL? {
     var allowed = CharacterSet.urlQueryAllowed

@@ -154,7 +154,7 @@ private let documentsRepo = "Documents/SmartEsp"
         #expect(model.symbolName == "exclamationmark.triangle.fill")
         #expect(model.hint == accessHint(folder: "Документы"))
         #expect(model.hint?.contains("нажмите «Разрешить»") == true)
-        #expect(model.hint?.contains("Файлы и папки → SmartEsp → «Папка „Документы\"»") == true)
+        #expect(model.hint?.contains("Файлы и папки → SmartEsp → «Папка „Документы“»") == true)
         #expect(model.showsAccessSettings && model.canRestart && model.canOpen)
     }
 

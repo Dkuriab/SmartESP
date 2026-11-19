@@ -2,8 +2,10 @@ import Foundation
 
 /// Запуск приложения при входе в систему.
 @MainActor public protocol LoginItemControlling: AnyObject {
-    /// Включён ли запуск при входе.
+    /// Запуск при входе включён по-настоящему (по статусу системы или по файлу LaunchAgent).
     var isEnabled: Bool { get }
+    /// Что показать в меню и что делает нажатие.
+    var menuState: LoginMenuState { get }
     /// Включает или выключает запуск при входе.
     /// - Parameter on: `true` — включить.
     func setEnabled(_ on: Bool) throws
@@ -52,9 +54,10 @@ public struct LaunchAgentFile: Sendable {
     public var exists: Bool { FileManager.default.fileExists(atPath: url.path) }
 
     /// Создаёт папку при необходимости и пишет plist.
-    public func install() throws {
+    /// - Parameter appPath: путь к приложению, которое откроет `open -a`.
+    public func install(appPath: String = "/Applications/SmartEsp.app") throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try launchAgentPlist().write(to: url, options: .atomic)
+        try launchAgentPlist(appPath: appPath).write(to: url, options: .atomic)
     }
 
     /// Удаляет plist, если он есть.
@@ -63,12 +66,40 @@ public struct LaunchAgentFile: Sendable {
     }
 }
 
-/// Перезапускать ли загрузку страницы после ошибки.
+/// Статус `SMAppService` без привязки к ServiceManagement.
+public enum LoginStatus: Sendable { case enabled, notRegistered, requiresApproval, notFound }
+
+/// Что делает нажатие на «Запускать при входе».
+public enum LoginClickAction: Equatable, Sendable { case enable, disable, openSettings, none }
+
+/// Вид пункта «Запускать при входе».
+public struct LoginMenuState: Equatable, Sendable {
+    public enum Mark: Equatable, Sendable { case on, off, mixed }
+    public let title: String
+    public let mark: Mark
+    public let click: LoginClickAction
+}
+
+/// Адрес «Объекты входа» в Системных настройках.
+public let loginItemsSettingsURL = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!
+
+/// Чистое отображение статуса автозапуска в пункт меню.
 /// - Parameters:
-///   - domain: домен ошибки.
-///   - code: код ошибки.
-/// - Returns: `true` для сетевых ошибок (`NSURLErrorDomain`, кроме отмены);
-///   «frame load interrupted» (WebKit, код 102) — нет: это не сбой сети.
-public func shouldRetryLoad(domain: String, code: Int) -> Bool {
-    domain == NSURLErrorDomain && code != NSURLErrorCancelled
+///   - status: статус `SMAppService.mainApp`.
+///   - agentExists: есть файл запасного LaunchAgent.
+///   - inApplications: приложение лежит в `/Applications`.
+/// - Returns: заголовок, отметка и действие по нажатию.
+public func loginMenuState(status: LoginStatus, agentExists: Bool, inApplications: Bool) -> LoginMenuState {
+    let on = status == .enabled || agentExists
+    guard inApplications else {
+        return LoginMenuState(title: "Запускать при входе (только из «Программ»)", mark: on ? .on : .off, click: .none)
+    }
+    let title = "Запускать при входе"
+    if on { return LoginMenuState(title: title, mark: .on, click: .disable) }
+    if status == .requiresApproval {
+        return LoginMenuState(
+            title: title + " — ожидает разрешения в Системных настройках → Основные → Объекты входа",
+            mark: .mixed, click: .openSettings)
+    }
+    return LoginMenuState(title: title, mark: .off, click: .enable)
 }

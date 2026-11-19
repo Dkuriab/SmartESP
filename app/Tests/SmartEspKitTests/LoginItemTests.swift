@@ -30,11 +30,20 @@ import Testing
         #expect(!file.exists)
         try? FileManager.default.removeItem(at: dir.deletingLastPathComponent())
     }
+}
 
-    @Test func retryOnlyOnNetworkErrors() {
-        #expect(shouldRetryLoad(domain: NSURLErrorDomain, code: NSURLErrorCannotConnectToHost))
-        #expect(!shouldRetryLoad(domain: NSURLErrorDomain, code: NSURLErrorCancelled))
-        #expect(!shouldRetryLoad(domain: "WebKitErrorDomain", code: 102))
-        #expect(!shouldRetryLoad(domain: "WKErrorDomain", code: 102))
+@Suite struct LoginMenuStateTests {
+    @Test func mapping() {
+        let off = loginMenuState(status: .notRegistered, agentExists: false, inApplications: true)
+        #expect(off.mark == .off && off.click == .enable)
+        let on = loginMenuState(status: .enabled, agentExists: false, inApplications: true)
+        #expect(on.mark == .on && on.click == .disable)
+        let agent = loginMenuState(status: .notFound, agentExists: true, inApplications: true)
+        #expect(agent.mark == .on && agent.click == .disable)
+        let pending = loginMenuState(status: .requiresApproval, agentExists: false, inApplications: true)
+        #expect(pending.mark == .mixed && pending.click == .openSettings)
+        #expect(pending.title.contains("Объекты входа"))
+        let outside = loginMenuState(status: .notRegistered, agentExists: false, inApplications: false)
+        #expect(outside.click == .none && outside.title == "Запускать при входе (только из «Программ»)")
     }
 }

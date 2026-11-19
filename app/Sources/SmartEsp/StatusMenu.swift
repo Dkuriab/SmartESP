@@ -36,13 +36,19 @@ import SmartEspKit
     /// - Parameters:
     ///   - model: модель меню из `menuModel`.
     ///   - canRestart: можно ли вообще перезапускать (нет надзора — нет и перезапуска).
-    func show(_ model: MenuModel, canRestart: Bool) {
+    func show(_ model: MenuModel, canRestart: Bool, login: LoginMenuState) {
         statusLine.title = model.statusText
         showHint(model.hint)
         settingsItem.isHidden = !model.showsAccessSettings
         openItem.isEnabled = model.canOpen
         restartItem.isEnabled = model.canRestart && canRestart
-        loginItem.state = model.loginChecked ? .on : .off
+        loginItem.title = login.title
+        loginItem.isEnabled = login.click != .none
+        switch login.mark {
+        case .on: loginItem.state = .on
+        case .off: loginItem.state = .off
+        case .mixed: loginItem.state = .mixed
+        }
         let image = NSImage(systemSymbolName: model.symbolName, accessibilityDescription: "SmartESP")
         image?.isTemplate = true
         item.button?.image = image
