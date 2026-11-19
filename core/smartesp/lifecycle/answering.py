@@ -95,6 +95,23 @@ class LiveAnswering:
             raise
         return part
 
+    async def rebuild(self, build: Callable[[], Awaitable[Answering]]) -> bool:
+        """Пересборка живой пары тем же путём, что правка: build() (с прогревом) → use → release.
+
+        Если, пока пара собиралась, живую сменила правка или началась остановка,
+        новая пара освобождается, а живая остаётся. True — пара подменена.
+        Ошибка build пробрасывается.
+        """
+        current = self.executor
+        part = await build()
+        if self._closed or self.executor is not current:
+            await self.release(part)
+            return False
+        old = self.use(part)
+        if old is not None:
+            await self.release(old)
+        return True
+
     def use(self, part: object) -> object | None:
         """Ставит пару в оркестратор и начинает фоновый прогрев участников.
 

@@ -31,7 +31,15 @@ from smartesp.kinds import (
     member_specs,
     prompt_stages,
 )
-from smartesp.lifecycle import Answering, CapabilityCache, LiveAnswering, RunFile, guarded, timed
+from smartesp.lifecycle import (
+    Answering,
+    CapabilityCache,
+    CapabilityRetry,
+    LiveAnswering,
+    RunFile,
+    guarded,
+    timed,
+)
 from smartesp.network import NetworkPrompts
 from smartesp.tts import VoiceManager
 
@@ -93,6 +101,7 @@ class Assembly:
     orchestrator: Orchestrator
     live: LiveAnswering
     capabilities: CapabilityCache  # возможности моделей: умеют ли инструменты
+    retry: CapabilityRetry  # пересборка сети, когда станут известны возможности моделей
     voices: VoiceManager
     voice_ready: asyncio.Event
     core: Core
@@ -100,6 +109,7 @@ class Assembly:
     app: FastAPI = field(init=False)
     running: asyncio.Task[None] | None = None  # оркестратор
     warming: asyncio.Task[None] | None = None  # прогрев частей
+    retrying: asyncio.Task[None] | None = None  # повтор запроса возможностей моделей
 
 
 def assemble(
@@ -133,6 +143,11 @@ def assemble(
         member_warm_s=WARM_UP_TIMEOUT_S,
     )
     capabilities = CapabilityCache(ollama.capabilities)
+    retry = CapabilityRetry(  # Ollama поднялась позже ядра — пересборка, как правка executors
+        live,
+        capabilities.probe,
+        lambda: _build_answering(kinds, live, capabilities, store.config),
+    )
     prompts = NetworkPrompts(  # настройки = живые части
         lambda: store.config.entry_executor().id,
         lambda: member_specs(store.config),
@@ -172,6 +187,7 @@ def assemble(
         orchestrator,
         live,
         capabilities,
+        retry,
         voices,
         voice_ready,
         core,
@@ -203,13 +219,14 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str) -> FastA
 
 
 def start(parts: Assembly) -> None:
-    """Запускает фон: оркестратор, открытие голоса (с повторами) и прогрев частей."""
+    """Запускает фон: оркестратор, открытие голоса (с повторами), прогрев частей и повтор возможностей."""
     tts = parts.config.tts
     voice = asyncio.create_task(parts.voices.open(tts.kind, tts.voice, retry=True), name="voice-open")
     parts.running = asyncio.create_task(parts.orchestrator.run(), name="orchestrator")
     parts.warming = asyncio.create_task(warm_up(parts, voice), name="warm-up")
-    parts.running.add_done_callback(_log_crash)
-    parts.warming.add_done_callback(_log_crash)
+    parts.retrying = asyncio.create_task(parts.retry.run(), name="capabilities-retry")
+    for task in (parts.running, parts.warming, parts.retrying):
+        task.add_done_callback(_log_crash)
 
 
 async def warm_up(parts: Assembly, voice: asyncio.Task[bool]) -> None:
@@ -248,7 +265,7 @@ async def stop(parts: Assembly) -> None:
     parts.hub.stop_accepting()
     parts.orchestrator.stop_accepting()
     parts.live.close()  # освобождения старых моделей больше не ждут ходов: их выгрузит unload_all
-    await _cancel(parts.warming)  # прогрев, если ещё идёт; оркестратор — в finish
+    await _cancel(parts.warming, parts.retrying)  # прогрев и повтор, если идут; оркестратор — в finish
     await parts.core.aclose()  # правка в работе отменяется: живой исполнитель больше не меняется
     await parts.orchestrator.drain(DRAIN_S)
     logger.info("Остановка: идущие ходы закончены")
@@ -262,7 +279,7 @@ async def stop(parts: Assembly) -> None:
 
 async def finish(parts: Assembly) -> None:
     """Снимает фоновые задачи и таймеры хаба (после остановки сервера)."""
-    await _cancel(parts.running, parts.warming)
+    await _cancel(parts.running, parts.warming, parts.retrying)
     await parts.voices.aclose()
     await parts.hub.aclose()
 

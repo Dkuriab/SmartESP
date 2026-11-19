@@ -24,12 +24,19 @@ class CapabilityCache:
 
     async def get(self, model: str) -> frozenset[str]:
         """Возможности модели; сбой fetch — пустое множество и предупреждение в журнале."""
+        return await self._get(model, logging.WARNING)
+
+    async def probe(self, model: str) -> frozenset[str]:
+        """Как get, но сбой fetch пишется только в отладочный журнал: для частых повторов."""
+        return await self._get(model, logging.DEBUG)
+
+    async def _get(self, model: str, failure_level: int) -> frozenset[str]:
         if model in self._known:
             return self._known[model]
         try:
             found = await self._fetch(model)
         except Exception:  # noqa: BLE001 — сбой Ollama не должен ломать сборку и API
-            _log.warning("Возможности модели %s не получены", model, exc_info=True)
+            _log.log(failure_level, "Возможности модели %s не получены", model, exc_info=True)
             return frozenset()
         if found:
             self._known[model] = found
