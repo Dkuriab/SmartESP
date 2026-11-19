@@ -111,6 +111,11 @@
 - `Announce` в `Idle` при связи → `SetActiveTurn(turn)`, звук `Attention`,
   состояние `Waiting`.
 - `Announce`/`Listen` не в `Idle` → действие «отправить `busy{turn}`» (без звука).
+- Любой вход в `Idle` выдаёт `SetActiveTurn(0)`. Шлюз звука ответа (`ReplyGate`)
+  по «текущий ход 0» понимает, что колонка свободна, и принимает ход `announce`
+  сразу, в задаче связи: `announce`, `reply_start` и звук приходят подряд, раньше,
+  чем `loop()` выдаст `SetActiveTurn`. Занятой колонке шлюз ход не меняет — звук
+  объявления до ответа `busy` отбрасывается.
 - Остальное не меняется: перебивание словом, `cancel_turn`, потеря связи.
 - Тесты `tools/host_tests/session_test.cpp` и `protocol_test.cpp`: listen из
   покоя, listen/announce в занятом состоянии → busy, listen без речи, слово

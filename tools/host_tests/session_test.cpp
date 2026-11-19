@@ -204,7 +204,7 @@ TEST(reply_flow) {
   CHECK(drain(session).empty());
   CHECK(session.state() == SessionState::Speaking);
   session.setPlaybackActive(false);
-  CHECK(sameActions(drain(session), {sendEvent(ClientEventType::PlaybackDone, 1)}));
+  CHECK(sameActions(drain(session), {setActiveTurn(0), sendEvent(ClientEventType::PlaybackDone, 1)}));
   CHECK(session.state() == SessionState::Idle);
 }
 
@@ -213,7 +213,7 @@ TEST(reply_end_before_playback_started) {
   session.onServerCommand(server(ServerCommandType::ReplyStart, 1));
   session.onServerCommand(server(ServerCommandType::ReplyEnd, 1));
   session.loop(2000);
-  CHECK(sameActions(drain(session), {sendEvent(ClientEventType::PlaybackDone, 1)}));
+  CHECK(sameActions(drain(session), {setActiveTurn(0), sendEvent(ClientEventType::PlaybackDone, 1)}));
   CHECK(session.state() == SessionState::Idle);
 }
 
@@ -264,7 +264,7 @@ TEST(stale_turn_commands_ignored) {
 TEST(server_stop_playback) {
   Session session = speakingSession();
   session.onServerCommand(server(ServerCommandType::StopPlayback));
-  CHECK(sameActions(drain(session), {simple(ActionType::StopPlayback)}));
+  CHECK(sameActions(drain(session), {simple(ActionType::StopPlayback), setActiveTurn(0)}));
   CHECK(session.state() == SessionState::Idle);
 }
 
@@ -364,7 +364,7 @@ TEST(announce_from_idle) {
   session.setPlaybackActive(true);
   session.onServerCommand(server(ServerCommandType::ReplyEnd, 0x80000001u));
   session.setPlaybackActive(false);
-  CHECK(sameActions(drain(session), {sendEvent(ClientEventType::PlaybackDone, 0x80000001u)}));
+  CHECK(sameActions(drain(session), {setActiveTurn(0), sendEvent(ClientEventType::PlaybackDone, 0x80000001u)}));
   CHECK(session.state() == SessionState::Idle);
 }
 

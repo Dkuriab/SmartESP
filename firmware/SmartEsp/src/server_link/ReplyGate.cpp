@@ -22,6 +22,12 @@ void ReplyGate::onCommand(const ServerCommand& command) {
     case ServerCommandType::StopPlayback:
       open_ = false;
       break;
+    case ServerCommandType::Announce:
+      if (activeTurn_ == 0) {
+        activeTurn_ = command.turn;
+        open_ = false;
+      }
+      break;
     default:
       break;
   }

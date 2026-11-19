@@ -198,6 +198,31 @@ TEST(gate_closes_on_turn_change) {
   CHECK(!gate.isOpen());
 }
 
+// Объявление ядра: announce, reply_start и звук приходят раньше, чем loop() выдаст
+// SetActiveTurn, — свободная колонка (текущий ход 0) принимает ход объявления сразу.
+TEST(gate_free_speaker_adopts_announce) {
+  ReplyGate gate;
+  gate.setActiveTurn(0);
+  gate.onCommand(command(ServerCommandType::Announce, 0x80000001u));
+  CHECK(!gate.isOpen());
+  gate.onCommand(command(ServerCommandType::ReplyStart, 0x80000001u));
+  CHECK(gate.isOpen());
+  gate.setActiveTurn(0x80000001u);  // session согласилась позже — шлюз остаётся открытым
+  CHECK(gate.isOpen());
+}
+
+// Занятая колонка: звук объявления, отправленный до ответа busy, не принимается.
+TEST(gate_busy_speaker_drops_announce_audio) {
+  ReplyGate gate;
+  gate.setActiveTurn(2);  // идёт свой ход владельца, его ответ ещё не начался
+  gate.onCommand(command(ServerCommandType::Announce, 0x80000001u));
+  gate.onCommand(command(ServerCommandType::ReplyStart, 0x80000001u));
+  CHECK(!gate.isOpen());
+  gate.onCommand(command(ServerCommandType::ReplyEnd, 0x80000001u));
+  gate.onCommand(command(ServerCommandType::ReplyStart, 2));  // ответ владельцу — как обычно
+  CHECK(gate.isOpen());
+}
+
 // ---------- протокол v2 ----------
 
 TEST(hello_has_device_id_and_protocol) {

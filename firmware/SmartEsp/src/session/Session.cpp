@@ -91,6 +91,7 @@ void Session::onServerCommand(const ServerCommand& command) {
     case ServerCommandType::StopPlayback:
       pushSimple(ActionType::StopPlayback);
       if (state_ == SessionState::Speaking) {
+        abandonTurn();
         enter(SessionState::Idle);
       }
       break;
@@ -219,8 +220,9 @@ void Session::endUtterance(UtteranceEndReason reason, SessionState next) {
 }
 
 void Session::abandonTurn() {
-  // Ход брошен (таймаут, нет речи, потеря связи): закрываем приём звука ответа,
-  // иначе запоздавший ответ на этот ход заиграет в Idle.
+  // Ход закончен или брошен: закрываем приём звука ответа (запоздавший ответ на этот
+  // ход не заиграет в Idle). Каждый вход в Idle идёт через это действие: шлюз звука
+  // по «текущий ход 0» понимает, что колонка свободна и может принять announce.
   Action action{};
   action.type = ActionType::SetActiveTurn;
   action.turn = 0;
@@ -236,6 +238,7 @@ void Session::enter(SessionState next) {
 
 void Session::checkPlaybackDone() {
   if (replyEnded_ && !playbackActive_) {
+    abandonTurn();  // до события: к приходу следующего announce шлюз звука уже свободен
     pushEvent(ClientEventType::PlaybackDone);
     enter(SessionState::Idle);
   }
