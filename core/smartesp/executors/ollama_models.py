@@ -64,3 +64,20 @@ async def loaded_models(client: Any = None) -> list[str]:
     """
     response = await _call(client, "ps")
     return [_name(m) for m in _items(response)]
+
+
+async def model_capabilities(model: str, client: Any = None) -> frozenset[str]:
+    """Возвращает возможности модели (show): например completion, tools.
+
+    Ошибка или отсутствие модели — пустое множество, без исключения.
+    """
+    own = client is None
+    c: Any = ollama.AsyncClient(timeout=LIST_TIMEOUT_S) if own else client
+    try:
+        response = await c.show(model)
+        return frozenset(str(x) for x in _field(response, "capabilities") or [])
+    except (httpx.HTTPError, ConnectionError, ollama.ResponseError):
+        return frozenset()
+    finally:
+        if own:
+            await c.close()
