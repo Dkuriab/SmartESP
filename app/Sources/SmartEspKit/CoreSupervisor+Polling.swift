@@ -24,6 +24,36 @@ extension CoreSupervisor {
         return true
     }
 
+    /// Проверяет доступ к папке ядра. Пока проверка висит дольше `accessPromptDelay`
+    /// (macOS спрашивает пользователя) — состояние `waitingForAccess`.
+    /// - Returns: `true`, если доступ есть и можно запускать.
+    func checkAccess(_ current: Int) async -> Bool {
+        let check = access.check(paths.coreDir)
+        let started = clock()
+        while check.result == nil {
+            guard current == generation else { return false }
+            if clock() - started >= Self.accessPromptDelay { state = .waitingForAccess(folder: folderName) }
+            await sleep(Self.waitStep)
+            await Task.yield()
+        }
+        guard current == generation, let result = check.result else { return false }
+        switch result {
+        case .granted:
+            return true
+        case .denied:
+            fail(nil)
+            state = .accessDenied(folder: folderName)
+        case let .failed(message):
+            fail(message)
+        }
+        return false
+    }
+
+    /// Русское имя защищённой папки с репозиторием, иначе имя самой папки репозитория.
+    var folderName: String {
+        protectedFolderName(of: paths.repo, home: home) ?? paths.repo.lastPathComponent
+    }
+
     func launchOwn() {
         guard let uv = findUv(env: env, home: home, fileExists: fileExists) else { return fail(CoreErrors.uvNotFound) }
         logOffset = CoreLog.size(paths.logFile)
@@ -33,17 +63,19 @@ extension CoreSupervisor {
                 Task { @MainActor in await self?.tick() }
             }
             mode = .own(handle)
+            launchedAt = clock()
             state = .starting
         } catch {
             fail("Не удалось запустить ядро: \(error.localizedDescription)")
         }
     }
 
-    func fail(_ message: String) {
+    /// Переход в ошибку: надзор прекращается. `nil` — состояние выставит вызывающий.
+    func fail(_ message: String?) {
         mode = .idle
         clearConnection()
         stopPolling()
-        state = .failed(message)
+        if let message { state = .failed(message) }
     }
 
     func clearConnection() {
@@ -55,7 +87,7 @@ extension CoreSupervisor {
 
     func refreshOwn(_ handle: any CoreHandle) async {
         // Файл запуска с мёртвым pid — от прошлого ядра: своё его ещё не переписало
-        guard let info = RunFile.read(paths.runFile), pidAlive(info.pid) else { return state = .starting }
+        guard let info = RunFile.read(paths.runFile), pidAlive(info.pid) else { return state = silentStartState() }
         port = info.port
         guard let token = TokenFile.read(paths.tokenFile) else { return state = .starting }
         self.token = token
@@ -67,6 +99,17 @@ extension CoreSupervisor {
         } else {
             state = .starting
         }
+    }
+
+    /// Ядро ещё не написало файл запуска. Если оно молчит дольше `silentStartLimit`
+    /// (ни stderr, ни новых строк журнала), а репозиторий в защищённой папке, —
+    /// скорее всего `uv` ждёт ответа на запрос доступа (например, после пересборки).
+    private func silentStartState() -> CoreState {
+        guard clock() - launchedAt >= Self.silentStartLimit,
+              let folder = protectedFolderName(of: paths.repo, home: home),
+              CoreLog.size(paths.stderrLogFile) == 0,
+              CoreLog.size(paths.logFile) == logOffset else { return .starting }
+        return .waitingForAccess(folder: folder)
     }
 
     func refreshExternal(_ pid: Int32) async {

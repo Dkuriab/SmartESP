@@ -109,7 +109,9 @@ import Testing
         #expect(windowContent(state: .starting, token: "t") == .placeholder("Ядро запускается…"))
         #expect(windowContent(state: .stopped, token: nil) == .placeholder("Ядро остановлено"))
         #expect(windowContent(state: .stopping, token: "t") == .placeholder("Останавливаю ядро…"))
-        #expect(windowContent(state: .failed("Не найден uv"), token: nil) == .placeholder("Ошибка: Не найден uv"))
+        #expect(windowContent(state: .failed("Порт занят"), token: nil) == .placeholder("Ошибка: Порт занят"))
+        #expect(windowContent(state: .failed(CoreErrors.uvNotFound), token: nil)
+            == .placeholder("Ошибка: Не найден uv\n\nУстановите uv: https://docs.astral.sh/uv/"))
     }
 
     @Test func loadOnlyWhenPageChanges() {

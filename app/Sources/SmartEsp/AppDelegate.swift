@@ -32,7 +32,8 @@ import SmartEspKit
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let supervisor else { return .terminateNow }
-        if quitting { return .terminateLater }
+        // Повторная просьба (ещё один «quit») — первая уже ждёт остановки ядра
+        if quitting { return .terminateCancel }
         quitting = true
         statusMenu?.showQuitting()
         Task {
@@ -56,11 +57,24 @@ import SmartEspKit
     }
 
     func openLog() {
-        guard let paths else { return }
+        let files = FileManager.default
+        guard let paths, files.fileExists(atPath: paths.logFile.path) else {
+            // Журнала ещё нет — папка журналов, если она уже есть, иначе объяснение
+            if let dir = paths?.logFile.deletingLastPathComponent(), files.fileExists(atPath: dir.path) {
+                NSWorkspace.shared.open(dir)
+            } else {
+                showAlert("Журнала пока нет", "Ядро создаст его при первом запуске.")
+            }
+            return
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         process.arguments = ["-a", "Console", paths.logFile.path]
         try? process.run()
+    }
+
+    func openAccessSettings() {
+        NSWorkspace.shared.open(accessSettingsURL)
     }
 
     // MARK: - Внутреннее
@@ -87,8 +101,15 @@ import SmartEspKit
         let current = state
         // «Запускать при входе» — задача 4; пока всегда выключено
         statusMenu?.show(
-            menuModel(state: current, loginEnabled: false),
-            canRestart: supervisor != nil, hasLog: paths != nil)
+            menuModel(state: current, loginEnabled: false), canRestart: supervisor != nil)
         window?.show(windowContent(state: current, token: supervisor?.token))
+    }
+
+    private func showAlert(_ title: String, _ text: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = text
+        NSApp.activate()
+        alert.runModal()
     }
 }

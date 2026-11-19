@@ -17,6 +17,8 @@ import AppKit
         guard let first = others.first else { return false }
         DistributedNotificationCenter.default().postNotificationName(
             showWindow, object: nil, userInfo: nil, deliverImmediately: true)
+        // С macOS 14 активация не отбирается силой: сначала уступаем её первому экземпляру
+        NSApplication.shared.yieldActivation(to: first)
         first.activate()
         return true
     }

@@ -14,8 +14,11 @@ public struct MenuModel: Equatable, Sendable {
     public let statusText: String
     /// Имя символа SF для значка.
     public let symbolName: String
-    /// Подсказка под строкой состояния (например, как поставить `uv`), `nil` — нет.
+    /// Подсказка под строкой состояния (как поставить `uv`, как дать доступ к папке);
+    /// строки через `\n`; `nil` — нет.
     public let hint: String?
+    /// Показывать «Открыть настройки доступа».
+    public let showsAccessSettings: Bool
     /// Доступен ли «Открыть SmartESP».
     public let canOpen: Bool
     /// Доступен ли «Перезапустить ядро».
@@ -38,13 +41,20 @@ private enum Symbol {
 public func menuModel(state: CoreState, loginEnabled: Bool) -> MenuModel {
     let (text, symbol) = describe(state)
     var hint: String?
-    if case .failed(CoreErrors.uvNotFound) = state {
+    var showsAccessSettings = false
+    switch state {
+    case .failed(CoreErrors.uvNotFound):
         hint = "Установите uv: https://docs.astral.sh/uv/"
+    case let .waitingForAccess(folder), let .accessDenied(folder):
+        hint = accessHint(folder: folder)
+        showsAccessSettings = true
+    default:
+        break
     }
     var canRestart = true
     if case .stopping = state { canRestart = false }
     return MenuModel(
-        statusText: text, symbolName: symbol, hint: hint,
+        statusText: text, symbolName: symbol, hint: hint, showsAccessSettings: showsAccessSettings,
         canOpen: true, canRestart: canRestart, loginChecked: loginEnabled)
 }
 
@@ -59,6 +69,10 @@ private func describe(_ state: CoreState) -> (String, String) {
         return ("Останавливаю ядро…", Symbol.busy)
     case let .failed(message):
         return ("Ошибка: \(message)", Symbol.problem)
+    case let .waitingForAccess(folder):
+        return ("Нужно разрешение на папку «\(folder)»", Symbol.problem)
+    case let .accessDenied(folder):
+        return ("Ошибка: нет доступа к папке «\(folder)»", Symbol.problem)
     case let .running(_, phase, devices, ollama):
         let details = " · колонок \(devices.online) из \(devices.total) · Ollama \(ollama ? "✓" : "✗")"
         switch phase {
@@ -104,7 +118,22 @@ public func windowContent(state: CoreState, token: String?) -> WindowContent {
     case .starting:
         return .placeholder("Ядро запускается…")
     default:
-        return .placeholder(menuModel(state: state, loginEnabled: false).statusText)
+        let model = menuModel(state: state, loginEnabled: false)
+        return .placeholder(model.statusText + (model.hint.map { "\n\n" + $0 } ?? ""))
+    }
+}
+
+/// Открывать ли ссылку во внешнем браузере, а не в окне приложения.
+/// - Parameter url: адрес перехода.
+/// - Returns: `true` для http(s) и mailto не на 127.0.0.1/localhost.
+public func opensExternally(_ url: URL) -> Bool {
+    switch url.scheme?.lowercased() {
+    case "mailto":
+        return true
+    case "http", "https":
+        return !["127.0.0.1", "localhost"].contains(url.host?.lowercased() ?? "")
+    default:
+        return false
     }
 }
 

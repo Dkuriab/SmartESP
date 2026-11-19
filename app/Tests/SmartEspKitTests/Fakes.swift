@@ -1,10 +1,42 @@
 import Foundation
 @testable import SmartEspKit
 
-/// Поддельные часы: sleep сдвигает время мгновенно.
+/// Поддельные часы: sleep сдвигает время мгновенно и даёт поработать другим задачам.
 @MainActor final class FakeClock {
     var now: TimeInterval = 1000
-    func sleep(_ seconds: TimeInterval) async { now += seconds }
+    func sleep(_ seconds: TimeInterval) async {
+        now += seconds
+        await Task.yield()
+    }
+}
+
+/// Поддельная проверка доступа: ответ готов, когда поддельные часы дойдут до `at`.
+@MainActor final class FakeAccessCheck: AccessChecking {
+    private let resolve: () -> AccessResult?
+    init(_ resolve: @escaping () -> AccessResult?) { self.resolve = resolve }
+    var result: AccessResult? { resolve() }
+}
+
+/// Поддельный доступ к папке ядра.
+@MainActor final class FakeAccess: AccessProbing {
+    /// Что ответит проверка.
+    var answer: AccessResult = .granted
+    /// Когда (по поддельным часам) придёт ответ; `nil` — сразу, `.infinity` — никогда.
+    var answerAt: TimeInterval?
+    var checks = 0
+    private let clock: FakeClock
+
+    init(clock: FakeClock) { self.clock = clock }
+
+    func check(_ dir: URL) -> any AccessChecking {
+        checks += 1
+        let answer = self.answer
+        let at = answerAt
+        return FakeAccessCheck { [clock] in
+            guard let at else { return answer }
+            return clock.now >= at ? answer : nil
+        }
+    }
 }
 
 /// Поддельный процесс ядра.
@@ -92,6 +124,7 @@ import Foundation
     let clock = FakeClock()
     let launcher = FakeLauncher()
     let probe = FakeProbe()
+    lazy var access = FakeAccess(clock: clock)
     var alive: Set<Int32> = []
     /// Время (по поддельным часам), когда pid перестаёт быть живым.
     var diesAt: [Int32: TimeInterval] = [:]
@@ -99,15 +132,17 @@ import Foundation
     private(set) var changes: [CoreState] = []
     private(set) lazy var supervisor: CoreSupervisor = makeSupervisor()
 
-    init() {
+    /// - Parameter repo: путь репозитория внутри временной «домашней» папки
+    ///   (`Documents/SmartEsp` — защищённая папка).
+    init(repo: String = "repo") {
         dir = FileManager.default.temporaryDirectory.appendingPathComponent("smartesp-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        paths = AppPaths(repo: dir.appendingPathComponent("repo"), dataDir: dir.appendingPathComponent("data"))
+        paths = AppPaths(repo: dir.appendingPathComponent(repo), dataDir: dir.appendingPathComponent("data"))
     }
 
     private func makeSupervisor() -> CoreSupervisor {
         let sup = CoreSupervisor(
-            paths: paths, launcher: launcher, probe: probe,
+            paths: paths, launcher: launcher, probe: probe, access: access,
             clock: { [unowned self] in clock.now },
             sleep: { [unowned self] in await clock.sleep($0) },
             fileExists: { [unowned self] _ in uvExists },

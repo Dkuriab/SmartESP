@@ -12,8 +12,13 @@ import Foundation
     public static let crashLimit = 3
     /// Окно подсчёта падений, секунд.
     public static let crashWindow: TimeInterval = 60
-    /// Шаг ожидания выхода процесса, секунд.
+    /// Шаг ожидания выхода процесса и проверки доступа, секунд.
     static let waitStep: TimeInterval = 0.1
+    /// Проверка доступа к папке дольше этого — значит, macOS спрашивает пользователя, секунд.
+    public static let accessPromptDelay: TimeInterval = 1
+    /// Ядро после запуска молчит столько (нет файла запуска, stderr и записей в журнале),
+    /// а репозиторий в защищённой папке — показываем подсказку про доступ, секунд.
+    public static let silentStartLimit: TimeInterval = 20
 
     /// Текущее состояние.
     public internal(set) var state: CoreState = .stopped {
@@ -35,6 +40,7 @@ import Foundation
     let paths: AppPaths
     let launcher: any CoreLaunching
     let probe: any StatusProbing
+    let access: any AccessProbing
     let clock: () -> TimeInterval
     let sleep: @MainActor (TimeInterval) async -> Void
     let fileExists: (String) -> Bool
@@ -46,6 +52,8 @@ import Foundation
     var mode: Mode = .idle
     var crashTimes: [TimeInterval] = []
     var logOffset: UInt64 = 0
+    /// Когда запущен свой процесс (по `clock`).
+    var launchedAt: TimeInterval = 0
     /// Растёт при каждом `stop()`: долгие ожидания видят, что их отменили.
     var generation = 0
     var pollTask: Task<Void, Never>?
@@ -59,6 +67,7 @@ import Foundation
     ///   - paths: пути репозитория и папки данных.
     ///   - launcher: запуск процесса ядра.
     ///   - probe: опрос HTTP API.
+    ///   - access: проверка доступа к папке ядра перед запуском.
     ///   - clock: монотонные секунды (окно падений, ожидание остановки).
     ///   - sleep: пауза в секундах.
     ///   - fileExists: проверка исполняемого файла (поиск `uv`).
@@ -70,6 +79,7 @@ import Foundation
         paths: AppPaths,
         launcher: any CoreLaunching,
         probe: any StatusProbing,
+        access: (any AccessProbing)? = nil,
         clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         sleep: @escaping @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) },
         fileExists: @escaping (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) },
@@ -81,6 +91,7 @@ import Foundation
         self.paths = paths
         self.launcher = launcher
         self.probe = probe
+        self.access = access ?? FileAccessProbe()
         self.clock = clock
         self.sleep = sleep
         self.fileExists = fileExists
@@ -96,7 +107,8 @@ import Foundation
     }
 
     /// Перезапуск: `POST /api/v1/restart`; не ответило — `stop()` и запуск заново.
-    /// Из ошибки или остановки — просто запуск со сброшенным счётчиком падений.
+    /// Из ошибки или остановки — просто запуск со сброшенным счётчиком падений
+    /// (и новой проверкой доступа к папке).
     public func restart() async {
         await startTask?.value
         if case .idle = mode {
@@ -105,7 +117,10 @@ import Foundation
             return
         }
         if let port, let token, await probe.restart(port: port, token: token) { return }
+        let expected = generation + 1
         await stop()
+        // Пока ждали остановки, позвали ещё `stop()` (выход из приложения) — не запускаем
+        guard generation == expected else { return }
         mode = .idle
         crashTimes = []
         await performStart()
@@ -156,7 +171,10 @@ import Foundation
         state = .starting
         let adopted = await adoptExternal(current)
         guard current == generation else { return }
-        if !adopted { launchOwn() }
+        if !adopted {
+            guard await checkAccess(current) else { return }
+            launchOwn()
+        }
         ensurePolling()
     }
 
