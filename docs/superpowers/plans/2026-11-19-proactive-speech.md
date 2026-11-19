@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Кузя сам говорит на колонке (запоздавший ответ), колонка слушает после вопроса Кузи, ядро умеет включить микрофон командой `listen`, звуки колонки — мягкие.
+**Goal:** Колонка просыпается на слово «Миранда» (движок microWakeWord вместо WakeNet); Кузя сам говорит на колонке (запоздавший ответ), колонка слушает после вопроса Кузи, ядро умеет включить микрофон командой `listen`, звуки колонки — мягкие.
 
 **Architecture:** Прошивка получает протокол v3 (`listen`, `busy`, тоны `listen`/`attention`) и звуки-образцы вместо синусоид. В ядре `devices` учится объявлениям и прослушиванию с итогом доставки, новый модуль `notify/` держит очередь объявлений, `conversation` при истечении 90 с отдаёт поток цели фоновой задаче и после вопроса включает прослушивание. Интерфейс — два переключателя и пометки в ленте.
 
 **Tech Stack:** C++17 / Arduino (ESP32-S3), host-тесты на clang++; Python 3.12, asyncio, pydantic, FastAPI; React + TS.
 
-**Spec:** `docs/superpowers/specs/2026-11-19-proactive-speech-design.md`
+**Spec:** `docs/superpowers/specs/2026-11-19-proactive-speech-design.md`, `docs/superpowers/specs/2026-11-19-wake-word-engine-design.md` (задача 0)
 
 ## Global Constraints
 
@@ -23,7 +23,8 @@
 - Настройки: `speech.proactive: true`, `speech.listen_after_question: true`; `CONFIG_VERSION` не меняется (новый раздел со значениями по умолчанию).
 - Колонка с протоколом < 3: ни `announce`, ни `listen`; запоздавший ответ — как сейчас, `TIMEOUT_PHRASE`.
 - Тесты ядра без железа и моделей; host-тесты прошивки — `tools/host_tests/run.sh`.
-- Здесь нет Arduino IDE/arduino-cli: прошивку собрать нельзя. ArduinoJson 7.4.3 для host-тестов — `git clone --depth 1 --branch v7.4.3 https://github.com/bblanchon/ArduinoJson <scratchpad>/ArduinoJson`, запуск `ARDUINOJSON_DIR=<scratchpad>/ArduinoJson/src tools/host_tests/run.sh`. Сборка на плате — чек-лист владельцу в README.
+- Здесь стоит `arduino-cli` 1.6.0 с ядром esp32 3.3.12 и библиотеками: каждая задача прошивки заканчивается успешной `tools/build.sh` (≈1 мин) и `tools/host_tests/run.sh`. Прошивка должна оставаться < 3 МБ (раздел APP); сейчас 2,49 МБ. Залить на плату здесь нельзя — чек-лист владельцу в README.
+- Слово пробуждения — «Миранда» (задача 0); во фразах и примерах тестов «Кузя» — имя ассистента, не слово пробуждения.
 
 ## Review Focus
 
@@ -33,7 +34,34 @@
 4. **Слово «Кузя» между `playback_done` и `listen`** — колонка отвечает `busy`, ядро выбрасывает пустую запись прослушивания, новый ход по слову идёт как обычно. Тест — задача 3 (и host-тест задачи 1).
 5. **Владелец выключил «Кузя может заговорить сам», пока ответ ещё ждётся** — обещанный ответ всё равно звучит (человеку сказали «скажу»); новые запоздавшие ответы — уже `TIMEOUT_PHRASE`. Тест — задача 5.
 
+6. **Эхо собственного ответа колонки будит «Миранду»** — слово ищется в звуке после эхоподавления AFE, а не в сыром микрофоне. Чек-лист на плате — задача 0.
+
 ---
+
+### Task 0: Прошивка — движок microWakeWord, слово «Миранда»
+
+**Files:**
+- Create: `firmware/SmartEsp/src/wake_word/WakeWord.h`, `WakeWord.cpp` — модуль.
+- Create: `firmware/SmartEsp/src/wake_word/microfrontend/…` — микрофронтенд TFLite (Apache 2.0) из sdist `pymicro-features==2.0.2` (`tensorflow/lite/experimental/microfrontend/lib`: frontend, window, fft, kiss_fft_int16, filterbank, noise_reduction, pcan_gain_control, log_scale, log_lut и их `*_util`), без тестов, `*_io` и `memmap`; `#include` — относительные пути (Arduino собирает только `src/`); шапка с источником и лицензией. kissfft — из `espressif__esp-tflite-micro/third_party/kissfft` ядра, если подходит; иначе вендорить из того же sdist.
+- Create: `tools/embed_model.py` — `.tflite` + `.json` → `src/wake_word/ModelData.cpp` (`alignas(16) const uint8_t` массив, длина, порог, `sliding_window_size`, размер арены, слово); `tools/models/miranda/` — `miranda.tflite`, `miranda.json` (github.com/archer-developer/miranda-wakeword, ветка master) и `SOURCE.md` (откуда, дата, что порог изменён).
+- Modify: `firmware/SmartEsp/src/voice_frontend/VoiceFrontend.{h,cpp}` — WakeNet в AFE выключен; очищенный звук отдаётся всегда, отдельной очередью `readForWake(dst, max)` (захват для вопроса — как сейчас); `level()` — громкость последней секунды, дБFS; события `WakeWord` от AFE больше нет.
+- Modify: `firmware/SmartEsp/SmartEsp.ino` — связка: `voiceFrontend.readForWake` → `wakeWord.feed`; `wakeWord.poll()` → `VoiceEvent{WakeWord, voiceFrontend.level()}` → `session`.
+- Modify: `tools/host_tests/run.sh` (собирать микрофронтенд), Create: `tools/host_tests/wake_features_test.cpp`.
+- Modify: `README.md` — слово «Миранда», порог, как поменять модель, чек-лист на плате, размер прошивки.
+
+**Interfaces:**
+- `struct WakeWordConfig { const uint8_t* model; size_t modelSize; size_t arenaSize; float cutoff; uint8_t window; uint32_t refractoryMs = 1000; };`
+- `bool WakeWord::begin(const WakeWordConfig& config)` — false и сообщение в Serial при ошибке (модель не та, нет памяти под арену — арена в PSRAM).
+- `void WakeWord::feed(const int16_t* pcm, size_t samples)` — 16 кГц моно, любыми кусками; без блокировок дольше кадра (своя задача FreeRTOS — на усмотрение).
+- `bool WakeWord::poll()` — true один раз на срабатывание.
+- Значения: признаки как в `pymicro-features` (окно 30 мс, шаг 10 мс, 40 каналов, 125–7500 Гц, smoothing_bits 10, even 0,025, odd 0,06, min_signal_remaining 0,05, PCAN strength 0,95, offset 80, gain_bits 21, log scale_shift 6); float = uint16 × 0,0390625; квантование по параметрам входного тензора; вероятность = выход uint8 / 255; среднее по `window` последним; порог **0,9** (переопределяет 0,5 из манифеста); после срабатывания `refractoryMs` тишины детектора.
+
+- [ ] **Step 1: Failing host test** `wake_features_test.cpp`: признаки вендоренного фронтенда на 1 с синуса 440 Гц и 1 с тишины совпадают с эталоном `tools/host_tests/data/features_ref.h` (создаётся одноразовой программой `tools/make_features_ref.py` на `pymicro-features==2.0.2`; совпадение точное — тот же код).
+- [ ] **Step 2: Failing tool test** `tools/test_embed_model.py`: `embed_model.py` на `miranda.*` → `ModelData.cpp` с длиной = размеру файла, порогом 0,9, окном 5. Замер (пропускается, если нет голосов в `~/SmartEsp/voices`): признаки `pymicro-features` + модель через LiteRT на «Миранда.» голосами silero/xenia, silero/aidar, vosk/male_0 — среднее по окну выше 0,9; на «Включи, пожалуйста, свет на кухне.» — ниже.
+- [ ] **Step 3: Implement.** Резолвер — `MicroMutableOpResolver` ровно с операциями модели (список — через LiteRT `_get_ops_details` на `miranda.tflite`); переменные потоковой модели — `MicroResourceVariables`.
+- [ ] **Step 4: Run** host-тесты, тесты программы, `tools/build.sh`; новый код без предупреждений; размер прошивки — в отчёт.
+- [ ] **Step 5: README** чек-лист на плате: «Миранда» с 1 м и с 3 м — срабатывает; громко включённый ответ колонки не будит её; час разговора/ТВ рядом — сколько ложных; громкость слова (`level`) в журнале ядра правдоподобна.
+- [ ] **Step 6: Commit** `feat(firmware): microWakeWord engine with the "Миранда" model instead of WakeNet`.
 
 ### Task 1: Прошивка — протокол v3, `listen` и `busy` в Session
 
@@ -55,9 +83,9 @@
   - `announce_when_busy_sends_busy`: в `Listening` → `SendEvent(Busy, turn=команды)`.
   - `listen_when_disconnected_ignored`: не connected → нет действий.
   - `wake_after_listen_turn_uses_local_counter`: ход по listen закончен → слово → `Wake` с `turn == localTurn_+1`.
-- [ ] **Step 3: Run** `ARDUINOJSON_DIR=… tools/host_tests/run.sh` — новые тесты падают.
+- [ ] **Step 3: Run** `tools/host_tests/run.sh` — новые тесты падают.
 - [ ] **Step 4: Implement.** `Session::onServerCommand` — ветка `Listen` (из `Idle` при связи: `turn_ = command.turn`, `pushTone(Tone::Listen)`, `SetActiveTurn`, `StartCapture`, `enter(Listening)`), `busy` для `Announce`/`Listen` не в `Idle`. `pushEvent` сейчас берёт `turn_` — для `busy` нужен номер из команды (отдельная функция, например `pushEventFor(type, turn)`). `SmartEsp.ino` не меняется: `SendEvent` и `PlayTone` уже проходят через него. Комментарий в `Session.h` дополнить.
-- [ ] **Step 5: Run** host-тесты — все проходят.
+- [ ] **Step 5: Run** host-тесты и `tools/build.sh` — всё проходит.
 - [ ] **Step 6: Commit** `feat(firmware): protocol v3 — listen command and busy reply`.
 
 ### Task 2: Прошивка — звуки-образцы
@@ -80,9 +108,9 @@
   - `test_cpp_written`: `write_cpp(tmp)` → файл с `const int16_t` массивами пяти звуков и их длинами; второй запуск даёт тот же файл (детерминизм).
 - [ ] **Step 2: Run** — падают.
 - [ ] **Step 3: Implement** `tools/make_sounds.py`: мягкие колокольчики — сумма 2–3 гармоник с быстрой атакой (≥ 5 мс) и экспоненциальным затуханием, косинусный спад в конце. Вкус на усмотрение исполнителя: `wake/listen` — восходящий двухнотный звон, `thinking` — короткая тихая капля, `error` — нисходящий мягкий звон, `attention` — трёхнотный «динь-динь-дон» перед речью. Сгенерировать `SoundData.cpp`.
-- [ ] **Step 4: Implement** `AudioOut`: `renderTone` копирует образец со сдвигом позиции и умножает на `volume_` (уровень уже в образце); `ToneSegment`/синусоиды удаляются. Публичный интерфейс `AudioOut.h` не меняется. Проверка синтаксиса без платы: `clang++ -std=c++17 -fsyntax-only -I firmware/SmartEsp/src firmware/SmartEsp/src/audio_out/SoundData.cpp`.
-- [ ] **Step 5: Run** тесты программы и host-тесты — проходят.
-- [ ] **Step 6: README** — раздел про протокол v3 и звуки, чек-лист на плате: слово → новый звон; «Кузя, спроси меня что-нибудь» → вопрос → звук «слушаю» → ответ без слова; тишина 5 с → молча в ожидание; громкость меняет и звуки.
+- [ ] **Step 4: Implement** `AudioOut`: `renderTone` копирует образец со сдвигом позиции и умножает на `volume_` (уровень уже в образце); `ToneSegment`/синусоиды удаляются. Публичный интерфейс `AudioOut.h` не меняется.
+- [ ] **Step 5: Run** тесты программы, host-тесты и `tools/build.sh` — проходят.
+- [ ] **Step 6: README** — раздел про протокол v3 и звуки, чек-лист на плате: слово «Миранда» → новый звон; «Миранда, спроси меня что-нибудь» → вопрос → звук «слушаю» → ответ без слова; тишина 5 с → молча в ожидание; громкость меняет и звуки.
 - [ ] **Step 7: Commit** `feat(firmware): soft sample-based sounds generated by tools/make_sounds.py`.
 
 ### Task 3: Ядро — колонки: объявление, прослушивание, итог доставки
