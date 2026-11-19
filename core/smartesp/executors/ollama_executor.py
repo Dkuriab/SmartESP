@@ -13,11 +13,15 @@ from smartesp.contracts import ChatMessage, ExecutorError, ReplyPart, ToolCall, 
 
 _log = logging.getLogger(__name__)
 
-# таймаут HTTP-операций (соединение, каждое чтение) — запрос не висит вечно. Не меньше предела
-# первого куска цели передачи (90 с) с запасом и предела прогрева (120 с): холодная большая модель
-# грузится долго, и клиент не должен оборвать её раньше этих пределов. Входному исполнителю
-# раньше обрыва срабатывает собственный предел оркестратора (45 с на первый кусок).
+# таймаут HTTP-операций (соединение, запись, чтение вне потока ответа: прогрев, выгрузка) — запрос
+# не висит вечно. Не меньше предела прогрева (120 с): холодная большая модель грузится долго.
 REQUEST_TIMEOUT_S = 120.0
+# таймаут каждого чтения потока ответа (/api/chat): Ollama шлёт заголовки только с первым куском,
+# а до него грузит модель, считает промпт или ждёт в очереди за прежним запросом. У каждого, кто
+# читает поток, есть свой предел короче этого: у разговора — первый кусок (45 с, цели — 90 с),
+# пауза между кусками и предел запоздавшего ответа (600 с от начала хода). Клиент не должен
+# обрывать ответ раньше них.
+STREAM_READ_TIMEOUT_S = 660.0
 
 
 def _chunk_text(chunk: Any) -> str:
@@ -85,13 +89,19 @@ class OllamaExecutor:
     ) -> None:
         """Запоминает настройки; клиент по умолчанию — локальный ollama.AsyncClient.
 
-        timeout_s — таймаут HTTP-операций клиента по умолчанию, секунды (с client не нужен).
+        timeout_s — таймаут HTTP-операций клиента по умолчанию, секунды (с client не нужен);
+        для потока ответа — свой клиент, у которого чтение ждёт STREAM_READ_TIMEOUT_S.
         """
         self.id = id
         self._model = model
         self._system_prompt = system_prompt
         self._keep_alive = keep_alive
         self._client: Any = client if client is not None else ollama.AsyncClient(timeout=timeout_s)
+        self._chat_client: Any = (
+            client
+            if client is not None
+            else ollama.AsyncClient(timeout=httpx.Timeout(timeout_s, read=STREAM_READ_TIMEOUT_S))
+        )
 
     @property
     def model(self) -> str:
@@ -131,7 +141,7 @@ class OllamaExecutor:
         payload += [_message_payload(m) for m in messages]
         try:
             extra: dict[str, Any] = {"tools": [_tool_payload(t) for t in tools]} if tools else {}
-            stream = await self._client.chat(
+            stream = await self._chat_client.chat(
                 model=self._model,
                 messages=payload,
                 stream=True,

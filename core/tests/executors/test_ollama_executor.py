@@ -11,8 +11,9 @@ import pytest
 
 from smartesp.contracts import ChatMessage, Executor, ExecutorError
 from smartesp.conversation.handoffs import DELEGATE_FIRST_PART_LIMIT_S
+from smartesp.conversation.late import LATE_LIMIT_S
 from smartesp.executors import OllamaExecutor
-from smartesp.executors.ollama_executor import REQUEST_TIMEOUT_S
+from smartesp.executors.ollama_executor import REQUEST_TIMEOUT_S, STREAM_READ_TIMEOUT_S
 from smartesp.wiring import WARM_UP_TIMEOUT_S
 
 
@@ -126,6 +127,47 @@ def test_default_read_timeout_outlasts_handoff_limit_and_warm_up() -> None:
     # прогрев участника (120 с) не должен обрываться клиентом раньше своего предела
     assert REQUEST_TIMEOUT_S >= DELEGATE_FIRST_PART_LIMIT_S + 10
     assert REQUEST_TIMEOUT_S >= WARM_UP_TIMEOUT_S
+
+
+def test_chat_stream_read_timeout_outlasts_late_answer_limit() -> None:
+    # отложенный ответ цели ждём до 600 с от начала хода: холодная модель или очередь в Ollama
+    # не должны обрываться клиентом через 120 с без первого куска
+    ex = OllamaExecutor("m", "", "30m", timeout_s=12.5)
+    assert ex._chat_client._client.timeout == httpx.Timeout(12.5, read=STREAM_READ_TIMEOUT_S)  # type: ignore[attr-defined]
+    # прогрев и выгрузка — как были
+    assert ex._client._client.timeout == httpx.Timeout(12.5)  # type: ignore[attr-defined]
+    assert STREAM_READ_TIMEOUT_S >= LATE_LIMIT_S + 30
+
+
+async def test_chat_waits_for_slow_first_token_beyond_request_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # настоящий HTTP на 127.0.0.1: «Ollama» молчит дольше REQUEST_TIMEOUT_S (здесь 0,05 с)
+    # до первого куска — поток ответа не обрывается, а прогрев с тем же молчанием обрывается
+    body = '{"message": {"role": "assistant", "content": "Готово."}, "done": true}\n'.encode()
+
+    async def slow_ollama(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        await reader.readuntil(b"\r\n\r\n")
+        await asyncio.sleep(0.3)
+        head = f"HTTP/1.1 200 OK\r\nContent-Length: {len(body)}\r\nConnection: close\r\n\r\n"
+        try:
+            writer.write(head.encode() + body)
+            await writer.drain()
+        except ConnectionError:  # прогрев уже оборвал соединение
+            pass
+        writer.close()
+
+    server = await asyncio.start_server(slow_ollama, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    monkeypatch.setenv("OLLAMA_HOST", f"http://127.0.0.1:{port}")
+    try:
+        ex = OllamaExecutor("m", "", "30m", timeout_s=0.05)
+        assert [p.text async for p in ex.run([ChatMessage("user", "Вопрос")])] == ["Готово."]
+        with pytest.raises(ExecutorError):
+            await ex.warm_up()
+    finally:
+        server.close()
+        await server.wait_closed()
 
 
 async def test_read_timeout_becomes_executor_error() -> None:

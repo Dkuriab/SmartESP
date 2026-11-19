@@ -107,8 +107,8 @@ class LateAnswers:
             self._publish("turn_finished", undelivered_data(job.turn, job.handoff))
             return
         message = ANSWER_PREFIX.format(name=name) + text
-        self._history.add_messages([ChatMessage("assistant", message)])
         job.announcer.say(job.turn.utterance.device_id, message, job.handoff.target)
+        self._history.add_messages([ChatMessage("assistant", message)])  # после say: не сказали — не помним
 
     async def _collect(self, pending: asyncio.Task[ReplyPart | None], parts: AsyncIterator[ReplyPart]) -> str:
         """Весь текст ответа цели для озвучки; фраза сети об ошибке — ExecutorError.

@@ -19,7 +19,7 @@ from .sentences import DEFAULT_STYLE, strip_style_tag
 
 _log = logging.getLogger(__name__)
 
-_CLOSERS = " \t\n\"'»“”)"  # кавычки и скобки после знака конца предложения
+_CLOSERS = " \t\n\"'»“”)!.…"  # кавычки, скобки и «!», «.» после «?» («Правда?!», «Что?..»)
 
 
 @dataclass(frozen=True)
