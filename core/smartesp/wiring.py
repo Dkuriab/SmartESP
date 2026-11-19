@@ -39,7 +39,8 @@ from smartesp.lifecycle import (
     timed,
 )
 from smartesp.network import NetworkPrompts
-from smartesp.sections import live_sections
+from smartesp.notify import Announcer
+from smartesp.sections import live_sections, speech_settings
 from smartesp.tts import VoiceManager
 
 WARM_UP_PCM = bytes(16000)  # 0,5 с тишины (16 кГц, s16le)
@@ -76,6 +77,7 @@ class Assembly:
     hub: DeviceHub
     history: History
     orchestrator: Orchestrator
+    announcer: Announcer  # речь по инициативе: очередь объявлений
     live: LiveAnswering
     capabilities: CapabilityCache  # возможности моделей: умеют ли инструменты
     retry: CapabilityRetry  # пересборка сети, когда станут известны возможности моделей
@@ -107,6 +109,10 @@ def assemble(
     hub = DeviceHub(arbitration.window_ms / 1000, arbitration.late_ms / 1000, names, events=bus)
     history = History(config.history.max_turns, config.history.max_age_s)
     orchestrator = Orchestrator(hub, None, None, None, None, history, events=bus)
+    announcer = Announcer(hub, orchestrator.speech, events=bus)
+    orchestrator.use_announcer(announcer)
+    use_speech = speech_settings(orchestrator, announcer)
+    use_speech(config.speech)
 
     def install(analyze: Analyzer, executor: Executor) -> None:
         orchestrator.use_analyzer(analyze)
@@ -141,7 +147,9 @@ def assemble(
     voices = VoiceManager(home, kinds.tts, on_voice, events=bus)
     core = Core(
         store,
-        live_sections(hub, history, live, lambda config: _build_answering(kinds, live, capabilities, config)),
+        live_sections(
+            hub, history, live, lambda config: _build_answering(kinds, live, capabilities, config), use_speech
+        ),
         events=bus,
         feed=bus,
         voices=voices,
@@ -163,6 +171,7 @@ def assemble(
         hub,
         history,
         orchestrator,
+        announcer,
         live,
         capabilities,
         retry,
@@ -237,7 +246,8 @@ async def _warm_stt(parts: Assembly) -> None:
 
 
 async def stop(parts: Assembly) -> None:
-    """Честная остановка: договорить, отключить колонки, выгрузить модель, убрать файл запуска."""
+    """Честная остановка: договорить, бросить очередь речи, отключить колонки, выгрузить модель,
+    убрать файл запуска."""
     logger.info("Остановка: новые ходы и правки не принимаются")
     parts.core.set_state("stopping")
     parts.hub.stop_accepting()
@@ -247,6 +257,7 @@ async def stop(parts: Assembly) -> None:
     await parts.core.aclose()  # правка в работе отменяется: живой исполнитель больше не меняется
     await parts.orchestrator.drain(DRAIN_S)
     logger.info("Остановка: идущие ходы закончены")
+    await parts.announcer.aclose()  # очередь речи бросается до отключения колонок
     await parts.hub.close_all()
     logger.info("Остановка: колонки отключены")
     await parts.live.unload_all()
@@ -258,6 +269,7 @@ async def stop(parts: Assembly) -> None:
 async def finish(parts: Assembly) -> None:
     """Снимает фоновые задачи и таймеры хаба (после остановки сервера)."""
     await _cancel(parts.running, parts.warming, parts.retrying)
+    await parts.announcer.aclose()
     await parts.voices.aclose()
     await parts.hub.aclose()
 

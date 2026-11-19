@@ -1,0 +1,236 @@
+"""Тесты очереди объявлений: доставка, повторы, срок, выбор колонки, порядок, слушание, остановка."""
+
+import asyncio
+from collections.abc import AsyncIterator, Callable
+
+import pytest
+
+from fakes.fake_device_port import FakeDevicePort
+from fakes.fake_events import RecordingSink
+from smartesp.notify import Announcer
+
+RETRY_S = 0.01
+
+
+async def speak(text: str) -> AsyncIterator[bytes]:
+    """Синтез-подделка: весь текст одним куском."""
+    yield text.encode()
+
+
+def setup(
+    *proactive: str, retry_s: float = RETRY_S, expire_s: float = 600.0
+) -> tuple[FakeDevicePort, RecordingSink, Announcer]:
+    """Колонки v3 proactive, приёмник событий и очередь с быстрыми повторами."""
+    port = FakeDevicePort({"kitchen": "Кухня", "hall": "Прихожая"})
+    port.proactive = set(proactive)
+    sink = RecordingSink()
+    return port, sink, Announcer(port, speak, events=sink, retry_s=retry_s, expire_s=expire_s)
+
+
+def finished(sink: RecordingSink) -> list[dict[str, object]]:
+    """Данные событий turn_finished по порядку."""
+    return [data for kind, data in sink.events if kind == "turn_finished"]
+
+
+async def until(condition: Callable[[], bool], timeout: float = 1.0) -> None:
+    async with asyncio.timeout(timeout):
+        while not condition():
+            await asyncio.sleep(0.002)
+
+
+def texts(port: FakeDevicePort) -> list[str]:
+    return [call.audio.decode() for call in port.announces]
+
+
+async def test_delivered_once() -> None:
+    port, sink, announcer = setup("kitchen")
+    announcer.say("kitchen", "Готово.", "big")
+    assert sink.events == []  # до итога событий нет
+    await until(lambda: bool(finished(sink)))
+    (event,) = finished(sink)
+    assert isinstance(event.pop("at"), float)
+    assert event == {
+        "turn_id": "a1",
+        "device_id": "kitchen",
+        "device_name": "Кухня",
+        "text": "",
+        "annotations": [],
+        "style": "normal",
+        "answer": "Готово.",
+        "status": "ok",
+        "path": ["big"],
+        "delegations": [],
+        "origin": "core",
+        "kind": "announcement",
+    }
+    await asyncio.sleep(RETRY_S * 3)
+    assert texts(port) == ["Готово."]
+    assert port.listens == []
+    await announcer.aclose()
+
+
+async def test_busy_then_delivered() -> None:
+    port, sink, announcer = setup("kitchen", retry_s=0.05)
+    port.deliveries = ["busy", "lost", "delivered"]
+    started = asyncio.get_running_loop().time()
+    announcer.say("kitchen", "Готово.", "big")
+    await until(lambda: bool(finished(sink)))
+    assert asyncio.get_running_loop().time() - started >= 0.1  # два повтора через retry_s
+    assert [call.result for call in port.announces] == ["busy", "lost", "delivered"]
+    assert finished(sink)[0]["status"] == "ok"
+    await announcer.aclose()
+
+
+async def test_interrupted_not_repeated() -> None:
+    port, sink, announcer = setup("kitchen")
+    port.deliveries = ["interrupted"]
+    announcer.say("kitchen", "Готово.", "big")
+    await until(lambda: bool(finished(sink)))
+    await asyncio.sleep(RETRY_S * 3)
+    assert len(port.announces) == 1
+    assert finished(sink)[0]["status"] == "interrupted"
+    await announcer.aclose()
+
+
+async def test_expired() -> None:
+    port, sink, announcer = setup("kitchen", expire_s=0.05)
+    port.deliveries = ["lost"] * 1000
+    announcer.say("kitchen", "Готово.", "big")
+    await until(lambda: bool(finished(sink)))
+    attempts = len(port.announces)
+    assert attempts >= 2
+    (event,) = finished(sink)
+    assert (event["status"], event["device_id"], event["answer"]) == ("undelivered", "kitchen", "Готово.")
+    await asyncio.sleep(RETRY_S * 3)
+    assert len(port.announces) == attempts  # снято: больше не пробуем
+    await announcer.aclose()
+
+
+async def test_expired_without_device_names_requested_one() -> None:
+    port, sink, announcer = setup(expire_s=0.03)
+    announcer.say("hall", "Готово.", "big")
+    await until(lambda: bool(finished(sink)))
+    (event,) = finished(sink)
+    assert (event["status"], event["device_id"], event["device_name"]) == ("undelivered", "hall", "Прихожая")
+    assert port.announces == []
+    await announcer.aclose()
+
+
+async def test_fallback_to_last_active() -> None:
+    port, sink, announcer = setup("kitchen")
+    port.last_active = "kitchen"
+    announcer.say("hall", "Готово.", "big")  # прихожая не подключена
+    await until(lambda: bool(finished(sink)))
+    assert [call.device_id for call in port.announces] == ["kitchen"]
+    assert finished(sink)[0]["device_id"] == "kitchen"
+    await announcer.aclose()
+
+
+async def test_waits_for_any_device() -> None:
+    port, sink, announcer = setup()
+    announcer.say("kitchen", "Готово.", "big")
+    await asyncio.sleep(RETRY_S * 5)
+    assert port.announces == [] and sink.events == []  # колонок нет — ждём, не пробуя
+    port.proactive.add("kitchen")
+    await until(lambda: bool(finished(sink)))
+    assert texts(port) == ["Готово."]
+    assert finished(sink)[0]["status"] == "ok"
+    await announcer.aclose()
+
+
+async def test_order_per_device() -> None:
+    port, sink, announcer = setup("kitchen")
+    port.deliveries = ["busy", "delivered", "delivered"]
+    announcer.say("kitchen", "Первое.", "big")
+    announcer.say("kitchen", "Второе.", "big")
+    await until(lambda: len(finished(sink)) == 2)
+    assert texts(port) == ["Первое.", "Первое.", "Второе."]  # второе — только после итога первого
+    assert [event["turn_id"] for event in finished(sink)] == ["a1", "a2"]
+    await announcer.aclose()
+
+
+async def test_one_delivery_per_device_when_falling_back() -> None:
+    port, sink, announcer = setup("kitchen")
+    port.last_active = "kitchen"
+    announcer.say("kitchen", "Первое.", "big")
+    announcer.say("hall", "Второе.", "big")  # тоже на кухню: ждёт итога первого, а не busy
+    await until(lambda: len(finished(sink)) == 2)
+    assert [call.result for call in port.announces] == ["delivered", "delivered"]
+    await announcer.aclose()
+
+
+@pytest.mark.parametrize(
+    ("text", "listen_after", "listens"),
+    [
+        ("Какой город?", True, ["kitchen"]),
+        ("Правда?» ", True, ["kitchen"]),
+        ("Какой город?", False, []),
+        ("Готово.", True, []),
+    ],
+)
+async def test_question_opens_listen(text: str, listen_after: bool, listens: list[str]) -> None:
+    port, sink, announcer = setup("kitchen")
+    announcer.set_listen_after(listen_after)
+    announcer.say("kitchen", text, "big")
+    await until(lambda: bool(finished(sink)))
+    assert port.listens == listens
+    await announcer.aclose()
+
+
+async def test_question_interrupted_does_not_listen() -> None:
+    port, sink, announcer = setup("kitchen")
+    port.deliveries = ["interrupted"]
+    announcer.say("kitchen", "Какой город?", "big")
+    await until(lambda: bool(finished(sink)))
+    assert port.listens == []
+    await announcer.aclose()
+
+
+async def test_speech_failure_is_retried() -> None:
+    port = FakeDevicePort()
+    port.proactive = {"kitchen"}
+    sink = RecordingSink()
+    calls: list[str] = []
+
+    def flaky(text: str) -> AsyncIterator[bytes]:
+        calls.append(text)
+        if len(calls) == 1:
+            raise RuntimeError("синтез речи не готов")
+        return speak(text)
+
+    announcer = Announcer(port, flaky, events=sink, retry_s=RETRY_S)
+    announcer.say("kitchen", "Готово.", "big")
+    await until(lambda: bool(finished(sink)))
+    assert len(calls) == 2 and texts(port) == ["Готово."]
+    assert finished(sink)[0]["status"] == "ok"
+    await announcer.aclose()
+
+
+async def test_aclose_cancels() -> None:
+    port = FakeDevicePort()
+    port.proactive = {"kitchen"}
+    sink = RecordingSink()
+    hold = asyncio.Event()
+    state = {"started": False, "closed": False}
+
+    async def endless(text: str) -> AsyncIterator[bytes]:
+        state["started"] = True
+        try:
+            await hold.wait()
+            yield text.encode()
+        finally:
+            state["closed"] = True
+
+    announcer = Announcer(port, endless, events=sink, retry_s=RETRY_S)
+    announcer.say("kitchen", "Первое.", "big")
+    announcer.say("kitchen", "Второе.", "big")
+    announcer.say("hall", "Третье.", "big")  # ждёт колонку
+    await until(lambda: state["started"])
+    await announcer.aclose()
+    assert state["closed"]
+    assert [t for t in asyncio.all_tasks() if t.get_name().startswith("announcer")] == []
+    announcer.say("kitchen", "После.", "big")  # после остановки — не принимается
+    await asyncio.sleep(RETRY_S * 3)
+    assert sink.events == [] and port.announces == []
+    assert [t for t in asyncio.all_tasks() if t.get_name().startswith("announcer")] == []
+    await announcer.aclose()  # повторно — безопасно

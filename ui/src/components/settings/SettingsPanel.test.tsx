@@ -13,8 +13,8 @@ function setup(selected: Selection | null, over: Partial<CoreState> = {}) {
 
 const seenAt = new Date(2024, 0, 2, 9, 5).getTime() / 1000
 const devices = [
-  { device_id: 'aa:bb', name: 'Спальня', connected: true, remote: '192.168.1.20:5123', fw: '1.4' },
-  { device_id: 'cc:dd', name: '', connected: false, remote: '', fw: '', last_seen: seenAt },
+  { device_id: 'aa:bb', name: 'Спальня', connected: true, remote: '192.168.1.20:5123', fw: '1.4', protocol: 2 },
+  { device_id: 'cc:dd', name: '', connected: false, remote: '', fw: '', last_seen: seenAt, protocol: 0 },
 ]
 
 describe('SettingsPanel', () => {

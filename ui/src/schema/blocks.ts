@@ -23,7 +23,7 @@ export function listDevices(state: CoreState): Device[] {
     for (const [id, v] of Object.entries(cfg)) {
       if (list.some((d) => d.device_id === id)) continue
       const name = (v as { name?: unknown } | null)?.name
-      list.push({ device_id: id, name: typeof name === 'string' ? name : '', connected: false, remote: '', fw: '' })
+      list.push({ device_id: id, name: typeof name === 'string' ? name : '', connected: false, remote: '', fw: '', protocol: 0 })
     }
   }
   return list

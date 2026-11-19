@@ -614,6 +614,11 @@
               }
             ],
             "title": "Last Seen"
+          },
+          "protocol": {
+            "type": "integer",
+            "title": "Protocol",
+            "default": 0
           }
         },
         "type": "object",
@@ -892,7 +897,8 @@
               "ok",
               "error",
               "interrupted",
-              "meaningless"
+              "meaningless",
+              "undelivered"
             ],
             "title": "Status"
           },
@@ -948,6 +954,25 @@
             "type": "array",
             "title": "Delegations",
             "default": []
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "wake",
+              "listen",
+              "core"
+            ],
+            "title": "Origin",
+            "default": "wake"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "turn",
+              "announcement"
+            ],
+            "title": "Kind",
+            "default": "turn"
           }
         },
         "type": "object",

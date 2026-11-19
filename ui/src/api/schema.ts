@@ -252,6 +252,11 @@ export interface components {
             fw: string;
             /** Last Seen */
             last_seen?: number | null;
+            /**
+             * Protocol
+             * @default 0
+             */
+            protocol: number;
         };
         /**
          * DownloadIn
@@ -375,7 +380,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "ok" | "error" | "interrupted" | "meaningless";
+            status: "ok" | "error" | "interrupted" | "meaningless" | "undelivered";
             /** At */
             at: number;
             /** Stt Ms */
@@ -394,6 +399,18 @@ export interface components {
              * @default []
              */
             delegations: components["schemas"]["DelegationOut"][];
+            /**
+             * Origin
+             * @default wake
+             * @enum {string}
+             */
+            origin: "wake" | "listen" | "core";
+            /**
+             * Kind
+             * @default turn
+             * @enum {string}
+             */
+            kind: "turn" | "announcement";
         };
         /** ValidationError */
         ValidationError: {

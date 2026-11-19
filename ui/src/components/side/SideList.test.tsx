@@ -23,7 +23,7 @@ describe('SideList', () => {
   })
 
   it('колонка без имени подписана MAC; ноль колонок — подсказка', () => {
-    setup({ status: makeStatus({ devices: [{ device_id: 'aa:bb', name: '', connected: true, remote: '', fw: '' }] }) })
+    setup({ status: makeStatus({ devices: [{ device_id: 'aa:bb', name: '', connected: true, remote: '', fw: '', protocol: 2 }] }) })
     expect(screen.getByRole('button', { name: /aa:bb/ })).toBeInTheDocument()
   })
 

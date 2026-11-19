@@ -20,6 +20,8 @@ function turn(id: number | string, text = `вопрос ${id}`): Turn {
     stt_ms: 100,
     first_text_ms: null,
     first_audio_ms: null,
+    origin: 'wake',
+    kind: 'turn',
   }
 }
 
@@ -30,7 +32,7 @@ function status(): Status {
     state: 'ready',
     ollama: { reachable: true, loaded: [] },
     devices: [
-      { device_id: 'aa:bb', name: 'Кухня', connected: false, remote: '', fw: '1.0', last_seen: 1 },
+      { device_id: 'aa:bb', name: 'Кухня', connected: false, remote: '', fw: '1.0', last_seen: 1, protocol: 2 },
     ],
     voice: { kind: 'silero', voice: 'xenia', state: 'ready', error: null },
     applying: false,
@@ -90,7 +92,15 @@ describe('reduce: колонки', () => {
     const data = { device_id: 'aa:bb', name: 'Кухня', remote: '10.0.0.5', fw: '1.1' }
     const s = apply(withStatus(), ev('device_connected', data, 200))
     expect(s.status?.devices).toEqual([
-      { device_id: 'aa:bb', name: 'Кухня', connected: true, remote: '10.0.0.5', fw: '1.1', last_seen: 200 },
+      {
+        device_id: 'aa:bb',
+        name: 'Кухня',
+        connected: true,
+        remote: '10.0.0.5',
+        fw: '1.1',
+        last_seen: 200,
+        protocol: 2,
+      },
     ])
   })
 

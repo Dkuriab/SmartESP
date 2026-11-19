@@ -17,6 +17,8 @@ export function makeTurn(id: number, over: Partial<Turn> = {}): Turn {
     at: 1700000000,
     path: [],
     delegations: [],
+    origin: 'wake',
+    kind: 'turn',
     ...over,
   }
 }
@@ -28,8 +30,8 @@ export function makeStatus(over: Partial<Status> = {}): Status {
     state: 'ready',
     ollama: { reachable: true, loaded: [] },
     devices: [
-      { device_id: 'a', name: 'Кухня', connected: true, remote: '', fw: '' },
-      { device_id: 'b', name: 'Спальня', connected: false, remote: '', fw: '' },
+      { device_id: 'a', name: 'Кухня', connected: true, remote: '', fw: '', protocol: 2 },
+      { device_id: 'b', name: 'Спальня', connected: false, remote: '', fw: '', protocol: 2 },
     ],
     voice: {} as Status['voice'],
     applying: false,

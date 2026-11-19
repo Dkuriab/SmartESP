@@ -1,4 +1,4 @@
-"""Жизнь ядра на подделках: смена исполнителей на лету, выгрузка моделей, сеть и её пересборка."""
+"""Жизнь ядра на подделках: смена исполнителей и речи на лету, выгрузка моделей, сеть и её пересборка."""
 
 from __future__ import annotations
 
@@ -18,12 +18,13 @@ from core_harness import (
     sent_types,
 )
 
+from fakes.fake_connection import FakeConnection
 from fakes.fake_executor import FakeOllama
 from smartesp import wiring
 from smartesp.config import ExecutorConfig
 from smartesp.contracts import Executor, ReplyPart, Subscription, ToolCall
 from smartesp.network import ExecutorNetwork
-from smartesp.wiring import finish, start, stop
+from smartesp.wiring import Assembly, finish, start, stop
 
 
 async def next_change(events: Subscription) -> dict[str, object]:
@@ -156,4 +157,51 @@ async def test_network_rebuilt_with_delegation_once_ollama_is_up(tmp_path: Path)
     assert network.members["dispatcher"].tools_ok and "delegate" in made[2].prompt
     await stop(core)
     assert core.retrying is not None and core.retrying.done()
+    await finish(core)
+
+
+async def next_finished(events: Subscription, kind: str) -> dict[str, object]:
+    """Данные следующего события turn_finished вида kind ("turn" или "announcement")."""
+    async with asyncio.timeout(2):
+        async for event in events:
+            if event.kind == "turn_finished" and event.data["kind"] == kind:
+                return event.data
+    raise AssertionError("лента закрылась")
+
+
+async def announce_heard(core: Assembly, speaking: FakeConnection, events: Subscription, text: str) -> None:
+    """Объявление ядра на колонке: колонка доигрывает его, ждём событие «прозвучало»."""
+    ends = sent_types(speaking).count("reply_end")
+    core.announcer.say("kitchen", text, "dispatcher")
+    await eventually(lambda: sent_types(speaking).count("reply_end") > ends)
+    speaking.feed_json("playback_done", turn=announce_turns(speaking)[-1])
+    assert (await next_finished(events, "announcement"))["status"] == "ok"
+
+
+def announce_turns(conn: FakeConnection) -> list[int]:
+    return [m["turn"] for m in conn.sent_json() if m["type"] == "announce"]
+
+
+async def test_speech_section_live(tmp_path: Path) -> None:
+    core = make_core(tmp_path, fake_kinds(ollama_factory([], ["Какой город?"])))
+    start(core)
+    await eventually(lambda: core.core.state == "ready")
+    speaking, _ = await connect(core, "kitchen", protocol=3)
+    events = core.bus.subscribe()
+    await core.core.patch_config({"speech": {"listen_after_question": False}})
+    assert (await next_change(events))["ok"]
+
+    await announce_heard(core, speaking, events, "Слышно?")
+    ask(speaking, 1)  # ответ «Какой город?» — вопрос Кузи
+    await next_finished(events, "turn")  # listen_after уже ждёт playback_done хода
+    speaking.feed_json("playback_done", turn=1)
+    await asyncio.sleep(0.1)
+    assert "listen" not in sent_types(speaking)  # выключено и у объявлений, и у ходов
+
+    await core.core.patch_config({"speech": {"listen_after_question": True}})
+    assert (await next_change(events))["ok"]
+    await announce_heard(core, speaking, events, "Слышно?")
+    await eventually(lambda: "listen" in sent_types(speaking))
+    await events.aclose()
+    await stop(core)
     await finish(core)

@@ -9,11 +9,12 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import cast
 
-from smartesp.config import Config
+from smartesp.config import Config, SpeechConfig
 from smartesp.contracts import Section
-from smartesp.conversation import History
+from smartesp.conversation import History, Orchestrator
 from smartesp.devices import DeviceHub
 from smartesp.lifecycle import Answering, LiveAnswering
+from smartesp.notify import Announcer
 
 
 async def _device_names(config: Config) -> dict[str, str]:
@@ -24,11 +25,26 @@ async def _history_limits(config: Config) -> tuple[int, int]:
     return config.history.max_turns, config.history.max_age_s
 
 
+async def _speech(config: Config) -> SpeechConfig:
+    return config.speech
+
+
+def speech_settings(orchestrator: Orchestrator, announcer: Announcer) -> Callable[[SpeechConfig], None]:
+    """Раздел speech для живых частей: оркестратор (запоздавшие ответы, вопрос) и очередь речи."""
+
+    def use(speech: SpeechConfig) -> None:
+        orchestrator.set_speech(speech.proactive, speech.listen_after_question)
+        announcer.set_listen_after(speech.listen_after_question)
+
+    return use
+
+
 def live_sections(
     hub: DeviceHub,
     history: History,
     live: LiveAnswering,
     build_answering: Callable[[Config], Awaitable[Answering]],
+    use_speech: Callable[[SpeechConfig], None],
 ) -> dict[str, Section]:
     """Разделы, применяемые на лету (tts пульт открывает через менеджер голосов)."""
     answering = Section(build_answering, live.use, live.release)
@@ -37,4 +53,5 @@ def live_sections(
         "history": Section(_history_limits, lambda new: history.set_limits(*cast(tuple[int, int], new))),
         "executors": answering,
         "stages": answering,  # правила обработчиков в промптах: пересобираем и сеть
+        "speech": Section(_speech, lambda speech: use_speech(cast(SpeechConfig, speech))),
     }

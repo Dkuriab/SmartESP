@@ -109,11 +109,13 @@ async def eventually(condition: Callable[[], bool], timeout: float = 2.0) -> Non
             await asyncio.sleep(0.005)
 
 
-async def connect(core: Assembly, device_id: str) -> tuple[FakeConnection, asyncio.Task[None]]:
-    """Подключает поддельную колонку к хабу ядра и ждёт, пока он её увидит."""
+async def connect(
+    core: Assembly, device_id: str, protocol: int = 2
+) -> tuple[FakeConnection, asyncio.Task[None]]:
+    """Подключает поддельную колонку (протокол protocol) к хабу ядра и ждёт, пока он её увидит."""
     conn = FakeConnection()
     task = asyncio.create_task(core.hub.handle(conn))
-    conn.feed_json("hello", fw="2.0", device_id=device_id, protocol=2)
+    conn.feed_json("hello", fw=f"{protocol}.0", device_id=device_id, protocol=protocol)
     await eventually(lambda: any(d.device_id == device_id and d.connected for d in core.hub.devices()))
     return conn, task
 
