@@ -113,6 +113,7 @@
 - `annotations` — список `{source, text}`;
 - `style`, `answer`;
 - `status` — `ok`, `error`, `interrupted` или `meaningless`;
+- `at` — когда ход закончился (секунды Unix, `time.time()`);
 - `stt_ms`, `first_text_ms`, `first_audio_ms` (каждое — число или `null`).
 
 ### Ресурсы API (на них опирается план интерфейса — не менять)
@@ -128,7 +129,9 @@
 - **`GET /config`** →
   - `effective` — настройки целиком, как `config.yaml`;
   - `overridden` — ключи через точку, например `tts.kind`;
-  - `restart_sections`.
+  - `restart_sections`;
+  - `dispatcher_prompt` — итоговый системный промпт входного исполнителя
+    (его `system_prompt` + правила включённых обработчиков), только для чтения.
 - **`PATCH /config`**:
   - тело — частичный словарь в форме `config.yaml`;
   - словари сливаются вглубь;
