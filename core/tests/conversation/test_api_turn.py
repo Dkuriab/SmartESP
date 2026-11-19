@@ -193,3 +193,17 @@ async def test_drain_cancels_api_turn() -> None:
     with pytest.raises(AskUnavailable, match="останавливается"):
         await asking
     assert finished(sink)["status"] == "interrupted"
+
+
+async def test_cancelled_wait_cancels_api_turn() -> None:
+    sink = RecordingSink()
+    executor = FakeExecutor(["Долго."], delay=10.0)
+    setup = Setup(executor, events=sink)
+    asking = asyncio.create_task(setup.orchestrator.ask(Question(text="Привет")))
+    await until(lambda: any(kind == "turn_started" for kind, _ in sink.events))
+    asking.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await asking
+    await until(lambda: any(kind == "turn_finished" for kind, _ in sink.events))
+    assert executor.closed_early
+    assert finished(sink)["status"] == "interrupted"

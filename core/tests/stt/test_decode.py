@@ -84,3 +84,16 @@ async def test_real_ogg_opus_decodes() -> None:
 async def test_real_garbage_is_undecodable() -> None:
     with pytest.raises(AudioUndecodable):
         await decode_audio(b"this is not audio at all" * 10)
+
+
+@real_ffmpeg
+async def test_real_nested_inputs_are_refused(tmp_path: Path) -> None:
+    # списки concat и HLS со ссылкой на файл: ffmpeg не должен открывать вложенные адреса
+    local = tmp_path / "local.wav"
+    local.write_bytes(tone_wav(0.5))
+    for data in (
+        f"ffconcat version 1.0\nfile '{local}'\n".encode(),
+        f"#EXTM3U\n#EXTINF:1,\nfile://{local}\n#EXT-X-ENDLIST\n".encode(),
+    ):
+        with pytest.raises(AudioUndecodable):
+            await decode_audio(data)

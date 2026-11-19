@@ -16,8 +16,8 @@ from smartesp.contracts import SAMPLE_RATE, AskUnavailable, AudioUndecodable
 _log = logging.getLogger(__name__)
 
 FFMPEG_PLACES = ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg")
-DECODE_TIMEOUT_S = 30.0  # дольше разбор не ждём
-MAX_DURATION_S = 300  # длиннее — обрезаем: распознавание и так не уложится в срок хода
+DECODE_TIMEOUT_S = 10.0  # дольше разбор не ждём (обычно — доли секунды)
+MAX_DURATION_S = 120  # длиннее — обрезаем: распознавание держит модель, а ход — не дольше 55 с
 NO_FFMPEG = "Для голосовых сообщений нужен ffmpeg (brew install ffmpeg)"
 UNDECODABLE = "Не получилось разобрать звук: нужен OGG/Opus или WAV"
 
@@ -76,6 +76,10 @@ def _arguments(program: str) -> list[str]:
         "-hide_banner",
         "-loglevel",
         "error",
+        "-protocol_whitelist",  # только stdin: никаких вложенных адресов и файлов (HLS, concat)
+        "pipe",
+        "-format_whitelist",  # только форматы договора
+        "ogg,wav",
         "-i",
         "pipe:0",
         "-vn",

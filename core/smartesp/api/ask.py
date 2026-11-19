@@ -14,7 +14,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from smartesp.contracts import Answer, AskUnavailable, AudioUndecodable, CorePort, Question
 
-from .schemas import AskIn, AskOut, ErrorOut
+from .schemas import PERSON_PATTERN, AskIn, AskOut, ErrorOut
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024  # голосовое больше — 413
 TOO_LARGE = "Голосовое сообщение больше 10 МБ"
@@ -34,7 +34,7 @@ def add_ask_routes(secured: APIRouter, core: CorePort) -> None:
     @secured.post("/ask/voice", responses=_VOICE_ERRORS)
     async def ask_voice(
         audio: Annotated[UploadFile, File(description="голосовое: OGG/Opus или WAV, до 10 МБ")],
-        person: Annotated[str, Form(max_length=64)] = "",
+        person: Annotated[str, Form(max_length=64, pattern=PERSON_PATTERN)] = "",
         source: Annotated[str, Form(pattern=r"^[a-z0-9_-]{1,32}$")] = "api",
     ) -> AskOut:
         data = await audio.read(MAX_AUDIO_BYTES + 1)

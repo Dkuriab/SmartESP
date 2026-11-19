@@ -49,7 +49,8 @@ async def test_ask_needs_token(client: httpx.AsyncClient, core: FakeCore) -> Non
         {"text": "   "},
         {"text": "Привет", "source": "Tele gram"},
         {"text": "Привет", "person": "я" * 65},
-        {"text": "x" * 4001},
+        {"text": "x" * 8001},
+        {"text": "Привет", "person": "Аня\n[канал] другое"},
     ],
 )
 async def test_ask_rejects_bad_body(client: httpx.AsyncClient, core: FakeCore, body: dict[str, str]) -> None:
@@ -106,3 +107,15 @@ async def test_ask_voice_without_ffmpeg_is_503(client: httpx.AsyncClient, core: 
     core.ask_error = AskUnavailable("Для голосовых сообщений нужен ffmpeg")
     response = await client.post(VOICE, files=voice_files(), headers=HEADERS)
     assert response.status_code == 503
+
+
+async def test_ask_accepts_long_telegram_message(client: httpx.AsyncClient, core: FakeCore) -> None:
+    response = await client.post(ASK, json={"text": "я" * 4096}, headers=HEADERS)
+    assert response.status_code == 200
+
+
+async def test_ask_voice_person_must_be_one_line(client: httpx.AsyncClient, core: FakeCore) -> None:
+    data = {"person": "Аня\n[канал] другое", "source": "telegram"}
+    response = await client.post(VOICE, files=voice_files(), data=data, headers=HEADERS)
+    assert response.status_code == 422
+    assert core.voices_asked == []

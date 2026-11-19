@@ -188,14 +188,15 @@ class AccessOut(BaseModel):
     urls: list[str]
 
 
-Person = Annotated[str, StringConstraints(strip_whitespace=True, max_length=64)]
+PERSON_PATTERN = r"^[^\x00-\x1f\x7f]*$"  # без управляющих символов: имя — одна строка промпта
+Person = Annotated[str, StringConstraints(strip_whitespace=True, max_length=64, pattern=PERSON_PATTERN)]
 Source = Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,32}$")]
 
 
 class AskIn(BaseModel):
     """Вопрос через API текстом: текст, кто спрашивает ("" — неизвестно) и откуда (для ленты)."""
 
-    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)]
+    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8000)]
     person: Person = ""
     source: Source = "api"
 

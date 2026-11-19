@@ -641,13 +641,14 @@
         "properties": {
           "text": {
             "type": "string",
-            "maxLength": 4000,
+            "maxLength": 8000,
             "minLength": 1,
             "title": "Text"
           },
           "person": {
             "type": "string",
             "maxLength": 64,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
             "title": "Person",
             "default": ""
           },
@@ -695,6 +696,7 @@
           "person": {
             "type": "string",
             "maxLength": 64,
+            "pattern": "^[^\\x00-\\x1f\\x7f]*$",
             "title": "Person",
             "default": ""
           },

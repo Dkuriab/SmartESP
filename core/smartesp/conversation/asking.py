@@ -8,7 +8,6 @@
 """
 
 import asyncio
-import functools
 import itertools
 import logging
 import time
@@ -177,7 +176,7 @@ class ApiTurns:
         """Ожидание цели передачи: без «думаю», ход всегда актуален, ответ не откладывается."""
         return handoffs.Waiting(
             _no_signal,
-            functools.partial(bool, True),
+            lambda: True,
             self._limit_s,
             self._part_idle_s,
             self._limit_s,
