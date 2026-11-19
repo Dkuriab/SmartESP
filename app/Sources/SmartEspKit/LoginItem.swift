@@ -27,13 +27,14 @@ public func firstLaunchDefault(bundlePath: String, alreadyDecided: Bool) -> Bool
 /// Метка и имя файла запасного LaunchAgent.
 public let launchAgentLabel = "com.smartesp.app"
 
-/// Содержимое plist запасного LaunchAgent: `open -a <приложение>` при входе.
+/// Содержимое plist запасного LaunchAgent: `open -a <приложение> --args --background`
+/// при входе (окно при автозапуске не открывается).
 /// - Parameter appPath: путь к приложению, по умолчанию `/Applications/SmartEsp.app`.
 /// - Returns: XML-plist.
 public func launchAgentPlist(appPath: String = "/Applications/SmartEsp.app") throws -> Data {
     let plist: [String: Any] = [
         "Label": launchAgentLabel,
-        "ProgramArguments": ["/usr/bin/open", "-a", appPath],
+        "ProgramArguments": ["/usr/bin/open", "-a", appPath, "--args", backgroundLaunchArgument],
         "RunAtLoad": true,
     ]
     return try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)

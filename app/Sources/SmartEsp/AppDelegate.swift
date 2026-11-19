@@ -8,23 +8,34 @@ import SmartEspKit
     private var statusMenu: StatusMenu?
     private var window: MainWindow?
     private var quitting = false
+    /// macOS запустила приложение как объект входа: окно не открываем.
+    private var launchedAsLoginItem = false
     private let loginItem: any LoginItemControlling = LoginItemService()
 
     /// Состояние для меню и окна; без путей — ошибка вместо надзора.
     private var state: CoreState { supervisor?.state ?? .failed(CoreErrors.repoNotSet) }
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        launchedAsLoginItem = Self.isLoginItemLaunch()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Событие запуска видно то в will-, то в didFinishLaunching — смотрим в обоих
+        launchedAsLoginItem = launchedAsLoginItem || Self.isLoginItemLaunch()
         NSApp.mainMenu = MainMenu.make()
         statusMenu = StatusMenu(actions: self)
         let window = MainWindow()
         // Закрытое окно прячет значок из Dock; приложение остаётся в строке меню
         window.onClose = { NSApp.setActivationPolicy(.accessory) }
         self.window = window
-        SingleInstance.listen { [weak self] in self?.openWindow() }
+        SingleInstance.listen { [weak self] in self?.answerShowRequest() ?? .shown }
         applyFirstLaunchLoginDefault()
         startSupervisor()
         render()
-        openWindow()
+        // При автозапуске приложение тихо живёт в строке меню
+        if opensWindowAtLaunch(arguments: CommandLine.arguments, launchedAsLoginItem: launchedAsLoginItem) {
+            openWindow()
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -34,8 +45,9 @@ import SmartEspKit
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let supervisor else { return .terminateNow }
-        // Повторная просьба (ещё один «quit») — первая уже ждёт остановки ядра
-        if quitting { return .terminateCancel }
+        // Повторная просьба (ещё один «quit», выход из системы, выключение) — первая уже ждёт
+        // остановки ядра; её `reply(true)` ответит и на эту. Отмена сорвала бы выход из системы
+        if quitting { return .terminateLater }
         quitting = true
         statusMenu?.showQuitting()
         Task {
@@ -48,6 +60,8 @@ import SmartEspKit
     // MARK: - StatusMenuActions
 
     func openWindow() {
+        // Во время выхода окно не показываем и в Dock не возвращаемся
+        guard !quitting else { return }
         NSApp.setActivationPolicy(.regular)
         window?.present()
         NSApp.activate()
@@ -92,7 +106,26 @@ import SmartEspKit
         NSWorkspace.shared.open(accessSettingsURL)
     }
 
+    func liveLoginState() -> LoginMenuState? {
+        quitting ? nil : loginItem.menuState
+    }
+
     // MARK: - Внутреннее
+
+    /// Второй экземпляр просит показать окно: показываем, если не выходим.
+    private func answerShowRequest() -> SingleInstanceAnswer {
+        if quitting { return .quitting }
+        openWindow()
+        return .shown
+    }
+
+    /// Текущее событие Apple — запуск объекта входа.
+    private static func isLoginItemLaunch() -> Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent,
+              event.eventID == AEEventID(kAEOpenApplication) else { return false }
+        return event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue
+            == OSType(keyAELaunchedAsLogInItem)
+    }
 
     /// Первый запуск из `/Applications` включает автозапуск; сборки из других мест — нет.
     private func applyFirstLaunchLoginDefault() {

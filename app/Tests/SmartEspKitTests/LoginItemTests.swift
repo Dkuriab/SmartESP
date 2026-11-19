@@ -14,7 +14,8 @@ import Testing
         let plist = try #require(
             try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any])
         #expect(plist["Label"] as? String == "com.smartesp.app")
-        #expect(plist["ProgramArguments"] as? [String] == ["/usr/bin/open", "-a", "/Applications/SmartEsp.app"])
+        #expect(plist["ProgramArguments"] as? [String]
+            == ["/usr/bin/open", "-a", "/Applications/SmartEsp.app", "--args", "--background"])
         #expect(plist["RunAtLoad"] as? Bool == true)
     }
 

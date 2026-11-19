@@ -3,7 +3,8 @@ import ServiceManagement
 import SmartEspKit
 
 /// Автозапуск через `SMAppService.mainApp`; если регистрация не удалась
-/// (ad-hoc подпись) или статус `.notFound`, пишет запасной LaunchAgent с `open -a <приложение>`.
+/// (ad-hoc подпись) или статус `.notFound`, пишет запасной LaunchAgent
+/// с `open -a <приложение> --args --background`.
 @MainActor final class LoginItemService: LoginItemControlling {
     private struct StillEnabled: LocalizedError {
         var errorDescription: String? { "Автозапуск остался включённым. Отключите его в Системных настройках → Основные → Объекты входа." }

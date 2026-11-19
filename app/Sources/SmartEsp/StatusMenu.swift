@@ -8,10 +8,12 @@ import SmartEspKit
     func openLog()
     func openAccessSettings()
     func toggleLoginItem()
+    /// Состояние автозапуска прямо сейчас; `nil` — не трогать пункт (идёт выход).
+    func liveLoginState() -> LoginMenuState?
 }
 
 /// Значок SmartESP в строке меню и его меню.
-@MainActor final class StatusMenu: NSObject {
+@MainActor final class StatusMenu: NSObject, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
     private let statusLine = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -42,13 +44,7 @@ import SmartEspKit
         settingsItem.isHidden = !model.showsAccessSettings
         openItem.isEnabled = model.canOpen
         restartItem.isEnabled = model.canRestart && canRestart
-        loginItem.title = login.title
-        loginItem.isEnabled = login.click != .none
-        switch login.mark {
-        case .on: loginItem.state = .on
-        case .off: loginItem.state = .off
-        case .mixed: loginItem.state = .mixed
-        }
+        showLogin(login)
         let image = NSImage(systemSymbolName: model.symbolName, accessibilityDescription: "SmartESP")
         image?.isTemplate = true
         item.button?.image = image
@@ -62,6 +58,22 @@ import SmartEspKit
         restartItem.isEnabled = false
         loginItem.isEnabled = false
         quitItem.isEnabled = false
+    }
+
+    /// Автозапуск могли поменять в Системных настройках — перед открытием меню берём живое состояние.
+    func menuWillOpen(_ menu: NSMenu) {
+        if let login = actions?.liveLoginState() { showLogin(login) }
+    }
+
+    /// Пункт «Запускать при входе»: заголовок, отметка, доступность.
+    private func showLogin(_ login: LoginMenuState) {
+        loginItem.title = login.title
+        loginItem.isEnabled = login.click != .none
+        switch login.mark {
+        case .on: loginItem.state = .on
+        case .off: loginItem.state = .off
+        case .mixed: loginItem.state = .mixed
+        }
     }
 
     /// Заменяет строки подсказки под строкой состояния.
@@ -80,6 +92,7 @@ import SmartEspKit
 
     private func buildMenu() {
         menu.autoenablesItems = false
+        menu.delegate = self
         statusLine.isEnabled = false
         settingsItem.isHidden = true
         for entry in [settingsItem, openItem, restartItem, logItem, loginItem] { entry.target = self }

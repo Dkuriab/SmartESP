@@ -75,6 +75,13 @@ import WebKit
         retries = 0
     }
 
+    /// Процесс страницы упал (нехватка памяти, сбой WebKit) — окно иначе осталось бы белым.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        guard case let .page(url) = shown else { return }
+        retries = 0
+        if webView.url != nil { webView.reload() } else { webView.load(URLRequest(url: url)) }
+    }
+
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         retryLoad(after: error)
     }
