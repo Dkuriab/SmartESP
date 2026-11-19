@@ -1,8 +1,8 @@
 """Модели настроек ядра."""
 
-from pathlib import Path
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-from pydantic import BaseModel, Field, model_validator
+from .connectors import ConnectorConfig, default_connectors, overlay_connectors
 
 DEFAULT_SYSTEM_PROMPT = (
     "Тебя зовут Кузя. Ты голосовой помощник умной колонки. Отвечай по-русски, коротко, 1–3 предложения, "
@@ -17,21 +17,6 @@ DEFAULT_SYSTEM_PROMPT = (
 CONFIG_VERSION = 4
 DEFAULT_MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
 BIG_WHEN = "сложные вопросы: рассуждения, расчёты, подробные объяснения, знания, которых может не быть у тебя"
-# корень репозитория: core/smartesp/config/models.py → вверх на четыре уровня
-REPO_DIR = Path(__file__).resolve().parents[3]
-REPO_PLACEHOLDER = "{repo}"  # в command, args и env коннектора заменяется на REPO_DIR при запуске
-# наши коннекторы по умолчанию: (id, имя для людей, дополнительное окружение, включён ли);
-# папка — connectors/<id>, команда — <id с «-» вместо «_»>-mcp
-DEFAULT_CONNECTORS: tuple[tuple[str, str, dict[str, str], bool], ...] = (
-    ("notes", "Заметки", {}, True),
-    ("calc", "Калькулятор", {}, True),
-    ("timers", "Таймеры", {}, True),
-    ("weather", "Погода", {"WEATHER_PLACE": ""}, True),  # место впишет владелец; без него — «место не задано»
-    ("food", "Питание", {}, True),
-    ("mac_media", "Музыка и звук Mac", {}, True),
-    # выключен, пока владелец не впишет разрешённые папки: «имя=путь;имя=путь»
-    ("claude_tasks", "Задачи Клоду", {"CLAUDE_TASK_FOLDERS": ""}, False),
-)
 BIG_SYSTEM_PROMPT = (
     "Ты отвечаешь голосом через колонку: по-русски, без разметки и списков, связно, до 6–8 предложений."
 )
@@ -114,47 +99,6 @@ class SpeechConfig(BaseModel):
     listen_after_question: bool = True
 
 
-class ConnectorConfig(BaseModel):
-    """MCP-коннектор: команда запуска (stdio), окружение, включён ли.
-
-    id — короткое имя из [A-Za-z0-9_-]: по нему папка данных коннектора. «{repo}» в
-    command, args и значениях env — корень репозитория: настройки переживают его перенос.
-    """
-
-    id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
-    name: str
-    command: str
-    args: list[str] = Field(default_factory=list[str])
-    env: dict[str, str] = Field(default_factory=dict[str, str])
-    enabled: bool = True
-
-    def expanded(self) -> "ConnectorConfig":
-        """Копия, где «{repo}» заменён на путь к корню репозитория."""
-        repo = str(REPO_DIR)
-        return self.model_copy(
-            update={
-                "command": self.command.replace(REPO_PLACEHOLDER, repo),
-                "args": [a.replace(REPO_PLACEHOLDER, repo) for a in self.args],
-                "env": {k: v.replace(REPO_PLACEHOLDER, repo) for k, v in self.env.items()},
-            }
-        )
-
-
-def _default_connectors() -> list[ConnectorConfig]:
-    """Наши коннекторы из папки connectors/ репозитория: `uv run --project <папка> <id>-mcp`."""
-    return [
-        ConnectorConfig(
-            id=cid,
-            name=name,
-            command="uv",
-            args=["run", "--project", f"{REPO_PLACEHOLDER}/connectors/{cid}", f"{cid.replace('_', '-')}-mcp"],
-            env=dict(env),
-            enabled=enabled,
-        )
-        for cid, name, env, enabled in DEFAULT_CONNECTORS
-    ]
-
-
 def _default_executors() -> list[ExecutorConfig]:
     return [
         ExecutorConfig(
@@ -190,7 +134,13 @@ class Config(BaseModel):
     )
     history: HistoryConfig = Field(default_factory=HistoryConfig)
     speech: SpeechConfig = Field(default_factory=SpeechConfig)
-    connectors: list[ConnectorConfig] = Field(default_factory=_default_connectors)
+    # записи владельца сливаются с умолчаниями по id (см. config/connectors.py)
+    connectors: list[ConnectorConfig] = Field(default_factory=default_connectors)
+
+    @field_validator("connectors", mode="before")
+    @classmethod
+    def _overlay_connectors(cls, value: object) -> object:
+        return overlay_connectors(value)
 
     @model_validator(mode="after")
     def _check_single_entry(self) -> "Config":

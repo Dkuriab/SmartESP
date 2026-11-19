@@ -6,7 +6,8 @@ from typing import Any
 
 import yaml
 
-from .models import CONFIG_VERSION
+from .connectors import connector_overrides, overlay_connectors
+from .models import CONFIG_VERSION, Config
 
 HEADER = """# Настройки ядра SmartESP: здесь только то, что вы поменяли сами.
 # Все значения по умолчанию — в config.defaults.yaml рядом (только для справки):
@@ -46,6 +47,20 @@ def prune(raw: dict[str, Any], defaults: dict[str, Any]) -> dict[str, Any]:
                 result[key] = nested
         elif key not in defaults or value != default:
             result[key] = value
+    return result
+
+
+def owner_changes(raw: dict[str, Any], *, effective: bool) -> dict[str, Any]:
+    """Только отличия от умолчаний: как prune, но connectors — по id, лишь изменённые поля.
+
+    effective — raw содержит настройки целиком (иначе это записи владельца из файла).
+    """
+    connectors = raw.get("connectors")
+    result = prune({k: v for k, v in raw.items() if k != "connectors"}, Config().model_dump(mode="json"))
+    if connectors is not None:
+        changed = connector_overrides(connectors if effective else overlay_connectors(connectors))
+        if changed:
+            result["connectors"] = changed
     return result
 
 

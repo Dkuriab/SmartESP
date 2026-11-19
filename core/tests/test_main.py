@@ -22,6 +22,7 @@ from core_harness import NO_OLLAMA, put_voice
 from fakes.fake_executor import FakeOllama
 from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
+from fakes.no_connectors import NO_CONNECTORS_YAML
 from smartesp.config import Config, TtsConfig
 from smartesp.kinds import StartupError, check_kinds
 from smartesp.main import EXECUTOR_KINDS, KINDS, STAGE_KINDS, STT_KINDS, TTS_KINDS, _setup_logging, main
@@ -95,7 +96,7 @@ def test_check_kinds_rejects_unknown_executor() -> None:
 
 ExecCall = tuple[str, list[str]]
 # коннекторы выключены: тесты не запускают настоящие `uv run … -mcp`
-NO_CONNECTORS_SERVER = "server:\n  host: 127.0.0.1\n  port: 0\nconnectors: []\n"
+NO_CONNECTORS_SERVER = "server:\n  host: 127.0.0.1\n  port: 0\n" + NO_CONNECTORS_YAML
 
 
 def fake_core(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:

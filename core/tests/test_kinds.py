@@ -5,8 +5,10 @@ from __future__ import annotations
 import pytest
 
 from fakes.fake_executor import FakeOllama
+from fakes.no_connectors import NO_DEFAULT_CONNECTORS
 from smartesp.config import Config, ExecutorConfig
-from smartesp.config.models import BIG_WHEN, REPO_DIR, DelegateLink
+from smartesp.config.connectors import REPO_DIR
+from smartesp.config.models import BIG_WHEN, DelegateLink
 from smartesp.contracts import Executor, ToolResult, ToolSpec
 from smartesp.kinds import (
     Kinds,
@@ -99,6 +101,7 @@ def test_connector_specs_follow_settings() -> None:
     config = Config.model_validate(
         {
             "connectors": [
+                *NO_DEFAULT_CONNECTORS,
                 {"id": "a", "name": "А", "command": "x", "args": ["1", "2"], "env": {"K": "v"}},
                 {"id": "b", "name": "Б", "command": "y", "enabled": False},
             ]

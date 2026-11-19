@@ -6,6 +6,9 @@ import pytest
 import yaml
 
 from smartesp.config import Config, ConfigFile, ConnectorConfig, load_config
+from smartesp.config.connectors import DEFAULT_CONNECTORS
+
+DEFAULT_IDS = [cid for cid, *_ in DEFAULT_CONNECTORS]
 
 REPO = Path(__file__).resolve().parents[3]  # core/tests/config → корень репозитория
 
@@ -52,14 +55,14 @@ def test_owner_file_without_connectors_gets_defaults(tmp_path: Path) -> None:
     assert [c.id for c in load_config(path).connectors] == [c.id for c in Config().connectors]
 
 
-def test_owner_connectors_replace_list(tmp_path: Path) -> None:
+def test_owner_connector_with_new_id_is_added_after_defaults(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text(
-        "version: 3\nconnectors:\n  - id: my\n    name: Моё\n    command: /bin/my\n", encoding="utf-8"
+        "version: 4\nconnectors:\n  - id: my\n    name: Моё\n    command: /bin/my\n", encoding="utf-8"
     )
-    (only,) = load_config(path).connectors
-    assert only == ConnectorConfig(id="my", name="Моё", command="/bin/my")
-    assert (only.args, only.env, only.enabled) == ([], {}, True)
+    connectors = load_config(path).connectors
+    assert [c.id for c in connectors] == [*DEFAULT_IDS, "my"]
+    assert connectors[-1] == ConnectorConfig(id="my", name="Моё", command="/bin/my")
 
 
 @pytest.mark.parametrize(

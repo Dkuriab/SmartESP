@@ -26,6 +26,7 @@ from core_harness import (
 )
 
 from fakes.fake_executor import FakeOllama
+from fakes.no_connectors import NO_DEFAULT_CONNECTORS
 from smartesp.config import ExecutorConfig
 from smartesp.contracts import ChatMessage, Executor, ReplyPart, Subscription, ToolCall, ToolSpec
 from smartesp.lifecycle import STOP_LIMIT_S, TOOLS_DEBOUNCE_S
@@ -43,7 +44,10 @@ def connector(cid: str, mode: str = "", enabled: bool = True) -> dict[str, objec
 
 def config_yaml(*connectors: dict[str, object]) -> str:
     # JSON — это YAML: так пути с любыми символами не ломают файл
-    body = {"arbitration": {"window_ms": 20, "late_ms": 200}, "connectors": list(connectors)}
+    body = {
+        "arbitration": {"window_ms": 20, "late_ms": 200},
+        "connectors": [*NO_DEFAULT_CONNECTORS, *connectors],
+    }
     return json.dumps(body, ensure_ascii=False)
 
 

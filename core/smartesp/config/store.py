@@ -7,7 +7,8 @@ from typing import Any, get_args, get_origin
 
 from pydantic import BaseModel, ValidationError
 
-from ._files import prune, write_overrides
+from ._files import owner_changes, write_overrides
+from .connectors import merge_connector_entries
 from .loader import load_with_overrides
 from .models import Config
 
@@ -55,9 +56,10 @@ class ConfigFile:
     def merge(self, patch: dict[str, Any]) -> Config:
         """Сливает правку с изменениями владельца; ничего не пишет.
 
-        Словари сливаются вглубь, списки заменяются целиком, null сбрасывает ключ
-        к умолчанию. Неизвестный ключ в правке или неверный результат — ValueError
-        с понятным текстом; неизвестные ключи, уже лежащие в файле, правке не мешают.
+        Словари сливаются вглубь, списки заменяются целиком (кроме connectors: те
+        сливаются по id, см. config/connectors.py), null сбрасывает ключ к умолчанию.
+        Неизвестный ключ в правке или неверный результат — ValueError с понятным текстом;
+        неизвестные ключи, уже лежащие в файле, правке не мешают.
         """
         if not isinstance(patch, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
             raise ValueError("правка настроек должна быть словарём")
@@ -66,7 +68,7 @@ class ConfigFile:
         unknown = _unknown_keys(Config, patch, "")
         if unknown:
             raise ValueError(f"неизвестный ключ настроек: {unknown[0]}")
-        merged = _merge(self._overrides, patch)
+        merged = _merge(self._overrides, _by_id(self._overrides, patch))
         try:
             return Config.model_validate(merged)
         except ValidationError as error:
@@ -74,7 +76,7 @@ class ConfigFile:
 
     def save(self, config: Config) -> None:
         """Пишет в файл только отличия от умолчаний (атомарно) и запоминает их."""
-        overrides = prune(config.model_dump(mode="json"), Config().model_dump(mode="json"))
+        overrides = owner_changes(config.model_dump(mode="json"), effective=True)
         write_overrides(self._path, overrides)
         self._overrides = overrides
         self._unknown = []
@@ -84,6 +86,14 @@ class ConfigFile:
     def section(config: Config, name: str) -> object:
         """Значение одного раздела верхнего уровня — для сравнения до и после правки."""
         return config.model_dump(mode="json")[name]
+
+
+def _by_id(overrides: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Правка, где connectors уже слиты по id с записями владельца (остальное — как есть)."""
+    change, owned = patch.get("connectors"), overrides.get("connectors")
+    if not isinstance(change, list) or not isinstance(owned, list):
+        return patch
+    return {**patch, "connectors": merge_connector_entries(owned, change)}  # pyright: ignore[reportUnknownArgumentType]
 
 
 def _merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:

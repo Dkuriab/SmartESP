@@ -1,10 +1,10 @@
 """Настройки ядра: модели и загрузчик config.yaml."""
 
+from .connectors import ConnectorConfig
 from .loader import data_dir, load_config
 from .models import (
     ArbitrationConfig,
     Config,
-    ConnectorConfig,
     DeviceConfig,
     ExecutorConfig,
     HistoryConfig,

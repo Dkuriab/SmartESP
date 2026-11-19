@@ -12,6 +12,7 @@ from fakes.fake_connection import FakeConnection
 from fakes.fake_executor import FakeOllama
 from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
+from fakes.no_connectors import NO_CONNECTORS_YAML
 from smartesp.config import ConfigFile, ExecutorConfig
 from smartesp.contracts import Executor, TextToSpeech
 from smartesp.kinds import Kinds
@@ -72,11 +73,11 @@ def make_core(
 ) -> Assembly:
     """Ядро на подделках в папке home: config.yaml, голос, сборка как в main.
 
-    Без раздела connectors в config_yaml коннекторов нет (connectors: []).
+    Без раздела connectors в config_yaml коннекторов нет (все умолчания убраны).
     """
     home.mkdir(parents=True, exist_ok=True)
     if "connectors" not in config_yaml:  # наши коннекторы по умолчанию — настоящие `uv run`: не запускаем
-        config_yaml = config_yaml.rstrip("\n") + "\nconnectors: []\n"
+        config_yaml = config_yaml.rstrip("\n") + "\n" + NO_CONNECTORS_YAML
     (home / "config.yaml").write_text(config_yaml, encoding="utf-8")
     put_voice(home)
     store = ConfigFile(home / "config.yaml")

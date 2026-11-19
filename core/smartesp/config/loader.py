@@ -14,7 +14,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from ._files import prune, read_yaml, write_overrides
+from ._files import owner_changes, read_yaml, write_overrides
 from .models import CONFIG_VERSION, DEFAULT_SYSTEM_PROMPT, Config
 
 DEFAULTS_HEADER = """# Значения по умолчанию — ТОЛЬКО ДЛЯ СПРАВКИ, ядро перезаписывает этот файл при старте.
@@ -95,7 +95,7 @@ def _migrate_v3(raw: dict[str, Any]) -> dict[str, Any]:
     stages = raw.get("stages")
     if isinstance(stages, list) and not any(isinstance(s, dict) and s.get("kind") == "clock" for s in stages):
         raw["stages"] = [*stages, {"kind": "clock"}]
-        raw = prune(raw, Config().model_dump())
+        raw = owner_changes(raw, effective=False)
     return raw
 
 
@@ -117,7 +117,7 @@ def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
         del raw["tts"]  # прежнее умолчание-голос, а не выбор владельца
     if _is_legacy_executors(raw.get("executors")):
         del raw["executors"]
-    return prune(raw, Config().model_dump())
+    return owner_changes(raw, effective=False)
 
 
 def _is_legacy_executors(value: object) -> bool:
