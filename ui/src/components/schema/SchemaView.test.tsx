@@ -1,6 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { makeActions, makeState } from '../fixtures'
+import { Position } from '@xyflow/react'
+import type { EdgeProps } from '@xyflow/react'
+import LinkEdge from './LinkEdge'
 import SchemaView from './SchemaView'
 
 describe('SchemaView', () => {
@@ -15,5 +18,12 @@ describe('SchemaView', () => {
     render(<div style={{ width: 800, height: 600 }}><SchemaView state={makeState()} actions={actions} /></div>)
     fireEvent.click(screen.getByText('Кухня'))
     expect(actions.select).toHaveBeenCalledWith({ kind: 'device', id: 'a' })
+  })
+
+  it('executor link label carries the full condition in title', () => {
+    const when = 'я'.repeat(60)
+    const props = { id: 'e', sourceX: 0, sourceY: 0, targetX: 10, targetY: 100, sourcePosition: Position.Bottom, targetPosition: Position.Top, label: 'яя…', data: { title: when } }
+    render(<svg><LinkEdge {...(props as unknown as EdgeProps)} /></svg>)
+    expect(screen.getByTitle(when)).toHaveTextContent('яя…')
   })
 })

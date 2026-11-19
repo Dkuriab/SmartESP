@@ -55,7 +55,7 @@ describe('SideList', () => {
     expect(voice).toHaveTextContent('piper · irina')
     expect(voice).toHaveAttribute('aria-pressed', 'true')
     await userEvent.click(dispatcher)
-    expect(actions.select).toHaveBeenCalledWith({ kind: 'dispatcher', id: 'dispatcher' })
+    expect(actions.select).toHaveBeenCalledWith({ kind: 'executor', id: 'dispatcher' })
   })
 
   it('внизу — «Доступ из сети»', async () => {

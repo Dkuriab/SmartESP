@@ -1,6 +1,6 @@
 // Левая панель: колонки, обработчики, диспетчер и голос; клик выбирает блок.
 import type { ReactNode } from 'react'
-import { dispatcherInfo, listDevices, listStages, stagesLocked, stagesWith, voiceLabel } from '../../schema/blocks'
+import { dispatcherInfo, listDevices, listExecutors, listStages, stagesLocked, stagesWith, voiceLabel } from '../../schema/blocks'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState, Selection } from '../../state/model'
 import AccessInfo from '../common/AccessInfo'
@@ -78,7 +78,7 @@ export default function SideList(props: Props) {
       <Devices {...props} />
       <Stages {...props} />
       <Section title="Диспетчер">
-        <Row icon="⚡️" label="Диспетчер" sub={dispatcherInfo(state)?.model || '—'} target={{ kind: 'dispatcher', id: 'dispatcher' }} props={props} />
+        <Row icon="⚡️" label="Диспетчер" sub={dispatcherInfo(state)?.model || '—'} target={{ kind: 'executor', id: listExecutors(state).find((e) => e.entry)?.id ?? 'dispatcher' }} props={props} />
       </Section>
       <Section title="Голос">
         <Row icon="🔈" label="Голос" sub={voiceLabel(state) ?? '—'} target={{ kind: 'voice', id: 'voice' }} props={props} />

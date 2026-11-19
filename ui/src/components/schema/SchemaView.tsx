@@ -7,9 +7,12 @@ import { buildGraph } from '../../schema/buildGraph'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState, Selection } from '../../state/model'
 import { nodeTypes } from './nodes'
+import LinkEdge from './LinkEdge'
 import Refit from './Refit'
 
 type Props = { state: CoreState; actions: CoreActions }
+
+const edgeTypes = { default: LinkEdge, smoothstep: LinkEdge }
 
 /** Меньше умолчания React Flow (0,5): на узком экране схема в четыре столбца целиком. */
 const MIN_ZOOM = 0.2
@@ -19,7 +22,7 @@ function styled(edge: Edge): Edge {
   const { lit, strong, inactive } = (edge.data ?? {}) as { lit?: boolean; strong?: boolean; inactive?: boolean }
   const stroke = strong ? 'var(--purple)' : lit ? 'var(--accent)' : 'var(--line)'
   const style = { stroke, strokeWidth: strong ? 3 : lit ? 2.5 : 1.5, ...(inactive ? { strokeDasharray: '6 4' } : {}) }
-  return { ...edge, style, labelStyle: { fill: 'var(--muted)', fontSize: 11 }, labelBgStyle: { fill: 'var(--panel)' } }
+  return { ...edge, style }
 }
 
 export default function SchemaView({ state, actions }: Props) {
@@ -42,6 +45,7 @@ export default function SchemaView({ state, actions }: Props) {
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
       onNodeClick={onClick}
       fitView
       minZoom={MIN_ZOOM}

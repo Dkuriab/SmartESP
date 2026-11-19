@@ -60,28 +60,46 @@ function turnPath(turn: Turn | undefined, entry: ExecutorItem | undefined): stri
   return entry ? [entry.id] : []
 }
 
+/** Подпись связи: условие, а если пусто — описание цели; пусто и там — без подписи. */
+function linkText(when: string, target: ExecutorItem | undefined): string {
+  return when.trim() !== '' ? when : (target?.description ?? '').trim()
+}
+
+/** Параметры стрелки между исполнителями: соседу ниже — сверху вниз, остальным — петля справа. */
+function route(from: number, to: number, loops: number): Partial<Edge> {
+  if (to === from + 1) return { sourceHandle: 'out-bottom', targetHandle: 'in-top' }
+  const offset = 40 + 20 * loops
+  return { type: 'smoothstep', sourceHandle: 'loop-out', targetHandle: 'loop-in', pathOptions: { offset } } as Partial<Edge>
+}
+
 /** Стрелки исполнитель → исполнитель по связям и от каждого исполнителя к голосу. */
 function executorEdges(executors: ExecutorItem[], path: string[]): Edge[] {
   const edges: Edge[] = []
   const last = path[path.length - 1]
-  for (const e of executors) {
+  let loops = 0
+  executors.forEach((e, from) => {
+    const seen = new Set<string>()
     for (const l of e.links) {
-      if (!executors.some((x) => x.id === l.to)) continue
+      const to = executors.findIndex((x) => x.id === l.to)
+      if (to < 0 || l.to === e.id || seen.has(l.to)) continue
+      seen.add(l.to)
       const lit = path.some((p, i) => p === e.id && path[i + 1] === l.to)
+      const text = linkText(l.when, executors[to])
+      const r = route(from, to, loops)
+      if (r.type) loops += 1
       edges.push({
         id: `${execId(e.id)}->${execId(l.to)}`,
         source: execId(e.id),
         target: execId(l.to),
-        sourceHandle: 'out-bottom',
-        targetHandle: 'in-top',
-        label: shortWhen(l.when),
-        data: { lit, strong: false, inactive: !l.active, title: l.when },
+        ...r,
+        label: text ? shortWhen(text) : undefined,
+        data: { lit, strong: false, inactive: !l.active, title: text },
         animated: lit,
-      })
+      } as Edge)
     }
     const lit = e.id === last
     edges.push({ id: `${execId(e.id)}->voice`, source: execId(e.id), target: 'voice', sourceHandle: 'out-right', data: { lit, strong: false }, animated: lit })
-  }
+  })
   return edges
 }
 
@@ -90,10 +108,9 @@ function executorEdges(executors: ExecutorItem[], path: string[]): Edge[] {
  * исполнители (по связям) → голос. Ход проходит через все включённые обработчики
  * (data.lit); через оставивший пометку — выделенно (data.strong); дальше — по turn.path.
  */
-function buildEdges(state: CoreState, configured: string[], executors: ExecutorItem[], turn?: Turn): Edge[] {
+function buildEdges(state: CoreState, configured: string[], executors: ExecutorItem[], path: string[], turn?: Turn): Edge[] {
   const sources = new Set(turn?.annotations.map((a) => a.source))
   const entry = executors[0]?.entry ? executors[0] : undefined
-  const path = turnPath(turn, entry)
   const edges: Edge[] = []
   const link = (source: string, target: string, lit: boolean, strong = false, targetHandle?: string) =>
     edges.push({ id: `${source}->${target}`, source, target, targetHandle, data: { lit, strong: lit && strong }, animated: lit })
@@ -133,5 +150,5 @@ export function buildGraph(state: CoreState): Graph {
   const path = turnPath(turn, executors[0]?.entry ? executors[0] : undefined)
   const nodes = [...leftNodes(state, kinds, configured, turn), ...executorNodes(state, executors, path)]
   nodes.push({ id: 'voice', type: 'voice', position: column(1, X_3, 0), data: { label: voiceLabel(state) ?? '—', voiceState: state.status?.voice?.state, lit: !!turn, kind: 'voice', id: 'voice' } })
-  return { nodes, edges: buildEdges(state, configured, executors, turn) }
+  return { nodes, edges: buildEdges(state, configured, executors, path, turn) }
 }

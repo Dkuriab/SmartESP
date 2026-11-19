@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeState, makeStatus, makeTurn } from '../components/fixtures'
+import type { Edge } from '@xyflow/react'
 import type { Config } from '../state/model'
 import { buildGraph } from './buildGraph'
 
@@ -166,6 +167,45 @@ describe('buildGraph', () => {
       const g = graph([makeTurn(1, { device_id: 'a', path: [] })])
       expect(node(g, 'executor:dispatcher')?.data.lit).toBe(true)
       expect(edge(g, 'executor:big', 'voice')?.data?.lit).toBe(false)
+    })
+
+    const three = [
+      { id: 'a', name: 'A', entry: true, model: 'm', delegates: [{ to: 'b', when: 'x' }, { to: 'c', when: 'y' }] },
+      { id: 'b', name: 'B', model: 'm', delegates: [{ to: 'a', when: 'z' }] },
+      { id: 'c', name: 'C', model: 'm' },
+    ]
+
+    it('routes: neighbour below via bottom/top, skip and return via side loops', () => {
+      const g = graph([], three)
+      const down = edge(g, 'executor:a', 'executor:b')
+      expect(down).toMatchObject({ sourceHandle: 'out-bottom', targetHandle: 'in-top' })
+      expect(down?.type).toBeUndefined()
+      const skip = edge(g, 'executor:a', 'executor:c') as Edge & { pathOptions?: { offset: number } }
+      expect(skip).toMatchObject({ type: 'smoothstep', sourceHandle: 'loop-out', targetHandle: 'loop-in' })
+      expect(skip.pathOptions?.offset).toBe(40)
+      const up = edge(g, 'executor:b', 'executor:a') as Edge & { pathOptions?: { offset: number } }
+      expect(up).toMatchObject({ type: 'smoothstep', sourceHandle: 'loop-out' })
+      expect(up.pathOptions?.offset).toBe(60)
+    })
+
+    it('two-way link gets one straight edge and one loop', () => {
+      const g = graph([], [{ ...base[0] }, { ...base[1], delegates: [{ to: 'dispatcher', when: 'назад' }] }])
+      expect(edge(g, 'executor:dispatcher', 'executor:big')?.type).toBeUndefined()
+      expect(edge(g, 'executor:big', 'executor:dispatcher')?.type).toBe('smoothstep')
+    })
+
+    it('skips self-links and duplicate targets', () => {
+      const ex = [{ ...base[0], delegates: [{ to: 'dispatcher', when: 'я' }, { to: 'big', when: 'a' }, { to: 'big', when: 'b' }] }, base[1]]
+      const g = graph([], ex)
+      expect(edge(g, 'executor:dispatcher', 'executor:dispatcher')).toBeUndefined()
+      expect(g.edges.filter((e) => e.target === 'executor:big')).toHaveLength(1)
+    })
+
+    it('empty condition uses the target description, else no label', () => {
+      const ex = [{ ...base[0], delegates: [{ to: 'big', when: '' }] }, { ...base[1], description: 'расчёты' }]
+      expect(edge(graph([], ex), 'executor:dispatcher', 'executor:big')?.label).toBe('расчёты')
+      const none = [{ ...base[0], delegates: [{ to: 'big', when: '' }] }, base[1]]
+      expect(edge(graph([], none), 'executor:dispatcher', 'executor:big')?.label).toBeUndefined()
     })
   })
 })

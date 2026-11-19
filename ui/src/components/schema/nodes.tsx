@@ -74,6 +74,8 @@ function Executor({ data, selected }: NodeProps<SchemaNode>) {
       <div className="node-sub">{data.model || '—'}</div>
       {data.noTools && <div className="node-sub">не умеет передавать</div>}
       <Handle id="out-right" type="source" position={Position.Right} isConnectable={false} />
+      <Handle id="loop-out" type="source" position={Position.Right} style={{ top: '30%' }} isConnectable={false} />
+      <Handle id="loop-in" type="target" position={Position.Right} style={{ top: '70%' }} isConnectable={false} />
       <Handle id="out-bottom" type="source" position={Position.Bottom} isConnectable={false} />
     </div>
   )
