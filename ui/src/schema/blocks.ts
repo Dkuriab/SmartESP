@@ -6,6 +6,7 @@ import type { CoreState, Device } from '../state/model'
 /** Известные обработчики: выключенный показывается серым и без связей. */
 export const KNOWN_STAGES = [
   { kind: 'whisper_detect', title: 'Шёпот', icon: '🤫', description: 'отвечает тихо, если вопрос сказан шёпотом' },
+  { kind: 'clock', title: 'Время', icon: '🕒', description: 'добавляет к вопросу местное время и дату, чтобы ответ не выдумывал их' },
 ]
 
 /** Обработчик в списке: включён ли он в настройках. */

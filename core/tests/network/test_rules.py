@@ -53,3 +53,13 @@ def test_tool_lists_targets_in_enum_and_description() -> None:
         "type": "string",
         "description": "Задача своими словами, со всем нужным контекстом",
     }
+
+
+def test_tools_rule_text() -> None:
+    from smartesp.network.rules import TOOLS_RULE
+
+    assert (
+        TOOLS_RULE
+        == "Для фактов пользуйся инструментами; если нужного инструмента нет — скажи, что нет доступа."
+    )
+    assert TOOLS_RULE not in delegate_rule([BIG])  # добавляется отдельно, один раз

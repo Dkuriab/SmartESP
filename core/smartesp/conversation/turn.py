@@ -100,7 +100,7 @@ def log_turn(turn: Turn) -> None:
         turn.device_name,
         status(turn),
         turn.text,
-        [f"[{a.source}] {a.text}" for a in turn.annotations],
+        [f"[{a.label or a.source}] {a.text}" for a in turn.annotations],
         " → ".join(turn.path) or "—",
         turn.style,
         format_ms(turn.stt_ms),

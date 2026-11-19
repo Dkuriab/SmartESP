@@ -16,6 +16,7 @@ class Annotation:
     text: str  # строка для промпта
     source: str  # имя обработчика
     data: dict[str, object] = field(default_factory=lambda: dict[str, object]())
+    label: str = ""  # как показать источник в промпте («[время]»); пусто — имя источника
 
 
 class Stage(Protocol):

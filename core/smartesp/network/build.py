@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from smartesp.contracts import Executor, Stage, ToolBox, UsesModels
 
 from .network import ExecutorNetwork, Member
-from .rules import Target, delegate_rule
+from .rules import TOOLS_RULE, Target, delegate_rule
 
 TOOLS = "tools"  # возможность модели вызывать инструменты
 Capabilities = Callable[[str], Awaitable[frozenset[str]]]  # модель → её возможности
@@ -54,18 +54,35 @@ def active_targets(spec: MemberSpec, specs: Sequence[MemberSpec]) -> tuple[Targe
     return tuple(targets)
 
 
-def _prompt(spec: MemberSpec, stages: Sequence[Stage], targets: Sequence[Target], tools_ok: bool) -> str:
-    """Итоговый промпт: свой + правила обработчиков + правило передачи, если модель умеет инструменты."""
+def _prompt(
+    spec: MemberSpec,
+    stages: Sequence[Stage],
+    targets: Sequence[Target],
+    tools_ok: bool,
+    has_tools: bool = False,
+) -> str:
+    """Итоговый промпт: свой + правила обработчиков + правила передачи и инструментов (если умеет)."""
     prompt = with_stage_hints(spec.system_prompt, stages)
-    rule = delegate_rule(targets) if tools_ok else ""
-    return "\n".join([prompt, rule]) if rule else prompt
+    rules = [delegate_rule(targets)] if tools_ok else []
+    if tools_ok and has_tools:
+        rules.append(TOOLS_RULE)
+    return "\n".join([prompt, *(r for r in rules if r)])
 
 
 def member_prompts(
-    specs: Sequence[MemberSpec], stages: Sequence[Stage], tools_ok: Mapping[str, bool]
+    specs: Sequence[MemberSpec],
+    stages: Sequence[Stage],
+    tools_ok: Mapping[str, bool],
+    has_tools: bool = False,
 ) -> dict[str, str]:
-    """Итоговые промпты участников по id; нет в tools_ok — модель считается без инструментов."""
-    return {s.id: _prompt(s, stages, active_targets(s, specs), tools_ok.get(s.id, False)) for s in specs}
+    """Итоговые промпты участников по id; нет в tools_ok — модель считается без инструментов.
+
+    has_tools — у сети есть инструменты коннекторов (тогда добавляется правило про факты).
+    """
+    return {
+        s.id: _prompt(s, stages, active_targets(s, specs), tools_ok.get(s.id, False), has_tools)
+        for s in specs
+    }
 
 
 async def _capabilities_by_model(
@@ -105,7 +122,7 @@ async def build_network(
     for spec in specs:
         tools_ok = TOOLS in found[spec.model]
         targets = active_targets(spec, specs)
-        executor = make(spec.id, _prompt(spec, stages, targets, tools_ok))
+        executor = make(spec.id, _prompt(spec, stages, targets, tools_ok, bool(tools)))
         plain = make(spec.id, _prompt(spec, stages, targets, False)) if tools_ok and targets else None
         own_tools = tools if tools_ok else ()
         members[spec.id] = Member(executor, spec.name, targets, tools_ok, plain, own_tools)
@@ -127,8 +144,13 @@ class NetworkPrompts:
         stages: Callable[[], Sequence[Stage]],
         known: Callable[[str], frozenset[str]],
         live: Callable[[], object] = lambda: None,
+        has_tools: Callable[[], bool] = lambda: False,
     ) -> None:
-        """entry() — id входного; specs(), stages() — из текущих настроек; live() — живой исполнитель."""
+        """entry() — id входного; specs(), stages() — из текущих настроек; live() — живой исполнитель.
+
+        has_tools() — есть ли сейчас инструменты коннекторов.
+        """
+        self._has_tools = has_tools
         self._entry = entry
         self._specs = specs
         self._stages = stages
@@ -138,7 +160,9 @@ class NetworkPrompts:
     def all(self) -> dict[str, str]:
         """Итоговые промпты всех участников по id."""
         specs = self._specs()
-        return member_prompts(specs, self._stages(), {s.id: self._tools_ok(s) for s in specs})
+        return member_prompts(
+            specs, self._stages(), {s.id: self._tools_ok(s) for s in specs}, self._has_tools()
+        )
 
     def entry(self) -> str:
         """Итоговый промпт входного исполнителя."""

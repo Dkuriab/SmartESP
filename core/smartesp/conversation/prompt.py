@@ -12,7 +12,7 @@ def build_messages(
     строка «Колонка: имя», пустая строка и сам текст вопроса. Системное описание
     добавляет исполнитель. Возвращает новый список, history не меняется.
     """
-    lines = [f"[{a.source}] {a.text}" for a in annotations]
+    lines = [f"[{a.label or a.source}] {a.text}" for a in annotations]
     lines.append(f"Колонка: {device_name}")
     content = "\n".join(lines) + "\n\n" + text
     return [*history, ChatMessage("user", content)]

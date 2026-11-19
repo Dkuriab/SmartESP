@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fakes.fake_executor import FakeOllama
+from fakes.fake_toolbox import FakeToolBox, tool_spec
 from smartesp.contracts import Annotation, Executor, Utterance
 from smartesp.network import (
     MemberSpec,
@@ -14,6 +15,7 @@ from smartesp.network import (
     member_prompts,
     with_stage_hints,
 )
+from smartesp.network.rules import TOOLS_RULE
 
 HINT = "Пометка [style:quiet] — отвечай тише."
 
@@ -172,3 +174,27 @@ async def test_network_prompts_prefer_live_network_then_known() -> None:
 def test_stage_hint_is_appended() -> None:
     assert with_stage_hints("Промпт.", [HintStage()]) == "Промпт.\n" + HINT
     assert with_stage_hints("Промпт.", []) == "Промпт."
+
+
+async def test_tools_rule_when_connector_tools_present_even_without_targets() -> None:
+    items = specs()  # без условия и описания — целей нет
+    made = made_for(items)
+    box = FakeToolBox([tool_spec("notes_add")])
+    await build_network("dispatcher", items, [], made, Capabilities(), box)
+    assert made.by_id["dispatcher"].prompt.endswith("\n" + TOOLS_RULE)
+    assert "delegate" not in made.by_id["dispatcher"].prompt
+
+
+async def test_no_tools_rule_without_tools_or_with_empty_toolbox() -> None:
+    items = specs()
+    made = made_for(items)
+    await build_network("dispatcher", items, [], made, Capabilities())
+    await build_network("dispatcher", items, [], made, Capabilities(), FakeToolBox())
+    assert all(TOOLS_RULE not in executor.prompt for _, executor in made.made)
+
+
+def test_member_prompts_tools_rule_only_for_tool_models_with_tools() -> None:
+    items = specs()
+    prompts = member_prompts(items, [], {"dispatcher": True, "big": False}, has_tools=True)
+    assert prompts["dispatcher"].endswith(TOOLS_RULE) and TOOLS_RULE not in prompts["big"]
+    assert TOOLS_RULE not in member_prompts(items, [], {"dispatcher": True}).get("dispatcher", "")

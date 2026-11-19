@@ -129,6 +129,7 @@ def control(
         lambda: prompt_stages(store.config, kinds),
         capabilities.known,
         lambda: live.executor,
+        lambda: bool(tools.specs()),
     )
     return Core(
         store,

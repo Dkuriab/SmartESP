@@ -60,7 +60,7 @@ def test_partial_file_is_merged_with_code_defaults(tmp_path: Path) -> None:
     write(path, {"version": 3, "devices": {"AA:BB:CC:DD:EE:FF": {"name": "Кухня"}}})
     config = load_config(path)
     assert config.devices["AA:BB:CC:DD:EE:FF"].name == "Кухня"
-    assert [s.kind for s in config.stages] == ["whisper_detect"]
+    assert [s.kind for s in config.stages] == ["whisper_detect", "clock"]
     assert read(path) == {"version": 3, "devices": {"AA:BB:CC:DD:EE:FF": {"name": "Кухня"}}}
 
 
@@ -69,7 +69,7 @@ def test_legacy_full_dump_is_pruned_to_owner_changes(tmp_path: Path) -> None:
     write(path, legacy_dump(devices={"1C:DB:D4:4A:91:D0": {"name": "Кухня"}}))
     config = load_config(path)
     assert read(path) == {"version": 3, "devices": {"1C:DB:D4:4A:91:D0": {"name": "Кухня"}}}
-    assert [s.kind for s in config.stages] == ["whisper_detect"]
+    assert [s.kind for s in config.stages] == ["whisper_detect", "clock"]
     assert config.entry_executor().system_prompt == Config().entry_executor().system_prompt
     assert (tmp_path / "config.yaml.bak").exists()
 
@@ -164,3 +164,20 @@ def test_v3_without_executors_gets_new_prompt(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     write(path, {"version": 3, "history": {"max_turns": 4}})
     assert load_config(path).entry_executor().system_prompt.startswith("Тебя зовут Кузя.")
+
+
+def test_legacy_kuzya_prompt_without_honesty_rule_is_pruned(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    kuzya = (
+        "Тебя зовут Кузя. Ты голосовой помощник умной колонки. Отвечай по-русски, коротко, 1–3 предложения, "
+        "без разметки, списков и эмодзи — ответ будет озвучен."
+    )
+    write(path, legacy_dump(prompt=kuzya))
+    config = load_config(path)
+    assert config == Config() and "У меня нет доступа" in config.entry_executor().system_prompt
+    assert read(path) == {"version": 3}
+
+
+def test_default_prompt_has_honesty_rule() -> None:
+    prompt = Config().entry_executor().system_prompt
+    assert "Не выдумывай" in prompt and "У меня нет доступа" in prompt and len(prompt) < 600

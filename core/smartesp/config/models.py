@@ -7,6 +7,10 @@ from pydantic import BaseModel, Field, model_validator
 DEFAULT_SYSTEM_PROMPT = (
     "Тебя зовут Кузя. Ты голосовой помощник умной колонки. Отвечай по-русски, коротко, 1–3 предложения, "
     "без разметки, списков и эмодзи — ответ будет озвучен."
+    " Ты знаешь только то, что есть в сообщении, в пометках и в ответах инструментов."
+    " Не выдумывай время, погоду, новости и состояние устройств."
+    " Нет данных или инструмента — скажи: «У меня нет доступа к …»."
+    " Не говори, что что-то сделал, если инструмент этого не сделал."
 )
 CONFIG_VERSION = 3  # 2 — в config.yaml только изменения владельца; 3 — умолчание tts стало silero
 DEFAULT_MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
@@ -174,7 +178,9 @@ class Config(BaseModel):
     stt: SttConfig = Field(default_factory=SttConfig)
     tts: TtsConfig = Field(default_factory=TtsConfig)
     executors: list[ExecutorConfig] = Field(default_factory=_default_executors)
-    stages: list[StageConfig] = Field(default_factory=lambda: [StageConfig(kind="whisper_detect")])
+    stages: list[StageConfig] = Field(
+        default_factory=lambda: [StageConfig(kind="whisper_detect"), StageConfig(kind="clock")]
+    )
     history: HistoryConfig = Field(default_factory=HistoryConfig)
     speech: SpeechConfig = Field(default_factory=SpeechConfig)
     connectors: list[ConnectorConfig] = Field(default_factory=_default_connectors)
