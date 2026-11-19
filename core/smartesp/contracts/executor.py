@@ -6,13 +6,21 @@ from collections.abc import AsyncIterator, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
+DELEGATE_TOOL = "delegate"  # имя инструмента передачи задачи другому исполнителю
+
 
 @dataclass(frozen=True)
 class ChatMessage:
-    """Сообщение диалога."""
+    """Сообщение диалога.
 
-    role: Literal["system", "user", "assistant"]
+    tool_calls — вызовы инструментов в сообщении assistant; tool_name — имя
+    инструмента в сообщении tool (результат его вызова).
+    """
+
+    role: Literal["system", "user", "assistant", "tool"]
     content: str
+    tool_calls: tuple[ToolCall, ...] = ()
+    tool_name: str = ""
 
 
 @dataclass(frozen=True)

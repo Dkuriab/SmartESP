@@ -22,13 +22,13 @@ from smartesp.contracts import (
     WarmsUp,
 )
 
+from .dialog import flatten, with_task
 from .names import named_target
 from .rules import DELEGATE_TOOL, Target, delegate_tool
 
 _log = logging.getLogger(__name__)
 
 MAX_DEPTH = 2  # передач в одном ходе: диспетчер → A → B
-TASK_PREFIX = "\n\nЗадача от диспетчера: "  # дописывается к последнему сообщению user у цели
 FAILURE_PHRASE = "{name} сейчас не отвечает."  # цель недоступна или ничего не сказала
 _STYLE_TAG = re.compile(r"^\s*\[\s*style\s*:\s*[\w-]+\s*\]", re.IGNORECASE)  # «[style:quiet]»
 
@@ -65,16 +65,6 @@ async def _closing(parts: AsyncIterator[ReplyPart]) -> AsyncIterator[AsyncIterat
     finally:
         if isinstance(parts, AsyncGenerator):
             await parts.aclose()
-
-
-def _with_task(messages: list[ChatMessage], task: str) -> list[ChatMessage]:
-    """Копия сообщений, где к последнему сообщению user дописана задача от диспетчера."""
-    for index in range(len(messages) - 1, -1, -1):
-        if messages[index].role == "user":
-            last = messages[index]
-            changed = ChatMessage("user", last.content + TASK_PREFIX + task)
-            return [*messages[:index], changed, *messages[index + 1 :]]
-    return [*messages, ChatMessage("user", TASK_PREFIX.lstrip() + task)]
 
 
 def _speakable(text: str) -> bool:
@@ -214,7 +204,7 @@ class ExecutorNetwork:
         ExecutorError цели или ответ без текста (пусто, пробелы, одна метка
         стиля) — в конце фраза об ошибке с failure.
         """
-        own = _with_task(base, handoff.task)
+        own = with_task(flatten(base), handoff.task)
         said: list[str] = []
         try:
             parts = self._member_parts(handoff.target, base, own, (), depth)

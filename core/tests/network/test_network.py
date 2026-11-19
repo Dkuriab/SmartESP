@@ -291,3 +291,32 @@ async def test_cancel_while_target_waits_closes_target() -> None:
     assert isinstance(stream, AsyncGenerator)
     await stream.aclose()
     assert big.closed_early
+
+
+async def test_target_gets_flat_dialog_without_tool_structure() -> None:
+    history = [
+        ChatMessage("user", "Привет"),
+        ChatMessage("assistant", "Минутку.", tool_calls=(ToolCall("delegate", {"executor": "big"}),)),
+        ChatMessage("tool", "Здравствуй", tool_name="delegate"),
+        ChatMessage("user", "Сколько будет 17 в кубе?"),
+    ]
+    big = FakeExecutor(["4913."])
+    await collect(network(FakeExecutor([call()]), big), history)
+    assert big.calls[0][:3] == [
+        ChatMessage("user", "Привет"),
+        ChatMessage("assistant", "Минутку."),
+        ChatMessage("assistant", "Здравствуй"),
+    ]
+    assert all(not m.tool_calls and not m.tool_name and m.role != "tool" for m in big.calls[0])
+
+
+async def test_entry_gets_structured_history_unchanged() -> None:
+    history = [
+        ChatMessage("user", "Привет"),
+        ChatMessage("assistant", "Минутку.", tool_calls=(ToolCall("delegate", {"executor": "big"}),)),
+        ChatMessage("tool", "Здравствуй", tool_name="delegate"),
+        ChatMessage("user", "Ещё вопрос"),
+    ]
+    entry = FakeExecutor(["Привет."])
+    await collect(network(entry, FakeExecutor([])), history)
+    assert entry.calls[0] == history

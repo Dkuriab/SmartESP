@@ -5,9 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from smartesp.contracts import ToolSpec
-
-DELEGATE_TOOL = "delegate"  # имя инструмента передачи задачи
+from smartesp.contracts import DELEGATE_TOOL, ToolSpec
 
 _RULE_HEAD = "Ты можешь передать задачу другим исполнителям. Каждому — свои вопросы:"
 _RULE_TAIL = (

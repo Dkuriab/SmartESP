@@ -5,6 +5,7 @@ from .control import ChangeResult, ConfigStore, CorePort, Section, VoicePort
 from .device import DeviceInfo, DevicePort
 from .events import CoreEvent, EventFeed, EventSink, Subscription
 from .executor import (
+    DELEGATE_TOOL,
     ChatMessage,
     Executor,
     ExecutorError,
@@ -22,6 +23,7 @@ from .stt import SpeechToText
 from .tts import TextToSpeech, VoiceInfo, VoiceNotDownloadedError
 
 __all__ = [
+    "DELEGATE_TOOL",
     "SAMPLE_RATE",
     "Analyzer",
     "Annotation",

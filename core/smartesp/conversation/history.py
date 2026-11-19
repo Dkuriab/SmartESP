@@ -10,11 +10,10 @@ from smartesp.contracts import ChatMessage
 
 @dataclass(frozen=True)
 class _Exchange:
-    """Один завершённый ход: вопрос, ответ и когда он записан."""
+    """Один завершённый ход: его сообщения и когда он записан."""
 
     at: float
-    user: str
-    assistant: str
+    messages: tuple[ChatMessage, ...]
 
 
 class History:
@@ -30,19 +29,22 @@ class History:
         self._exchanges: deque[_Exchange] = deque(maxlen=max_turns)
 
     def messages(self) -> list[ChatMessage]:
-        """Возвращает живые ходы как пары сообщений user/assistant, от старых к новым."""
+        """Возвращает сообщения живых ходов, от старых к новым."""
         oldest = self._clock() - self._max_age_s
         while self._exchanges and self._exchanges[0].at < oldest:
             self._exchanges.popleft()
         result: list[ChatMessage] = []
         for exchange in self._exchanges:
-            result.append(ChatMessage("user", exchange.user))
-            result.append(ChatMessage("assistant", exchange.assistant))
+            result.extend(exchange.messages)
         return result
 
     def add(self, user: str, assistant: str) -> None:
         """Запоминает завершённый ход: текст вопроса и полный текст ответа."""
-        self._exchanges.append(_Exchange(self._clock(), user, assistant))
+        self.add_messages([ChatMessage("user", user), ChatMessage("assistant", assistant)])
+
+    def add_messages(self, messages: list[ChatMessage]) -> None:
+        """Запоминает завершённый ход сообщениями (с вызовами инструментов и их ответами)."""
+        self._exchanges.append(_Exchange(self._clock(), tuple(messages)))
 
     def set_limits(self, max_turns: int, max_age_s: float) -> None:
         """Меняет пределы на лету: из записанных ходов остаются последние max_turns."""

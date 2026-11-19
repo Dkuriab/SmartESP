@@ -25,6 +25,7 @@ from .sentences import is_meaningless
 from .streams import closing, first_part, no_audio
 from .turn import Parts, Turn, answer_text, log_turn
 from .turn_events import finished_data, heard_data, started_data
+from .turn_messages import turn_messages
 from .turn_tasks import TurnTasks
 
 _log = logging.getLogger(__name__)
@@ -182,7 +183,7 @@ class Orchestrator:
         await self._reply(turn, parts, messages)
         answer = answer_text(turn)
         if turn.completed and answer and self._is_live(turn):
-            self._history.add(turn.text, answer)
+            self._history.add_messages(turn_messages(turn))
 
     async def _recover(self, turn: Turn) -> None:
         """После ошибки: сигнал ошибки и, если ответ ещё не начат, пустой ответ (reply_end)."""

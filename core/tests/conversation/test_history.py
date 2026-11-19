@@ -1,6 +1,6 @@
 """Тесты истории диалога и сборки сообщений для исполнителя."""
 
-from smartesp.contracts import Annotation, ChatMessage
+from smartesp.contracts import Annotation, ChatMessage, ToolCall
 from smartesp.conversation import History, build_messages
 
 
@@ -59,3 +59,19 @@ def test_set_limits_keeps_newest() -> None:
     assert [m.content for m in history.messages() if m.role == "user"] == ["вопрос 4", "вопрос 5"]
     clock.now += 61
     assert history.messages() == []
+
+
+def test_add_messages_keeps_structure_and_limits_count_turns() -> None:
+    history = History(max_turns=2, max_age_s=600)
+    call = ToolCall("delegate", {"executor": "big", "task": "t"})
+    turn = [
+        ChatMessage("user", "q"),
+        ChatMessage("assistant", "Минутку.", tool_calls=(call,)),
+        ChatMessage("tool", "ответ", tool_name="delegate"),
+    ]
+    history.add_messages(turn)
+    history.add("второй", "ответ")
+    assert history.messages()[:3] == turn
+    assert len(history.messages()) == 5
+    history.add("третий", "ответ")
+    assert history.messages()[0] == ChatMessage("user", "второй")

@@ -13,7 +13,7 @@ from conversation_helpers import CountingTTS, Setup, make_utterance, running, un
 from fakes.fake_device_port import FakeDevicePort
 from fakes.fake_events import RecordingSink
 from fakes.fake_executor import FakeExecutor
-from smartesp.contracts import ChatMessage, Handoff, ReplyPart, ToolSpec
+from smartesp.contracts import ChatMessage, Handoff, ReplyPart, ToolCall, ToolSpec
 
 THINKING = ("kitchen", "thinking")
 PHRASE = "Сейчас спрошу большую модель."
@@ -105,7 +105,10 @@ async def test_history_keeps_question_and_all_spoken_answer() -> None:
     await run_turn(setup, sink)
     assert setup.history.messages() == [
         ChatMessage("user", "Какая погода?"),
-        ChatMessage("assistant", f"{PHRASE} Потому что свет рассеивается."),
+        ChatMessage(
+            "assistant", PHRASE, tool_calls=(ToolCall("delegate", {"executor": "big", "task": TASK}),)
+        ),
+        ChatMessage("tool", "Потому что свет рассеивается.", tool_name="delegate"),
     ]
 
 

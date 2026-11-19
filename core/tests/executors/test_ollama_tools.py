@@ -115,3 +115,23 @@ async def test_capabilities_error_is_empty() -> None:
     c = ShowClient(error=httpx.ConnectError("down"))
     assert await model_capabilities("m", c) == frozenset()
     assert await model_capabilities("m", ShowClient(SimpleNamespace(capabilities=None))) == set()
+
+
+async def test_history_messages_carry_tool_calls_and_tool_name() -> None:
+    c = ToolClient([obj_chunk("x")])
+    history = [
+        ChatMessage("user", "вопрос"),
+        ChatMessage("assistant", "Минутку.", tool_calls=(ToolCall("delegate", {"executor": "big"}),)),
+        ChatMessage("tool", "ответ", tool_name="delegate"),
+        ChatMessage("user", "ещё"),
+    ]
+    async for _ in OllamaExecutor("m", "s", "1m", c).run(history):
+        pass
+    sent = c.chat_kwargs["messages"]
+    assert sent[1] == {"role": "user", "content": "вопрос"}
+    assert sent[2] == {
+        "role": "assistant",
+        "content": "Минутку.",
+        "tool_calls": [{"function": {"name": "delegate", "arguments": {"executor": "big"}}}],
+    }
+    assert sent[3] == {"role": "tool", "content": "ответ", "tool_name": "delegate"}

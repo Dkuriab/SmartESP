@@ -5,7 +5,7 @@ import ollama
 import pytest
 
 from smartesp.config.models import BIG_WHEN, DEFAULT_SYSTEM_PROMPT
-from smartesp.contracts import ChatMessage
+from smartesp.contracts import ChatMessage, ToolCall
 from smartesp.executors import OllamaExecutor
 from smartesp.network import DELEGATE_TOOL, Target, delegate_rule, delegate_tool
 from smartesp.stages.whisper_detect import PROMPT_HINT
@@ -71,7 +71,12 @@ DEFAULT_TARGET = (Target("big", "Большая модель", BIG_WHEN),)
 DEFAULT_HARD = [
     "Почему пала Римская империя? Главные причины",
     "Объясни подробно, почему небо голубое",
-    "Посчитай 17 процентов от 2384 и умножь на 3",
+    "Расскажи, как устроена иммунная система",
+]
+AFTER_HISTORY_HARD = [  # вопрос из истории (про небо) не повторяем: на повтор модель вправе ответить сама
+    "Почему пала Римская империя? Главные причины",
+    "Объясни подробно, как работает фотосинтез",
+    "Расскажи, как устроена иммунная система",
 ]
 DEFAULT_SIMPLE = ["Привет, как дела?", "Спасибо большое"]
 
@@ -98,3 +103,36 @@ async def test_gemma_default_config_one_target_with_whisper_hint() -> None:
     print(f"\nhard delegated {sum(hard)} of {len(hard)}; simple delegated {sum(simple)} of {len(simple)}")
     assert sum(hard) >= 5
     assert not any(simple)
+
+
+@pytest.mark.models
+async def test_gemma_delegates_after_prior_delegated_turn_in_history() -> None:
+    """В истории уже есть передача, записанная вызовом инструмента: следующий сложный вопрос снова уходит."""
+    prompt = f"{DEFAULT_SYSTEM_PROMPT}\n{PROMPT_HINT}\n{delegate_rule(DEFAULT_TARGET)}"
+    executor = OllamaExecutor(MODEL, prompt, "5m")
+    try:
+        await executor.warm_up()
+    except (httpx.HTTPError, ConnectionError, ollama.ResponseError):
+        pytest.skip("Ollama или модель недоступны")
+    task = "Объяснить, почему небо голубое"
+    history = [
+        ChatMessage("user", "Объясни подробно, почему небо голубое"),
+        ChatMessage(
+            "assistant",
+            "Минутку, сейчас узнаю.",
+            tool_calls=(ToolCall(DELEGATE_TOOL, {"executor": "big", "task": task}),),
+        ),
+        ChatMessage(
+            "tool",
+            "Небо голубое из-за рассеяния солнечного света на молекулах воздуха.",
+            tool_name=DELEGATE_TOOL,
+        ),
+    ]
+    tools = [delegate_tool(DEFAULT_TARGET)]
+    results: list[bool] = []
+    for question in AFTER_HISTORY_HARD:
+        for _ in range(2):
+            messages = [*history, ChatMessage("user", question)]
+            results.append(any([p.tool_call is not None async for p in executor.run(messages, tools)]))
+    print(f"\ndelegated {sum(results)} of {len(results)} with delegated turn in history")
+    assert sum(results) >= 5

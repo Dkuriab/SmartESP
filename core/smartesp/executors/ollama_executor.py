@@ -54,6 +54,18 @@ def _tool_payload(tool: ToolSpec) -> dict[str, Any]:
     }
 
 
+def _message_payload(message: ChatMessage) -> dict[str, Any]:
+    """Сообщение в формате chat(messages=...): с вызовами инструментов и именем инструмента."""
+    payload: dict[str, Any] = {"role": message.role, "content": message.content}
+    if message.tool_calls:
+        payload["tool_calls"] = [
+            {"function": {"name": c.name, "arguments": c.arguments}} for c in message.tool_calls
+        ]
+    if message.tool_name:
+        payload["tool_name"] = message.tool_name
+    return payload
+
+
 class OllamaExecutor:
     """Отвечает на диалог моделью из Ollama, отдавая текст по кускам."""
 
@@ -112,7 +124,7 @@ class OllamaExecutor:
         Кидает ExecutorError, если Ollama недоступна или модели нет.
         """
         payload = [{"role": "system", "content": self._system_prompt}]
-        payload += [{"role": m.role, "content": m.content} for m in messages]
+        payload += [_message_payload(m) for m in messages]
         try:
             extra: dict[str, Any] = {"tools": [_tool_payload(t) for t in tools]} if tools else {}
             stream = await self._client.chat(
