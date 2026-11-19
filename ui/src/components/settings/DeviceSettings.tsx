@@ -1,12 +1,17 @@
-// Настройки колонки: имя (Enter или потеря фокуса — сохранить) и сведения о ней.
+// Настройки колонки: имя (Enter или потеря фокуса — сохранить), сведения о ней и файл на ней.
 import { useState } from 'react'
-import type { Device } from '../../state/model'
+import type { Device, FilePhase } from '../../state/model'
 import { formatClock } from '../feed/time'
+import DeviceFile, { MIN_SPEECH_PROTOCOL } from './DeviceFile'
 
-/** С этой версии протокола колонка принимает речь, начатую ядром. */
-const MIN_SPEECH_PROTOCOL = 3
-
-type Props = { device: Device; onRename: (name: string) => void }
+type Props = {
+  device: Device
+  onRename: (name: string) => void
+  /** Фаза файла на колонке; нет — не играет. */
+  filePhase?: FilePhase
+  onPlayFile: (file: File) => void
+  onStopFile: () => void
+}
 
 /** Адрес без порта: «IP:port» и «[IPv6]:port»; голый IPv6 (много «:») — как есть. */
 function hostOf(remote: string): string {
@@ -21,7 +26,7 @@ function presence(d: Device): string {
   return d.last_seen ? `была в ${formatClock(d.last_seen)}` : 'не подключалась'
 }
 
-export default function DeviceSettings({ device, onRename }: Props) {
+export default function DeviceSettings({ device, onRename, filePhase, onPlayFile, onStopFile }: Props) {
   const [draft, setDraft] = useState(device.name)
   const save = () => {
     const name = draft.trim()
@@ -59,6 +64,7 @@ export default function DeviceSettings({ device, onRename }: Props) {
       {device.connected && device.protocol < MIN_SPEECH_PROTOCOL && (
         <div className="set-note">Обновите прошивку, чтобы Кузя мог говорить сам</div>
       )}
+      <DeviceFile device={device} phase={filePhase} onPlay={onPlayFile} onStop={onStopFile} />
     </div>
   )
 }

@@ -22,6 +22,9 @@ export type Selection = {
 
 export type Notice = { text: string; tone: 'ok' | 'error' }
 
+/** Файл на колонке: загружается (ждём ответа ядра) или играет. */
+export type FilePhase = 'sending' | 'playing'
+
 /** Ход скачивания голоса; total неизвестен — null. */
 export type Download = { done: number; total: number | null }
 
@@ -44,6 +47,8 @@ export type CoreState = {
   restarting: boolean
   /** Кто работает прямо сейчас: исполнители и коннекторы (из событий хода). */
   live: Live
+  /** Файлы на колонках: device_id → фаза; нет ключа — файл не играет. */
+  files: Record<string, FilePhase>
   // --- служебное, компоненты не читают ---
   /**
    * turn_id ходов, полученных при текущем подключении (событием или загрузкой).
@@ -87,6 +92,8 @@ export type Action =
   | { type: 'dismissNotice' }
   /** Просьба о перезапуске отправлена (on) или не удалась. */
   | { type: 'restarting'; on: boolean }
+  /** Фаза файла на колонке (null — не играет); onlyFrom — менять, только если сейчас эта фаза. */
+  | { type: 'filePhase'; deviceId: string; phase: FilePhase | null; onlyFrom?: FilePhase }
 
 export const MAX_TURNS = 100
 /** Сколько последних применённых change_id помнить. */
@@ -108,6 +115,7 @@ export function initialState(connection: Connection = 'connecting'): CoreState {
     notice: null,
     restarting: false,
     live: NO_LIVE,
+    files: {},
     currentTurnIds: [],
     pendingSince: {},
     voiceFailures: {},

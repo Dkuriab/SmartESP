@@ -76,6 +76,8 @@ export function makeActions(): CoreActions {
     previewVoice: vi.fn(),
     selectVoice: vi.fn(),
     renameDevice: vi.fn(),
+    playFile: vi.fn(),
+    stopFile: vi.fn(),
     setStages: vi.fn(),
     setConnectors: vi.fn(),
     addExecutor: vi.fn().mockResolvedValue(null),

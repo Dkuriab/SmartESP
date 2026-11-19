@@ -1,5 +1,6 @@
 // Редьюсер состояния интерфейса: чистая функция, без сети.
 import { applyEvent } from './eventRules'
+import { setFilePhase } from './files'
 import { NO_LIVE } from './live'
 import type { Action, CoreState, Loaded, Status } from './model'
 import { mergeTurns } from './turns'
@@ -42,8 +43,8 @@ function applyLoaded(state: CoreState, loaded: Loaded, requestedAt?: number): Co
  * и turn_id заново — сведения о них от прежнего подключения сбрасываются.
  * Изменение, отправленное после этого, снова попадёт в pending. Перезапуск
  * отменяет скачивания без voice_ready — их ход тоже сбрасывается; кнопка
- * перезапуска снова доступна. Живая подсветка — заново: пока связи не было,
- * окончания работы могли потеряться.
+ * перезапуска снова доступна. Живая подсветка и файлы на колонках — заново: пока
+ * связи не было, окончания работы могли потеряться.
  */
 function opened(state: CoreState): CoreState {
   return {
@@ -56,6 +57,7 @@ function opened(state: CoreState): CoreState {
     downloads: {},
     restarting: false,
     live: NO_LIVE,
+    files: {},
   }
 }
 
@@ -101,5 +103,7 @@ export function reduce(state: CoreState, action: Action): CoreState {
       return { ...state, notice: null }
     case 'restarting':
       return { ...state, restarting: action.on }
+    case 'filePhase':
+      return setFilePhase(state, action.deviceId, action.phase, action.onlyFrom)
   }
 }

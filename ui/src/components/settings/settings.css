@@ -330,3 +330,16 @@
   border-color: var(--green);
   color: var(--green);
 }
+
+/* Файл на колонке: кнопки и фаза в одну строку. */
+.device-file-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.device-file-phase {
+  color: var(--muted);
+  font-size: 12px;
+}

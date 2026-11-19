@@ -2,6 +2,8 @@
 import type { createClient } from '../api/client'
 import type { ExecutorActions } from './executorActions'
 import { createExecutorActions } from './executorActions'
+import type { FileActions } from './fileActions'
+import { createFileActions } from './fileActions'
 import type { Config, Notice, Selection } from './model'
 import type { Dispatch } from './request'
 import { send, sendNotify } from './request'
@@ -13,7 +15,8 @@ export type Client = ReturnType<typeof createClient>
 /** Обработчик в списке stages (форма config.yaml). */
 export type StageEntry = { kind: string; timeout_ms?: number }
 
-export type CoreActions = ExecutorActions & {
+export type CoreActions = ExecutorActions &
+  FileActions & {
   /** Частичная правка настроек; description показывается, пока она применяется. */
   patchConfig(patch: Record<string, unknown>, description: string): Promise<void>
   downloadVoice(kind: string, voice: string): Promise<void>
@@ -91,6 +94,7 @@ export function createActions(deps: ActionDeps): CoreActions {
   const sent = deps.sentExecutors ?? createSentExecutors(now)
   return {
     ...createExecutorActions({ dispatch, getConfig, sent }, sendPatch),
+    ...createFileActions(client, dispatch),
     patchConfig: patch,
     previewVoice,
     loadAccess,

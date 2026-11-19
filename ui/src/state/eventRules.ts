@@ -2,6 +2,7 @@
 import type { CoreEvent } from '../api/events'
 import type { CoreState, Device, Status, Turn } from './model'
 import { MAX_APPLIED } from './model'
+import { applyFileEvent } from './files'
 import { applyLive } from './live'
 import { addTurn } from './turns'
 
@@ -120,6 +121,9 @@ export function applyEvent(state: CoreState, e: CoreEvent): CoreState {
       return changeApplied(state, e.data)
     case 'core_state':
       return coreState(state, e.data)
+    case 'playback_started':
+    case 'playback_finished':
+      return applyFileEvent(state, e)
     default:
       return state
   }
