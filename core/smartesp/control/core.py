@@ -173,6 +173,13 @@ class Core:
         """
         return self._changes.submit(next(self._ids), patch)
 
+    async def rebuild(self, sections: Sequence[str]) -> None:
+        """Пересобирает разделы по записанным настройкам в очереди правок (после идущих правок).
+
+        Ошибка сборки пробрасывается; после aclose — RuntimeError.
+        """
+        await self._changes.rebuild(sections)
+
     async def models(self) -> list[dict[str, Any]]:
         """Модели Ollama: [{name, size_bytes, supports_tools}]; Ollama недоступна — ExecutorError."""
         listed = await self._models()

@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
-from collections.abc import Callable, Coroutine, Mapping
+from collections.abc import Callable, Coroutine, Mapping, Sequence
 from typing import Any, cast
 
 from smartesp.contracts import ChangeResult, ConfigStore, EventSink, Section, VoicePort
+
+from .jobs import Job, Rebuild, settle
 
 _log = logging.getLogger(__name__)
 
@@ -49,6 +51,10 @@ class ChangeQueue:
     validate(настройки) проверяет правку целиком (например, известны ли виды
     stt, tts, исполнителей) до постановки в очередь и ещё раз перед применением;
     ValueError — правка неверна и не записывается.
+
+    rebuild — та же очередь без правки: пересобрать разделы по записанным
+    настройкам (например, сменились инструменты коннекторов). Так пересборка не
+    гоняется с правкой: она идёт после её записи и берёт уже новые настройки.
     """
 
     def __init__(
@@ -65,7 +71,7 @@ class ChangeQueue:
         self._sections = dict(sections)
         self._voices = voices
         self._events = events
-        self._queue: asyncio.Queue[tuple[int, dict[str, Any]]] = asyncio.Queue()
+        self._queue: asyncio.Queue[Job] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
         self._background: set[asyncio.Task[None]] = set()
         self._restore: asyncio.Task[None] | None = None  # возврат прежнего голоса после сбоя
@@ -89,12 +95,22 @@ class ChangeQueue:
             _, _, changed = self._diff(patch)
         except ValueError as error:
             return ChangeResult(change_id, "invalid", str(error))
-        self._queue.put_nowait((change_id, copy.deepcopy(patch)))
-        if self._worker is None:
-            self._worker = asyncio.create_task(self._run(), name="config-changes")
+        self._enqueue((change_id, copy.deepcopy(patch)))
         if any(name in RESTART_SECTIONS for name in changed):
             return ChangeResult(change_id, "restart_required")
         return ChangeResult(change_id, "accepted")
+
+    async def rebuild(self, names: Sequence[str]) -> None:
+        """Пересобирает разделы names по записанным настройкам в очереди (после идущих правок).
+
+        Собирает, подменяет и освобождает, как правка, но без записи и события.
+        Ошибка сборки пробрасывается; после aclose — RuntimeError, ждущая — отмена.
+        """
+        if self.closed:
+            raise RuntimeError(STOPPING)
+        done = asyncio.get_running_loop().create_future()
+        self._enqueue(Rebuild(tuple(names), done))
+        await done
 
     async def aclose(self) -> None:
         """Останавливает очередь и фоновые задачи.
@@ -108,9 +124,16 @@ class ChangeQueue:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
         while not self._queue.empty():
-            self._queue.get_nowait()
+            job = self._queue.get_nowait()
+            if isinstance(job, Rebuild):
+                job.done.cancel()
 
     # ---- внутреннее ----
+
+    def _enqueue(self, job: Job) -> None:
+        self._queue.put_nowait(job)
+        if self._worker is None:
+            self._worker = asyncio.create_task(self._run(), name="config-changes")
 
     def _diff(self, patch: dict[str, Any]) -> tuple[Any, Any, list[str]]:
         """Старые и новые настройки и изменённые разделы; ValueError — правка неверна."""
@@ -127,14 +150,30 @@ class ChangeQueue:
 
     async def _run(self) -> None:
         while True:
-            change_id, patch = await self._queue.get()
+            job = await self._queue.get()
             self._busy = True
             try:
-                await self._apply(change_id, patch)
+                if isinstance(job, Rebuild):
+                    await self._rebuild(job)
+                else:
+                    await self._apply(*job)
             except Exception:  # очередь не должна умирать ни от чего
-                _log.error("Изменение %s: сбой очереди", change_id, exc_info=True)
+                _log.error("Очередь изменений: сбой", exc_info=True)
             finally:
                 self._busy = False
+
+    async def _rebuild(self, job: Rebuild) -> None:
+        """Пересборка по записанным настройкам; итог — в job.done (отмена очереди — его отмена)."""
+        try:
+            config = self._store.merge({})
+            await self._apply_live(config, config, list(job.names))
+        except Exception as error:
+            settle(job.done, error)
+            return
+        except BaseException:
+            job.done.cancel()
+            raise
+        settle(job.done, None)
 
     async def _apply(self, change_id: int, patch: dict[str, Any]) -> None:
         changed: list[str] = []
