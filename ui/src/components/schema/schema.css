@@ -63,21 +63,14 @@
   display: none;
 }
 .edge-label {
-  display: inline-block;
   padding: 1px 6px;
+  white-space: nowrap;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--muted);
   font-size: 11px;
   pointer-events: all;
-}
-.edge-label-box {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: visible;
-  pointer-events: none;
 }
 .node-executor {
   min-height: 52px;
