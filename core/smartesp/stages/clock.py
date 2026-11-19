@@ -44,7 +44,7 @@ class Clock:
     """Добавляет к фразе пометку с местным временем."""
 
     name = "clock"
-    prompt_hint = ""
+    prompt_hint = "Пометка [время] — текущие дата и время, пользуйся ей."
 
     def __init__(self, now: Callable[[], datetime] = datetime.now) -> None:
         """now — часы (в тестах подменяются); по умолчанию местное время."""

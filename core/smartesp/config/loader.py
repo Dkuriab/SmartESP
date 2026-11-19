@@ -55,8 +55,8 @@ def load_with_overrides(path: Path) -> tuple[Config, dict[str, Any]]:
     Нет файла — создаёт пустой (с подсказками). Файл прежнего формата (все
     настройки целиком, без version) один раз переводится: остаются только
     отличия от значений по умолчанию, старый файл сохраняется как config.yaml.bak.
-    Файл версии 2 так же сохраняется в .bak и переписывается как версия 3 (tts без
-    kind остаётся piper — прежнее умолчание).
+    Файл версии 2 или 3 так же сохраняется в .bak и переписывается как версия 4 (tts без
+    kind остаётся piper — прежнее умолчание; к сохранённым stages добавляется clock).
     Рядом пишется config.defaults.yaml. Файл не читается, не разбирается как YAML
     или настройки неверные — ValueError с понятным сообщением и путём к файлу.
     Возвращает настройки и изменения владельца (содержимое файла без version).
@@ -68,17 +68,35 @@ def load_with_overrides(path: Path) -> tuple[Config, dict[str, Any]]:
         return Config(), {}
     raw = read_yaml(path)
     version = raw.get("version")
-    if version is not None and (isinstance(version, bool) or version not in (2, CONFIG_VERSION)):
+    if version is not None and (isinstance(version, bool) or version not in (2, 3, CONFIG_VERSION)):
         raise ValueError(f"файл настроек от более новой версии ядра: {path} (version: {version!r})")
     if version != CONFIG_VERSION:
         shutil.copyfile(path, path.with_name(path.name + ".bak"))
-        raw = _migrate(raw) if version is None else _migrate_v2(raw)
+        if version is None:
+            raw = _migrate(raw)
+        if version in (None, 2):
+            raw = _migrate_v2(raw)
+        raw = _migrate_v3(raw)  # версии идут цепочкой: 2 → 3 → 4
         write_overrides(path, raw)
     try:
         config = Config.model_validate(raw)
     except ValidationError as error:
         raise ValueError(f"неверные настройки в {path}:\n{error}") from error
     return config, {k: v for k, v in raw.items() if k != "version"}
+
+
+def _migrate_v3(raw: dict[str, Any]) -> dict[str, Any]:
+    """Версия 3 → 4: в сохранённый список stages добавляем clock (один раз, по версии).
+
+    После перехода владелец, убравший clock, этот выбор сохраняет. Список, ставший
+    равным умолчанию, из файла убирается.
+    """
+    raw = {k: v for k, v in raw.items() if k != "version"}
+    stages = raw.get("stages")
+    if isinstance(stages, list) and not any(isinstance(s, dict) and s.get("kind") == "clock" for s in stages):
+        raw["stages"] = [*stages, {"kind": "clock"}]
+        raw = prune(raw, Config().model_dump())
+    return raw
 
 
 def _migrate_v2(raw: dict[str, Any]) -> dict[str, Any]:

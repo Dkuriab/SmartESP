@@ -198,3 +198,11 @@ def test_member_prompts_tools_rule_only_for_tool_models_with_tools() -> None:
     prompts = member_prompts(items, [], {"dispatcher": True, "big": False}, has_tools=True)
     assert prompts["dispatcher"].endswith(TOOLS_RULE) and TOOLS_RULE not in prompts["big"]
     assert TOOLS_RULE not in member_prompts(items, [], {"dispatcher": True}).get("dispatcher", "")
+
+
+async def test_plain_variant_keeps_tools_rule_but_not_delegate_rule() -> None:
+    items = specs(when="сложное")
+    made = made_for(items)
+    await build_network("dispatcher", items, [], made, Capabilities(), FakeToolBox([tool_spec("t")]))
+    full, plain = [e.prompt for m, e in made.made if m == "dispatcher"]
+    assert "delegate" in full and "delegate" not in plain and plain.endswith(TOOLS_RULE)

@@ -45,7 +45,7 @@ async def test_weekday_and_month_genitive() -> None:
 
 
 def test_hint_present_and_default_clock_is_local() -> None:
-    assert Clock().prompt_hint == ""
+    assert "[время]" in Clock().prompt_hint
 
 
 def test_label_goes_to_the_model_message_instead_of_source() -> None:

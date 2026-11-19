@@ -60,10 +60,11 @@ def _prompt(
     targets: Sequence[Target],
     tools_ok: bool,
     has_tools: bool = False,
+    delegate: bool = True,
 ) -> str:
     """Итоговый промпт: свой + правила обработчиков + правила передачи и инструментов (если умеет)."""
     prompt = with_stage_hints(spec.system_prompt, stages)
-    rules = [delegate_rule(targets)] if tools_ok else []
+    rules = [delegate_rule(targets)] if tools_ok and delegate else []
     if tools_ok and has_tools:
         rules.append(TOOLS_RULE)
     return "\n".join([prompt, *(r for r in rules if r)])
@@ -123,7 +124,11 @@ async def build_network(
         tools_ok = TOOLS in found[spec.model]
         targets = active_targets(spec, specs)
         executor = make(spec.id, _prompt(spec, stages, targets, tools_ok, bool(tools)))
-        plain = make(spec.id, _prompt(spec, stages, targets, False)) if tools_ok and targets else None
+        plain = (
+            make(spec.id, _prompt(spec, stages, targets, tools_ok, bool(tools), False))
+            if tools_ok and targets
+            else None
+        )
         own_tools = tools if tools_ok else ()
         members[spec.id] = Member(executor, spec.name, targets, tools_ok, plain, own_tools)
     unknown = frozenset(model for model, caps in found.items() if not caps)
