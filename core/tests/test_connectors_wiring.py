@@ -105,6 +105,8 @@ async def test_connectors_start_in_background_and_reach_the_network(tmp_path: Pa
     await eventually(lambda: "reply_end" in sent_types(speaking), timeout=5)
     await eventually(lambda: bool(core.core.turns(1)))
     assert str(core.core.turns(1)[0]["answer"]).endswith("Коннектор ответил: эхо.")
+    used = {"executor": "dispatcher", "connector": "t", "tool": "echo", "ok": True}
+    assert core.core.turns(1)[0]["tools"] == [used]  # живая подсветка знает коннектор вызова
     await stop(core)
     await finish(core)
 

@@ -12,8 +12,10 @@ from smartesp.contracts import (
     ReplyPart,
     ToolBox,
     ToolCall,
+    ToolObserver,
     ToolResult,
     ToolSpec,
+    ToolUse,
 )
 
 from .dialog import closing
@@ -40,17 +42,19 @@ def member_stream(
     run: Run,
     messages: list[ChatMessage],
     tools: tuple[Sequence[ToolSpec], Sequence[ToolSpec]],
+    observe: ToolObserver | None = None,
 ) -> AsyncIterator[ReplyPart]:
     """Поток участника source; tools — (все его инструменты, инструменты вызывающего сети).
 
     Без ящика — просто run. С ящиком — ToolLoop: delegate и инструменты
     вызывающего отдаются дальше, остальные вызовы выполняет ящик.
+    observe — получает начало и конец каждого вызова ящика.
     """
     offered, extra = tools
     if toolbox is None:
         return run(messages, offered)
     passthrough = frozenset({DELEGATE_TOOL, *(t.name for t in extra)})
-    return ToolLoop(source, toolbox, passthrough).run(run, messages, offered)
+    return ToolLoop(source, toolbox, passthrough, observe=observe).run(run, messages, offered)
 
 
 class ToolLoop:
@@ -81,13 +85,16 @@ class ToolLoop:
         max_calls: int = MAX_TOOL_CALLS,
         keepalive_s: float | None = None,
         followup_limit_s: float | None = None,
+        observe: ToolObserver | None = None,
     ) -> None:
         """source — id участника (для журнала); passthrough — имена вызовов, которые не выполняются.
 
         keepalive_s — период keep-alive, followup_limit_s — сколько прикрывать повторный
         прогон (None — TOOL_KEEPALIVE_S и TOOL_FOLLOWUP_KEEPALIVE_LIMIT_S на момент создания).
+        observe — получает начало и конец каждого вызова ящика (отменённый — конец с ok=False).
         """
         self._source = source
+        self._observe = observe
         self._toolbox = toolbox
         self._passthrough = passthrough
         self._max_calls = max_calls
@@ -193,14 +200,27 @@ class ToolLoop:
             _log.warning("«%s» вызывает неизвестный инструмент %r", self._source, call.name)
             return ToolResult(UNKNOWN_TOOL.format(name=call.name), is_error=True)
         _log.info("«%s» вызывает инструмент %s", self._source, call.name)
+        self._notify(ToolUse(self._source, call.name, "started"))
+        result = ToolResult(TOOL_CRASHED.format(name=call.name), is_error=True)
         try:
             result = await self._toolbox.call(call.name, call.arguments, person=None)
         except Exception:  # noqa: BLE001 — сбой ящика не должен ронять ход
             _log.exception("Ящик инструментов упал на вызове %s", call.name)
-            return ToolResult(TOOL_CRASHED.format(name=call.name), is_error=True)
+            return result
+        finally:  # и при отмене: подсветка инструмента не должна остаться гореть
+            self._notify(ToolUse(self._source, call.name, "finished", ok=not result.is_error))
         if result.is_error:
             _log.warning("Инструмент %s вернул ошибку: %s", call.name, result.text)
         return result
+
+    def _notify(self, use: ToolUse) -> None:
+        """Сообщает наблюдателю о вызове; его сбой ход не роняет."""
+        if self._observe is None:
+            return
+        try:
+            self._observe(use)
+        except Exception:  # noqa: BLE001 — подсветка вторична, ход важнее
+            _log.exception("Наблюдатель вызовов инструментов упал")
 
 
 def _open_sentence(said: str) -> bool:

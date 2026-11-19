@@ -132,6 +132,15 @@ class DelegationOut(BaseModel):
     auto: bool = False
 
 
+class ToolUseOut(BaseModel):
+    """Вызов инструмента в ходе: кто вызвал, коннектор ("" — неизвестен), инструмент, удался ли."""
+
+    executor: str
+    connector: str
+    tool: str
+    ok: bool
+
+
 class TurnOut(BaseModel):
     """Данные события turn_finished."""
 
@@ -149,6 +158,7 @@ class TurnOut(BaseModel):
     first_audio_ms: float | None = None
     path: list[str] = []  # id исполнителей хода по порядку
     delegations: list[DelegationOut] = []
+    tools: list[ToolUseOut] = []  # законченные вызовы инструментов по порядку
     origin: Literal["wake", "listen", "core"] = "wake"  # слово, прослушивание после вопроса, ядро само
     kind: Literal["turn", "announcement"] = "turn"  # ход разговора или объявление ядра
 

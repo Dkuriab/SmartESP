@@ -23,8 +23,9 @@ async def test_turn_events_sequence() -> None:
     analyzer = RecordingAnalyzer([Annotation(text="говорит Даня", source="voice")])
     setup = Setup(FakeExecutor(["Сегодня ", "солнечно."]), analyzer=analyzer, events=sink)
     await run_turn(setup, sink)
-    assert [kind for kind, _ in sink.events] == ["turn_started", "turn_heard", "turn_finished"]
-    started, heard, finished = (data for _, data in sink.events)
+    turn_events = [(kind, data) for kind, data in sink.events if kind.startswith("turn_")]
+    assert [kind for kind, _ in turn_events] == ["turn_started", "turn_heard", "turn_finished"]
+    started, heard, finished = (data for _, data in turn_events)
     assert started == {"turn_id": 7, "device_id": "kitchen", "device_name": "Кухня"}
     assert heard["turn_id"] == 7
     assert heard["text"] == "Какая погода?"
@@ -41,6 +42,7 @@ async def test_turn_events_sequence() -> None:
         "status": "ok",
         "path": ["entry"],
         "delegations": [],
+        "tools": [],
         "origin": "wake",
         "kind": "turn",
     }

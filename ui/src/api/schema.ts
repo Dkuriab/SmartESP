@@ -399,6 +399,20 @@ export interface components {
             connectors?: components["schemas"]["ConnectorOut"][];
         };
         /**
+         * ToolUseOut
+         * @description Вызов инструмента в ходе: кто вызвал, коннектор ("" — неизвестен), инструмент, удался ли.
+         */
+        ToolUseOut: {
+            /** Executor */
+            executor: string;
+            /** Connector */
+            connector: string;
+            /** Tool */
+            tool: string;
+            /** Ok */
+            ok: boolean;
+        };
+        /**
          * TurnOut
          * @description Данные события turn_finished.
          */
@@ -440,6 +454,11 @@ export interface components {
              * @default []
              */
             delegations: components["schemas"]["DelegationOut"][];
+            /**
+             * Tools
+             * @default []
+             */
+            tools: components["schemas"]["ToolUseOut"][];
             /**
              * Origin
              * @default wake

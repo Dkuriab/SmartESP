@@ -139,6 +139,14 @@ async def test_turns_path_and_delegations(client: httpx.AsyncClient, core: FakeC
     assert (turns[1]["path"], turns[1]["delegations"]) == ([], [])  # ходы до передачи задач
 
 
+async def test_turns_tool_calls(client: httpx.AsyncClient, core: FakeCore) -> None:
+    used = {"executor": "dispatcher", "connector": "calc", "tool": "calc_add", "ok": True}
+    core.turn_items = [{**make_turn(5), "tools": [used]}, make_turn(4)]
+    turns = (await client.get(f"{P}/turns", headers=HEADERS)).json()
+    assert turns[0]["tools"] == [used]
+    assert turns[1]["tools"] == []  # ходы до подсветки инструментов
+
+
 async def test_turns_origin_kind_and_undelivered(client: httpx.AsyncClient, core: FakeCore) -> None:
     late = {"origin": "core", "kind": "announcement", "status": "undelivered", "path": ["big"]}
     core.turn_items = [

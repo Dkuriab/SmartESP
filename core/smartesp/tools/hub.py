@@ -109,6 +109,11 @@ class McpHub:
         connector, tool = route
         return await connector.call(tool, arguments, person, self._call_timeout_s)
 
+    def connector_of(self, name: str) -> str:
+        """id коннектора инструмента name (имя, как его видит модель); неизвестный — ""."""
+        route = self._routes.get(name)
+        return route[0].spec.id if route is not None else ""
+
     def states(self) -> list[ConnectorState]:
         """Состояния коннекторов в порядке настроек (для интерфейса)."""
         return [

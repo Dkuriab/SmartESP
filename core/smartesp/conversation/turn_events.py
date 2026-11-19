@@ -42,7 +42,7 @@ def heard_data(turn: Turn) -> dict[str, object]:
 
 
 def finished_data(turn: Turn) -> dict[str, object]:
-    """Данные turn_finished: время, вопрос, пометки, ответ, путь и передачи, итог и задержки хода."""
+    """Данные turn_finished: время, вопрос, пометки, ответ, путь, передачи и инструменты, итог, задержки."""
     return {
         **started_data(turn),
         "at": time.time(),
@@ -53,6 +53,7 @@ def finished_data(turn: Turn) -> dict[str, object]:
         "status": event_status(turn),
         "path": list(turn.path),
         "delegations": [delegation_data(handoff) for handoff in turn.delegations],
+        "tools": list(turn.tools),
         "stt_ms": _ms(turn.stt_ms),
         "first_text_ms": _ms(turn.first_text_ms),
         "first_audio_ms": _ms(turn.first_audio_ms),

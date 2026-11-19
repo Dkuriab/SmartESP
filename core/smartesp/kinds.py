@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import cast
 
 from smartesp.config import Config, ExecutorConfig, StageConfig, SttConfig
-from smartesp.contracts import Analyzer, Executor, SpeechToText, Stage, TextToSpeech, ToolBox
+from smartesp.contracts import Analyzer, Executor, SpeechToText, Stage, TextToSpeech, ToolBox, ToolObserver
 from smartesp.network import ExecutorNetwork, MemberSpec, build_network
 from smartesp.stages import run_stages
 from smartesp.tools import ConnectorSpec
@@ -110,15 +110,16 @@ async def build_answering(
     kinds: Kinds,
     capabilities: Callable[[str], Awaitable[frozenset[str]]],
     toolbox: ToolBox | None = None,
+    on_tool: ToolObserver | None = None,
 ) -> tuple[Analyzer, ExecutorNetwork]:
     """Обработчики и сеть исполнителей из настроек; неизвестный вид — StartupError.
 
-    toolbox — инструменты коннекторов (снимок берётся при сборке).
+    toolbox — инструменты коннекторов (снимок берётся при сборке); on_tool — наблюдатель их вызовов.
     """
     stages = [(pick(kinds.stages, s.kind, "stage")(s), s.timeout_ms / 1000) for s in config.stages]
     specs, plain = member_specs(config), [stage for stage, _ in stages]
     network = await build_network(
-        config.entry_executor().id, specs, plain, _maker(config, kinds), capabilities, toolbox
+        config.entry_executor().id, specs, plain, _maker(config, kinds), capabilities, toolbox, on_tool
     )
     analyze: Analyzer = functools.partial(run_stages, stages)
     return analyze, network

@@ -167,3 +167,10 @@ async def test_model_names_are_safe_and_delegate_is_reserved(hub: McpHub, caplog
     assert await tool_pid(hub, long_b) == await tool_pid(hub, "b_pid")
     assert await tool_pid(hub, LONG_TOOL) == await tool_pid(hub, "pid")
     assert any("a_delegate" in r.getMessage() for r in caplog.records)
+
+
+async def test_connector_of_tool_name(hub: McpHub):
+    await hub.start([spec("a"), spec("b")])
+    assert hub.connector_of("echo") == "a"
+    assert hub.connector_of("b_echo") == "b"
+    assert hub.connector_of("nope") == ""

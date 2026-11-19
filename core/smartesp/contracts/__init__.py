@@ -21,7 +21,7 @@ from .executor import (
 from .notify import Announcer
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
-from .tools import ConnectorState, ConnectorStateName, ToolBox, ToolResult
+from .tools import ConnectorState, ConnectorStateName, ToolBox, ToolObserver, ToolPhase, ToolResult, ToolUse
 from .tts import TextToSpeech, VoiceInfo, VoiceNotDownloadedError
 
 __all__ = [
@@ -54,8 +54,11 @@ __all__ = [
     "TextToSpeech",
     "ToolBox",
     "ToolCall",
+    "ToolObserver",
+    "ToolPhase",
     "ToolResult",
     "ToolSpec",
+    "ToolUse",
     "Unloads",
     "UsesModels",
     "Utterance",

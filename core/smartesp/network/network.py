@@ -15,6 +15,7 @@ from smartesp.contracts import (
     ReplyPart,
     ToolBox,
     ToolCall,
+    ToolObserver,
     ToolSpec,
     UsesModels,
     WarmsUp,
@@ -88,11 +89,13 @@ class ExecutorNetwork:
         max_depth: int = MAX_DEPTH,
         unknown: frozenset[str] = frozenset(),
         toolbox: ToolBox | None = None,
+        on_tool: ToolObserver | None = None,
     ) -> None:
         """entry — id входного исполнителя (должен быть в members); members — участники по id.
 
         unknown — модели, чьи возможности при сборке узнать не удалось (их tools_ok — False);
-        toolbox — выполняет вызовы инструментов коннекторов (None — вызовы отдаются как есть).
+        toolbox — выполняет вызовы инструментов коннекторов (None — вызовы отдаются как есть);
+        on_tool — получает начало и конец каждого вызова инструмента ящика.
         """
         if entry not in members:
             raise ValueError(f"Входного исполнителя «{entry}» нет среди участников сети")
@@ -101,6 +104,7 @@ class ExecutorNetwork:
         self._max_depth = max_depth
         self._unknown = unknown
         self._toolbox = toolbox
+        self._on_tool = on_tool
 
     @property
     def members(self) -> Mapping[str, Member]:
@@ -136,7 +140,9 @@ class ExecutorNetwork:
             own = flatten(own)
             executor = member.plain or executor
         outcome = _Outcome()
-        stream = member_stream(member_id, self._toolbox, executor.run, own, (tools, extra_tools))
+        stream = member_stream(
+            member_id, self._toolbox, executor.run, own, (tools, extra_tools), self._on_tool
+        )
         parts = self._own_parts(member_id, stream, offered, outcome)
         async with closing(parts):
             async for part in parts:

@@ -933,6 +933,35 @@
         "title": "StatusOut",
         "description": "Сводка ядра."
       },
+      "ToolUseOut": {
+        "properties": {
+          "executor": {
+            "type": "string",
+            "title": "Executor"
+          },
+          "connector": {
+            "type": "string",
+            "title": "Connector"
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          }
+        },
+        "type": "object",
+        "required": [
+          "executor",
+          "connector",
+          "tool",
+          "ok"
+        ],
+        "title": "ToolUseOut",
+        "description": "Вызов инструмента в ходе: кто вызвал, коннектор (\"\" — неизвестен), инструмент, удался ли."
+      },
       "TurnOut": {
         "properties": {
           "turn_id": {
@@ -1035,6 +1064,14 @@
             },
             "type": "array",
             "title": "Delegations",
+            "default": []
+          },
+          "tools": {
+            "items": {
+              "$ref": "#/components/schemas/ToolUseOut"
+            },
+            "type": "array",
+            "title": "Tools",
             "default": []
           },
           "origin": {

@@ -17,6 +17,8 @@ from fastapi import FastAPI, WebSocket
 
 from smartesp.api import create_api, mount_ui
 from smartesp.config import Config, ConfigFile
+from smartesp.contracts import Analyzer
+from smartesp.conversation import tool_observer
 from smartesp.devices import WebSocketConnection
 from smartesp.events import EventBus
 from smartesp.kinds import Kinds, Ollama, build_answering, connector_specs
@@ -32,6 +34,7 @@ from smartesp.lifecycle import (
     log_crash,
     timed,
 )
+from smartesp.network import ExecutorNetwork
 from smartesp.parts import (
     ANSWERING_SECTIONS,
     Assembly,
@@ -55,10 +58,18 @@ TOOLS_CLOSE_S = 2.0  # коннекторам на закрытие при ос�
 logger = logging.getLogger("smartesp")
 
 
+async def _answering(
+    config: Config, kinds: Kinds, capabilities: CapabilityCache, tools: McpHub
+) -> tuple[Analyzer, ExecutorNetwork]:
+    """Обработчики и сеть из настроек; вызовы инструментов сети — в живую подсветку хода."""
+    observe = tool_observer(tools.connector_of)
+    return await build_answering(config, kinds, capabilities.get, tools, observe)
+
+
 async def _build_answering(
     kinds: Kinds, live: LiveAnswering, capabilities: CapabilityCache, tools: McpHub, config: Config
 ) -> Answering:
-    part = await build_answering(config, kinds, capabilities.get, tools)
+    part = await _answering(config, kinds, capabilities, tools)
     return await live.build(part, WARM_UP_TIMEOUT_S)
 
 
@@ -155,7 +166,7 @@ async def warm_up(parts: Assembly, voice: asyncio.Task[bool]) -> None:
     """
     await timed("STT", _warm_stt(parts))
     answering = await guarded(
-        "исполнитель", build_answering(parts.config, parts.kinds, parts.capabilities.get, parts.tools)
+        "исполнитель", _answering(parts.config, parts.kinds, parts.capabilities, parts.tools)
     )
     if answering is not None:
         await parts.live.warm_startup(answering, WARM_UP_TIMEOUT_S)

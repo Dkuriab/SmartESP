@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from .executor import ToolSpec
 
 ConnectorStateName = Literal["starting", "ready", "failed", "disabled"]
+ToolPhase = Literal["started", "finished"]
 
 
 @dataclass(frozen=True)
@@ -31,6 +33,23 @@ class ToolResult:
 
     text: str
     is_error: bool = False
+
+
+@dataclass(frozen=True)
+class ToolUse:
+    """Вызов инструмента коннектора участником сети (для живой подсветки и ленты).
+
+    executor — id участника, вызвавшего инструмент; tool — имя, как его видит модель;
+    state — начат или закончен; ok — итог (у начатого всегда True).
+    """
+
+    executor: str
+    tool: str
+    state: ToolPhase
+    ok: bool = True
+
+
+ToolObserver = Callable[[ToolUse], None]  # получает вызовы инструментов; не должен бросать исключений
 
 
 class ToolBox(Protocol):

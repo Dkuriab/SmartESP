@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 
-from smartesp.contracts import Executor, Stage, ToolBox, UsesModels
+from smartesp.contracts import Executor, Stage, ToolBox, ToolObserver, UsesModels
 
 from .network import ExecutorNetwork, Member
 from .rules import TOOLS_RULE, Target, delegate_rule
@@ -102,6 +102,7 @@ async def build_network(
     make: Callable[[str, str], Executor],
     capabilities: Capabilities,
     toolbox: ToolBox | None = None,
+    on_tool: ToolObserver | None = None,
 ) -> ExecutorNetwork:
     """Сеть из описаний; модели не греются.
 
@@ -116,6 +117,7 @@ async def build_network(
 
     toolbox — инструменты коннекторов: участники, чья модель умеет инструменты,
     получают toolbox.specs() (снимок на момент сборки) вместе с delegate.
+    on_tool — получает начало и конец каждого вызова инструмента (для живой подсветки).
     """
     found = await _capabilities_by_model(specs, capabilities)
     tools = tuple(toolbox.specs()) if toolbox is not None else ()
@@ -132,7 +134,7 @@ async def build_network(
         own_tools = tools if tools_ok else ()
         members[spec.id] = Member(executor, spec.name, targets, tools_ok, plain, own_tools)
     unknown = frozenset(model for model, caps in found.items() if not caps)
-    return ExecutorNetwork(entry_id, members, unknown=unknown, toolbox=toolbox)
+    return ExecutorNetwork(entry_id, members, unknown=unknown, toolbox=toolbox, on_tool=on_tool)
 
 
 class NetworkPrompts:

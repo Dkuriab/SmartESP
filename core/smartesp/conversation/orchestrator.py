@@ -20,6 +20,7 @@ from smartesp.contracts import (
 )
 
 from . import handoffs
+from .activity import TurnActivity, watched
 from .history import History
 from .late import LATE_LIMIT_S, LateAnswers
 from .prompt import build_messages
@@ -59,15 +60,13 @@ class Orchestrator:
         delegate_limit_s: float = handoffs.DELEGATE_FIRST_PART_LIMIT_S,
         late_limit_s: float = LATE_LIMIT_S,
     ) -> None:
-        """Запоминает колонки, распознавание, обработчики, исполнителя, синтез и историю.
+        """Колонки, распознавание, обработчики, исполнитель, синтез и история.
 
-        Любую из четырёх частей можно не задать (None) — тогда ядро не готово: ход
-        получает сигнал ошибки и пустой ответ. events — куда публиковать события хода.
-        thinking_interval_s — период сигнала «думаю», пока ждём первый кусок ответа;
-        first_part_limit_s — сколько всего ждать первый кусок; part_idle_s — сколько
-        ждать каждый следующий кусок; delegate_limit_s — сколько ждать первый кусок
-        цели после передачи задачи; late_limit_s — сколько от начала хода ждать
-        запоздавший ответ цели. Всё в секундах.
+        Любую из четырёх частей можно не задать (None) — ядро не готово: ход получает сигнал
+        ошибки и пустой ответ. events — куда публиковать события хода. В секундах:
+        thinking_interval_s — период «думаю», пока ждём первый кусок; first_part_limit_s —
+        предел первого куска; part_idle_s — следующего; delegate_limit_s — первого куска цели
+        передачи; late_limit_s — запоздавшего ответа цели от начала хода.
         """
         self._devices = devices
         self._stt = stt
@@ -184,6 +183,7 @@ class Orchestrator:
         """
         turn = Turn(utterance, self._devices.device_name(utterance.device_id), received_at)
         parts = self._snapshot() if self._accepting else None
+        activity = TurnActivity.bind(turn, self._publish)  # и вызовы инструментов узнают свой ход
         self._publish("turn_started", started_data(turn))
         try:
             if parts is None:
@@ -197,6 +197,7 @@ class Orchestrator:
             turn.failed = True
             await self._recover(turn)
         finally:
+            activity.finish()
             self._publish("turn_finished", finished_data(turn))
             log_turn(turn)
         if self._listen_after_question and asks_question(turn):
@@ -246,7 +247,7 @@ class Orchestrator:
         ответа цели: тогда он у фоновой задачи.
         """
         turn.path = [handoffs.entry_id(parts.executor)]
-        async with closing(parts.executor.run(messages), keep=lambda: turn.deferred) as stream:
+        async with closing(watched(parts.executor.run(messages)), keep=lambda: turn.deferred) as stream:
             try:
                 first = await first_part(
                     stream,
