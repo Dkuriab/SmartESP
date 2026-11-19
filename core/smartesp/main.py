@@ -31,11 +31,12 @@ from smartesp.config import (
 )
 from smartesp.contracts import Executor, SpeechToText, Stage, TextToSpeech
 from smartesp.executors import OllamaExecutor, list_models, loaded_models, model_capabilities
+from smartesp.kinds import Kinds, StartupError, check_kinds
 from smartesp.lifecycle import GracefulServer, exit_code, run_loop, watch_parent
 from smartesp.stages import WhisperDetect
 from smartesp.stt import MlxWhisperSTT
 from smartesp.tts import PiperTTS, SileroTTS, VoskTTS
-from smartesp.wiring import Kinds, Ollama, StartupError, assemble, check_kinds, stop
+from smartesp.wiring import Ollama, assemble, stop
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 LOG_MAX_BYTES = 1_000_000

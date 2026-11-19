@@ -24,19 +24,15 @@ from smartesp.control import Core
 from smartesp.conversation import History, Orchestrator
 from smartesp.devices import DeviceHub, WebSocketConnection
 from smartesp.events import EventBus
-from smartesp.lifecycle import (
-    Answering,
-    CapabilityCache,
+from smartesp.kinds import (
     Kinds,
-    LiveAnswering,
-    NetworkPrompts,
-    RunFile,
-    StartupError,
-    build_network,
-    check_kinds,
-    guarded,
-    timed,
+    build_answering,
+    kinds_validator,
+    member_specs,
+    prompt_stages,
 )
+from smartesp.lifecycle import Answering, CapabilityCache, LiveAnswering, RunFile, guarded, timed
+from smartesp.network import NetworkPrompts
 from smartesp.tts import VoiceManager
 
 WARM_UP_PCM = bytes(16000)  # 0,5 с тишины (16 кГц, s16le)
@@ -57,22 +53,10 @@ class Ollama:
     capabilities: Callable[[str], Awaitable[frozenset[str]]]
 
 
-def _kinds_validator(kinds: Kinds) -> Callable[[object], None]:
-    """Проверка правки настроек пультом: неизвестный вид — ValueError (правка invalid)."""
-
-    def validate(config: object) -> None:
-        try:
-            check_kinds(cast(Config, config), kinds)
-        except StartupError as error:
-            raise ValueError(str(error)) from error
-
-    return validate
-
-
 async def _build_answering(
     kinds: Kinds, live: LiveAnswering, capabilities: CapabilityCache, config: Config
 ) -> Answering:
-    return await live.build(await build_network(config, kinds, capabilities.get), WARM_UP_TIMEOUT_S)
+    return await live.build(await build_answering(config, kinds, capabilities.get), WARM_UP_TIMEOUT_S)
 
 
 async def _device_names(config: Config) -> dict[str, str]:
@@ -149,7 +133,13 @@ def assemble(
         member_warm_s=WARM_UP_TIMEOUT_S,
     )
     capabilities = CapabilityCache(ollama.capabilities)
-    prompts = NetworkPrompts(lambda: store.config, kinds, capabilities)  # настройки = живые части
+    prompts = NetworkPrompts(  # настройки = живые части
+        lambda: store.config.entry_executor().id,
+        lambda: member_specs(store.config),
+        lambda: prompt_stages(store.config, kinds),
+        capabilities.known,
+        lambda: live.executor,
+    )
     voice_ready = asyncio.Event()
 
     def on_voice(tts: TextToSpeech, kind: str, voice: str) -> None:
@@ -167,7 +157,7 @@ def assemble(
         loaded=ollama.loaded,
         devices=hub.devices,
         version=version,
-        validate=_kinds_validator(kinds),  # иначе после перезапуска ядро не стартует
+        validate=kinds_validator(kinds),  # иначе после перезапуска ядро не стартует
         dispatcher_prompt=prompts.entry,
         executor_prompts=prompts.all,
         supports_tools=capabilities.supports_tools,
@@ -229,7 +219,9 @@ async def warm_up(parts: Assembly, voice: asyncio.Task[bool]) -> None:
     Сбой одного шага пишется в журнал и не мешает остальным.
     """
     await timed("STT", _warm_stt(parts))
-    answering = await guarded("исполнитель", build_network(parts.config, parts.kinds, parts.capabilities.get))
+    answering = await guarded(
+        "исполнитель", build_answering(parts.config, parts.kinds, parts.capabilities.get)
+    )
     if answering is not None:
         await parts.live.warm_startup(answering, WARM_UP_TIMEOUT_S)
     waiting = asyncio.create_task(parts.voice_ready.wait())

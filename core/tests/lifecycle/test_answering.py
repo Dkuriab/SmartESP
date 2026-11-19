@@ -249,3 +249,22 @@ async def test_member_warm_up_of_replaced_network_is_cancelled() -> None:
     async with asyncio.timeout(0.5):
         await setup.live.unload_all()
     assert slow.warmed == 0 and setup.live.members_warmth == {}
+
+
+async def test_failed_build_keeps_models_of_network_waiting_in_release() -> None:
+    setup = Setup()
+    old = FakeOllama([], "b")
+    setup.live.use(pair(network(FakeOllama([], "a"), big=old)))
+    previous = setup.live.use(pair(network(FakeOllama([], "a"))))
+    assert previous is not None
+    setup.blocker = asyncio.Event()
+    releasing = asyncio.create_task(setup.live.release(previous))  # старая сеть ждёт свой ход
+    await asyncio.sleep(0)
+    failing = BrokenWarm([], "c")
+    shared = FakeOllama([], "b")  # та же модель, что у ждущей сети
+    with pytest.raises(ExecutorError):
+        await setup.live.build(pair(network(failing, big=shared)), 1.0)
+    assert failing.unloaded == [1.0] and shared.unloaded == [] and old.unloaded == []
+    setup.blocker.set()
+    await releasing
+    assert old.unloaded == [1.0]  # ход кончился — модель b выгружает сама старая сеть

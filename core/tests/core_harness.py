@@ -14,8 +14,9 @@ from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
 from smartesp.config import ConfigFile, ExecutorConfig
 from smartesp.contracts import Executor, TextToSpeech
+from smartesp.kinds import Kinds
 from smartesp.main import STAGE_KINDS
-from smartesp.wiring import Assembly, Kinds, Ollama, assemble
+from smartesp.wiring import Assembly, Ollama, assemble
 
 TOKEN = "test-token"
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}

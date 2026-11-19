@@ -23,8 +23,8 @@ from fakes.fake_executor import FakeOllama
 from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
 from smartesp.config import Config, TtsConfig
+from smartesp.kinds import StartupError, check_kinds
 from smartesp.main import EXECUTOR_KINDS, KINDS, STAGE_KINDS, STT_KINDS, TTS_KINDS, _setup_logging, main
-from smartesp.wiring import StartupError, check_kinds
 
 
 @pytest.fixture

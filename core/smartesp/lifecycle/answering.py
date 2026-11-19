@@ -60,6 +60,7 @@ class LiveAnswering:
         self.executor: Executor | None = None
         self._analyze: Analyzer | None = None
         self._aside: list[Executor] = []  # не живые, но, возможно, загруженные
+        self._releasing: list[Executor] = []  # ждут в release конца идущих ходов: их модели заняты
         self._closed = False
         self._members_warming: asyncio.Task[None] | None = None
         # итог фонового прогрева живой сети: {id: None — прогрет, иначе текст ошибки}
@@ -81,15 +82,16 @@ class LiveAnswering:
     async def build(self, part: Answering, timeout_s: float) -> Answering:
         """Греет пару для правки настроек (у сети — только входного); не прогрелась — ошибка.
 
-        Выгружаются только те модели не прогревшегося исполнителя, которых нет у
-        живого: иначе выгрузка оборвала бы живого.
+        Выгружаются только те модели не прогревшегося исполнителя, которых нет ни
+        у живого, ни у ждущих в release: иначе выгрузка оборвала бы их ходы.
         """
         executor = part[1]
         self._set_aside(executor)
         try:
             await warm_strict(executor, timeout_s)
         except Exception:
-            await self._unload(executor, self._leaving(executor))
+            busy = frozenset[str]().union(*(_models(e) for e in self._releasing))
+            await self._unload(executor, self._leaving(executor) - busy)
             raise
         return part
 
@@ -118,7 +120,11 @@ class LiveAnswering:
         if self._closed:
             return
         if self._leaving(old):
-            await self._wait_turns(self._turn_wait_s)
+            self._releasing.append(old)
+            try:
+                await self._wait_turns(self._turn_wait_s)
+            finally:
+                self._releasing = [e for e in self._releasing if e is not old]
             if self._closed:
                 return
             await self._unload(old, self._leaving(old))
