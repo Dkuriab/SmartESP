@@ -34,7 +34,7 @@ export default function TurnCard({ turn, executors, full = false, onClose }: Pro
       </div>
       {turn.delegations.map((d, i) => (
         <div key={i} className="card-text card-handoff">
-          {`Передано ${executorName(executors, d.to)}: ${d.task}${d.auto ? ' (автоматически)' : ''}`}
+          {`Передано: ${executorName(executors, d.to)} — ${d.task}${d.auto ? ' (автоматически)' : ''}`}
         </div>
       ))}
       <div className="cap card-label">Ответ</div>

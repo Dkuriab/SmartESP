@@ -1,6 +1,10 @@
 // Правка списка исполнителей: чистые функции над executors из настроек.
 import { asList } from '../schema/blocks'
 
+/** Промпт нового исполнителя: отвечать голосом (тот же, что у «Большой модели» по умолчанию в ядре). */
+export const VOICE_PROMPT =
+  'Ты отвечаешь голосом через колонку: по-русски, без разметки и списков, связно, до 6–8 предложений.'
+
 /** Исполнитель в форме config.yaml. */
 export type Executor = Record<string, unknown>
 
@@ -48,7 +52,7 @@ export function nextExecutorId(list: Executor[]): string {
   return `executor-${freeNumber(list)}`
 }
 
-/** Новый исполнитель: первый свободный executor-N, модель входного. */
+/** Новый исполнитель: первый свободный executor-N, модель входного, голосовой промпт. */
 export function withAdded(list: Executor[]): Executor[] {
   const n = freeNumber(list)
   const entry = list.find((e) => e.entry === true)
@@ -57,7 +61,7 @@ export function withAdded(list: Executor[]): Executor[] {
     name: `Исполнитель ${n}`,
     model: entry?.model ?? '',
     entry: false,
-    system_prompt: '',
+    system_prompt: VOICE_PROMPT,
     description: '',
     delegates: [],
   }

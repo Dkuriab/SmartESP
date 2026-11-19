@@ -63,15 +63,15 @@ describe('Feed', () => {
     expect(screen.queryByText(/→/)).not.toBeInTheDocument()
   })
 
-  it('карточка: «Передано <имя>: <задача>», «(автоматически)» при auto', () => {
+  it('карточка: «Передано: <имя> — <задача>», «(автоматически)» при auto', () => {
     const delegations = [
       { from: 'dispatcher', to: 'big', task: 'посчитай интеграл', auto: false },
       { from: 'dispatcher', to: 'big', task: 'ещё раз', auto: true },
     ]
     render(<Feed turns={[makeTurn(1, { delegations })]} executors={executors} selectedId={1} onSelect={vi.fn()} />)
     const card = screen.getByRole('dialog')
-    expect(within(card).getByText('Передано Большая модель: посчитай интеграл')).toBeInTheDocument()
-    expect(within(card).getByText('Передано Большая модель: ещё раз (автоматически)')).toBeInTheDocument()
+    expect(within(card).getByText('Передано: Большая модель — посчитай интеграл')).toBeInTheDocument()
+    expect(within(card).getByText('Передано: Большая модель — ещё раз (автоматически)')).toBeInTheDocument()
   })
 
   it('показывает время хода HH:MM:SS в местном времени', () => {

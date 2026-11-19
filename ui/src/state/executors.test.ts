@@ -3,6 +3,7 @@ import { listExecutors } from '../schema/blocks'
 import { makeConfig, makeState } from '../components/fixtures'
 import type { Client } from './actions'
 import { createActions } from './actions'
+import { VOICE_PROMPT } from './executors'
 import type { Action, Config } from './model'
 
 function cfg(executors: unknown[]): Config {
@@ -52,6 +53,9 @@ describe('executor actions', () => {
     const list = first.sent()
     expect(list.map((e) => e.id)).toEqual(['dispatcher', 'big', 'executor-1'])
     expect(list[2]).toMatchObject({ name: 'Исполнитель 1', model: 'qwen3', entry: false })
+    expect(list[2]?.system_prompt).toBe(VOICE_PROMPT)
+    // тот же текст, что BIG_SYSTEM_PROMPT в настройках ядра по умолчанию
+    expect(VOICE_PROMPT).toBe('Ты отвечаешь голосом через колонку: по-русски, без разметки и списков, связно, до 6–8 предложений.')
     const second = setup(cfg(list))
     await second.actions.addExecutor()
     expect(second.sent().map((e) => e.id)).toContain('executor-2')
