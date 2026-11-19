@@ -13,6 +13,7 @@ from smartesp.contracts import (
     Executor,
     Handoff,
     ReplyPart,
+    ToolBox,
     ToolCall,
     ToolSpec,
     UsesModels,
@@ -22,6 +23,7 @@ from smartesp.contracts import (
 from .dialog import closing, flatten, question, speakable, with_task
 from .names import named_target
 from .rules import DELEGATE_TOOL, Target, delegate_tool
+from .tool_loop import member_stream
 
 _log = logging.getLogger(__name__)
 
@@ -36,7 +38,8 @@ class Member:
     executor — сам исполнитель; name — имя для журнала; targets — активные цели
     его связей; tools_ok — модель умеет инструменты (иначе ни инструмента, ни
     автопередачи по фразе); plain — тот же исполнитель с промптом без правила
-    передачи: отвечает на глубине, где передавать уже нельзя (None — executor).
+    передачи: отвечает на глубине, где передавать уже нельзя (None — executor);
+    tools — инструменты коннекторов (снимок ToolBox.specs() при сборке).
     """
 
     executor: Executor
@@ -44,6 +47,7 @@ class Member:
     targets: tuple[Target, ...]
     tools_ok: bool
     plain: Executor | None = None
+    tools: tuple[ToolSpec, ...] = ()
 
 
 @dataclass
@@ -83,10 +87,12 @@ class ExecutorNetwork:
         *,
         max_depth: int = MAX_DEPTH,
         unknown: frozenset[str] = frozenset(),
+        toolbox: ToolBox | None = None,
     ) -> None:
         """entry — id входного исполнителя (должен быть в members); members — участники по id.
 
-        unknown — модели, чьи возможности при сборке узнать не удалось (их tools_ok — False).
+        unknown — модели, чьи возможности при сборке узнать не удалось (их tools_ok — False);
+        toolbox — выполняет вызовы инструментов коннекторов (None — вызовы отдаются как есть).
         """
         if entry not in members:
             raise ValueError(f"Входного исполнителя «{entry}» нет среди участников сети")
@@ -94,6 +100,7 @@ class ExecutorNetwork:
         self._members = dict(members)
         self._max_depth = max_depth
         self._unknown = unknown
+        self._toolbox = toolbox
 
     @property
     def members(self) -> Mapping[str, Member]:
@@ -129,7 +136,8 @@ class ExecutorNetwork:
             own = flatten(own)
             executor = member.plain or executor
         outcome = _Outcome()
-        parts = self._own_parts(member_id, executor.run(own, tools), offered, outcome)
+        stream = member_stream(member_id, self._toolbox, executor.run, own, (tools, extra_tools))
+        parts = self._own_parts(member_id, stream, offered, outcome)
         async with closing(parts):
             async for part in parts:
                 yield part
@@ -262,10 +270,11 @@ class ExecutorNetwork:
 def _member_tools(
     member: Member, offered: tuple[Target, ...], extra_tools: tuple[ToolSpec, ...]
 ) -> tuple[ToolSpec, ...]:
-    """Инструменты участника: без tools_ok — никаких; иначе extra_tools и delegate, если есть цели."""
+    """Инструменты участника: без tools_ok — никаких; иначе extra_tools, свои и delegate, если есть цели."""
     if not member.tools_ok:
         return ()
-    return (*extra_tools, delegate_tool(offered)) if offered else extra_tools
+    own = (*extra_tools, *member.tools)
+    return (*own, delegate_tool(offered)) if offered else own
 
 
 async def _warm(member_id: str, executor: WarmsUp, timeout_s: float) -> str | None:

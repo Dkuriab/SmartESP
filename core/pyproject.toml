@@ -19,6 +19,7 @@ dependencies = [
     "num2words==0.5.14",
     "torch==2.15.0",
     "vosk-tts==0.3.61",
+    "mcp==2.3.0",
 ]
 
 [dependency-groups]
@@ -47,5 +48,5 @@ select = ["E", "F", "I", "B", "UP", "C90"]
 max-complexity = 10
 
 [tool.pyright]
-strict = ["smartesp/contracts"]
+strict = ["smartesp/contracts", "smartesp/tools"]
 include = ["smartesp", "fakes", "tests"]
