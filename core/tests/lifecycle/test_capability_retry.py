@@ -134,6 +134,47 @@ async def test_failed_rebuild_is_logged_and_tried_again(caplog: pytest.LogCaptur
     assert await setup.retry().check()
 
 
+async def test_failed_rebuilds_back_off_and_warn_once(caplog: pytest.LogCaptureFixture) -> None:
+    setup = await started()
+    setup.ollama.up = True
+    setup.fail_build = True
+    retry = setup.retry()
+    assert retry.delay_s() == 15.0
+    with caplog.at_level(logging.DEBUG):
+        for _ in range(4):
+            assert not await retry.check()
+    assert [r.levelno for r in caplog.records if "Пересборка" in r.message] == [
+        logging.WARNING,
+        logging.DEBUG,
+        logging.DEBUG,
+        logging.DEBUG,
+    ]
+    assert retry.delay_s() == 300.0  # 15 → 60 → 240 → 300 (потолок)
+
+
+async def test_backoff_resets_when_live_pair_changes() -> None:
+    setup = await started()
+    setup.ollama.up = True
+    setup.fail_build = True
+    retry = setup.retry()
+    assert not await retry.check()
+    assert retry.delay_s() == 60.0
+    analyze: Analyzer = no_annotations
+    setup.live.use((analyze, FakeOllama([], "small")))  # правка настроек сменила пару
+    assert retry.delay_s() == 15.0
+
+
+async def test_backoff_resets_after_successful_rebuild() -> None:
+    setup = await started()
+    setup.ollama.up = True
+    setup.fail_build = True
+    retry = setup.retry()
+    assert not await retry.check()
+    setup.fail_build = False
+    assert await retry.check()
+    assert retry.delay_s() == 15.0
+
+
 async def test_run_retries_every_interval_until_known() -> None:
     setup = await started()
     task = asyncio.create_task(setup.retry(interval_s=0.01).run())

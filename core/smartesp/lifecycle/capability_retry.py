@@ -12,6 +12,7 @@ from .answering import Answering, LiveAnswering
 _log = logging.getLogger("smartesp")
 
 CAPABILITY_RETRY_S = 15.0  # как часто спрашивать возможности моделей, неизвестные при сборке сети
+MAX_RETRY_S = 300.0  # потолок паузы после неудачных пересборок
 
 
 @runtime_checkable
@@ -46,12 +47,25 @@ class CapabilityRetry:
         self._capabilities = capabilities
         self._rebuild = rebuild
         self._interval_s = interval_s
+        self._failures = 0  # неудачных пересборок подряд для одной и той же живой пары
+        self._failed_executor: object | None = None
 
     async def run(self) -> None:
-        """Проверяет каждые interval_s секунд, пока задачу не отменят."""
+        """Проверяет, пока задачу не отменят; пауза — delay_s()."""
         while True:
-            await asyncio.sleep(self._interval_s)
+            await asyncio.sleep(self.delay_s())
             await self.check()
+
+    def delay_s(self) -> float:
+        """Пауза до следующей проверки, секунды.
+
+        Обычно interval_s; после неудачных пересборок растёт вчетверо (15 → 60 → 240 → 300)
+        до MAX_RETRY_S, чтобы не прогревать незагружающуюся модель каждые 15 с.
+        Сбрасывается, когда живая пара сменилась (правка настроек) или пересборка удалась.
+        """
+        if self._failed_executor is not self._live.executor:
+            self._failures = 0
+        return min(self._interval_s * 4**self._failures, max(MAX_RETRY_S, self._interval_s))
 
     async def check(self) -> bool:
         """Одна проверка; True — живая пара пересобрана. Не бросает исключений, кроме отмены."""
@@ -65,7 +79,17 @@ class CapabilityRetry:
             return False
         _log.info("Возможности моделей %s известны: пересобираю сеть исполнителей", learned)
         try:
-            return await self._live.rebuild(self._rebuild)
+            rebuilt = await self._live.rebuild(self._rebuild)
         except Exception:
-            _log.warning("Пересборка сети исполнителей не удалась; повторю позже", exc_info=True)
+            self._failed(executor)
             return False
+        self._failures = 0
+        return rebuilt
+
+    def _failed(self, executor: object) -> None:
+        """Считает неудачу; предупреждает только о первой подряд, дальше — в отладочный журнал."""
+        if self._failed_executor is not executor:
+            self._failed_executor, self._failures = executor, 0
+        self._failures += 1
+        level = logging.WARNING if self._failures == 1 else logging.DEBUG
+        _log.log(level, "Пересборка сети исполнителей не удалась; повторю позже", exc_info=True)
