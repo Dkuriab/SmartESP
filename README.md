@@ -139,7 +139,7 @@ tools/build.sh
   уходит в ядро вместе с событием `wake`.
 - В журнале платы при запуске: `wake_word: модель … арена … из … байт`; на каждое
   срабатывание — `wake_word: слово услышано, вероятность …`.
-- Прошивка с моделью — 2 685 382 байт (85% раздела APP 3 МБ; без неё и TFLite
+- Прошивка с моделью — 2 685 566 байт (85% раздела APP 3 МБ; без неё и TFLite
   Micro было 2 490 554).
 
 **Как поменять модель** (например, на свою «Кузю», обученную microWakeWord):
@@ -160,7 +160,9 @@ tools/build.sh
 Тесты: `uv run --project core pytest tools/test_embed_model.py` проверяет
 встраивание. Замер модели на синтетике (голоса silero/xenia, silero/aidar,
 vosk/male_0: «Миранда.» — выше порога, обычная фраза — ниже) нужен
-`pymicro-features` и `ai-edge-litert`, которых нет в ядре, — в отдельном venv:
+`pymicro-features` и `ai-edge-litert`, которых нет в ядре, поэтому штатный
+запуск его пропускает. Запускайте замер вручную в отдельном venv при каждой смене
+модели или обработки звука (признаки, квантование, окно):
 
 ```bash
 python3.12 -m venv /tmp/mww && /tmp/mww/bin/pip install pymicro-features==2.0.2 ai-edge-litert pytest
@@ -179,7 +181,11 @@ python3.12 -m venv /tmp/mww && /tmp/mww/bin/pip install pymicro-features==2.0.2 
 - [ ] Громкость слова (`level`) в журнале ядра правдоподобна: тихо/с 3 м —
       ниже, громко/с 1 м — выше.
 - [ ] В Serial при запуске нет `wake_word: …` с ошибкой, нет
-      `wake_word: не успевает`.
+      `wake_word: не успевает` и `voice_frontend: loop() не забирает звук слова`.
+- [ ] AGC: с выключенным WakeNet режим `AFE_AGC_MODE_WAKENET` усиления не даёт.
+      Посмотрите вывод `print_pipeline` при запуске (есть ли AGC) и не стал ли
+      звук вопроса, дошедший до ядра, заметно тише (журнал ядра / звук хода).
+      Если тише — следующий шаг: `agc_mode = AFE_AGC_MODE_WEBRTC` в `voice_frontend`.
 
 ## Ядро на Mac
 

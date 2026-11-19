@@ -179,8 +179,18 @@ void VoiceFrontend::fetchTask() {
 
     // Звук для слова пробуждения — всегда; кадр только целиком, иначе
     // в очереди окажется полотсчёта. Не успевает читатель — кадр теряется.
-    if (res->data && res->data_size > 0 && xStreamBufferSpacesAvailable(wakeQueue_) >= (size_t)res->data_size) {
-      xStreamBufferSend(wakeQueue_, res->data, res->data_size, 0);
+    if (res->data && res->data_size > 0) {
+      if (xStreamBufferSpacesAvailable(wakeQueue_) >= (size_t)res->data_size) {
+        xStreamBufferSend(wakeQueue_, res->data, res->data_size, 0);
+      } else {
+        wakeDroppedFrames_++;
+      }
+    }
+    if (wakeDroppedFrames_ > 0 && millis() - lastWakeDropLogMs_ >= LOG_PERIOD_MS) {
+      lastWakeDropLogMs_ = millis();
+      Serial.printf("voice_frontend: loop() не забирает звук слова, отброшено кадров: %u\n",
+                    (unsigned)wakeDroppedFrames_);
+      wakeDroppedFrames_ = 0;
     }
 
     if (generation != captureGeneration_) {

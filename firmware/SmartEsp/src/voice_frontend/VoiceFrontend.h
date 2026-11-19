@@ -76,4 +76,6 @@ class VoiceFrontend {
   volatile float level_ = -100.0f;  // максимум levels_; пишет задача выборки
   uint32_t droppedFrames_ = 0;
   uint32_t lastDropLogMs_ = 0;
+  uint32_t wakeDroppedFrames_ = 0;  // кадры, не влезшие в wakeQueue_; только в задаче выборки
+  uint32_t lastWakeDropLogMs_ = 0;
 };

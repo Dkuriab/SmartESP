@@ -246,6 +246,6 @@ void WakeWord::State::onProbability(uint8_t probability) {
   }
   detections = detections + 1;
   quietMs = refractoryMs;
-  probabilityCount = 0;  // после паузы окно набирается заново
+  probabilityCount = 0;  // старые вероятности (со словом) в новое среднее не попадут
   Serial.printf("wake_word: слово услышано, вероятность %.2f\n", mean);
 }
