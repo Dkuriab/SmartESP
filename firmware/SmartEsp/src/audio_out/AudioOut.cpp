@@ -1,7 +1,7 @@
 #include "AudioOut.h"
 
-#include <math.h>
 #include <string.h>
+#include "SoundData.h"
 #include "freertos/idf_additions.h"
 
 namespace {
@@ -10,33 +10,22 @@ constexpr uint32_t SAMPLE_RATE = 16000;
 constexpr size_t CHUNK = 256;  // отсчётов за одну запись в I2S (16 мс)
 constexpr uint32_t IDLE_START_MS = 100;  // начать играть, если новых данных нет столько
 constexpr uint32_t OVERFLOW_LOG_PERIOD_MS = 1000;
-constexpr float TONE_LEVEL = 0.5f;  // тоны тише полной шкалы
 
-// Тон — последовательность отрезков: частота (0 — пауза) и длительность.
-struct ToneSegment {
-  float hz;
-  uint32_t ms;
+// Звук — образец из SoundData.cpp (уровень уже внутри).
+struct Sound {
+  const int16_t* pcm;
+  size_t len;
 };
 
-const ToneSegment WAKE_TONE[] = {{1000.0f, 150}};
-const ToneSegment ERROR_TONE[] = {{400.0f, 300}};
-const ToneSegment THINKING_TONE[] = {{600.0f, 80}, {0.0f, 80}, {600.0f, 80}};
-
-struct ToneShape {
-  const ToneSegment* segments;
-  uint32_t count;
-};
-
-ToneShape shapeOf(Tone tone) {
+Sound soundOf(Tone tone) {
   switch (tone) {
-    // Временно: Listen и Attention звучат как Wake (настоящие звуки — позже).
-    case Tone::Wake:
-    case Tone::Listen:
-    case Tone::Attention: return {WAKE_TONE, sizeof(WAKE_TONE) / sizeof(WAKE_TONE[0])};
-    case Tone::Error: return {ERROR_TONE, sizeof(ERROR_TONE) / sizeof(ERROR_TONE[0])};
-    case Tone::Thinking: return {THINKING_TONE, sizeof(THINKING_TONE) / sizeof(THINKING_TONE[0])};
+    case Tone::Wake: return {SOUND_WAKE, SOUND_WAKE_LEN};
+    case Tone::Listen: return {SOUND_LISTEN, SOUND_LISTEN_LEN};
+    case Tone::Error: return {SOUND_ERROR, SOUND_ERROR_LEN};
+    case Tone::Thinking: return {SOUND_THINKING, SOUND_THINKING_LEN};
+    case Tone::Attention: return {SOUND_ATTENTION, SOUND_ATTENTION_LEN};
   }
-  return {WAKE_TONE, 1};
+  return {SOUND_WAKE, SOUND_WAKE_LEN};
 }
 
 uint32_t msToSamples(uint32_t ms) {
@@ -118,28 +107,13 @@ void AudioOut::pushRefSilence(uint32_t ms) {
 }
 
 size_t AudioOut::renderTone(int16_t* dst, size_t samples) {
-  const ToneShape shape = shapeOf(tone_);
-  const float amplitude = volume_ * TONE_LEVEL * 32767.0f;
+  const Sound sound = soundOf(tone_);
+  const float volume = volume_;
   size_t n = 0;
-  while (n < samples && toneSegment_ < shape.count) {
-    if (toneSegmentLeft_ == 0) {
-      toneSegment_++;
-      if (toneSegment_ >= shape.count) {
-        break;
-      }
-      toneSegmentLeft_ = msToSamples(shape.segments[toneSegment_].ms);
-      tonePhase_ = 0;
-      continue;
-    }
-    const float hz = shape.segments[toneSegment_].hz;
-    dst[n++] = hz > 0 ? (int16_t)(sinf(tonePhase_) * amplitude) : 0;
-    tonePhase_ += 2.0f * PI * hz / SAMPLE_RATE;
-    if (tonePhase_ > 2.0f * PI) {
-      tonePhase_ -= 2.0f * PI;
-    }
-    toneSegmentLeft_--;
+  while (n < samples && tonePos_ < sound.len) {
+    dst[n++] = (int16_t)(sound.pcm[tonePos_++] * volume);
   }
-  if (toneSegment_ >= shape.count) {
+  if (tonePos_ >= sound.len) {
     toneActive_ = false;
   }
   return n;
@@ -166,9 +140,7 @@ void AudioOut::run() {
     if (request >= 0) {
       toneRequest_ = -1;
       tone_ = static_cast<Tone>(request);
-      toneSegment_ = 0;
-      toneSegmentLeft_ = msToSamples(shapeOf(tone_).segments[0].ms);
-      tonePhase_ = 0;
+      tonePos_ = 0;
       toneActive_ = true;
     }
 
