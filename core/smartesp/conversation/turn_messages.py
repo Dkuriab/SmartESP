@@ -5,7 +5,7 @@ import itertools
 from smartesp.contracts import DELEGATE_TOOL, ChatMessage, ToolCall
 
 from .sentences import strip_style_tag
-from .turn import Turn, answer_text
+from .turn import Turn, answer_text, history_question
 
 
 def _segments(turn: Turn) -> list[str]:
@@ -22,7 +22,7 @@ def turn_messages(turn: Turn) -> list[ChatMessage]:
     Если куски ответа не сходятся с передачами — обычная пара user/assistant с
     полным текстом.
     """
-    user = ChatMessage("user", turn.text)
+    user = ChatMessage("user", history_question(turn))
     segments = _segments(turn)
     if not turn.delegations or len(segments) != len(turn.delegations) + 1:
         return [user, ChatMessage("assistant", answer_text(turn))]

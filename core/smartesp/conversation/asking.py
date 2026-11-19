@@ -4,7 +4,8 @@
 как у хода с колонки (origin "api", source, person). Звука нет: колонке ничего не шлём,
 «думаю» никому не нужно, ход актуален до конца. Запоздавший ответ не откладывается и не
 объявляется: весь ход укладывается в limit_s (клиент ждёт 60 с), не уложился — честная
-фраза LATE_PHRASE.
+фраза LATE_PHRASE. Одновременно идут не больше MAX_CONCURRENT ходов: следующий ждёт
+место до QUEUE_WAIT_S (ожидание — в счёт limit_s), не дождался — AskUnavailable (BUSY).
 """
 
 import asyncio
@@ -45,6 +46,9 @@ NOT_HEARD = "Не расслышала."  # в голосовом нечего �
 FAILED_PHRASE = "Не получилось ответить, попробуй ещё раз."  # сбой без единого слова ответа
 NOT_READY = "Кузя ещё не готов: части ядра греются"
 STOPPING = "Кузя останавливается"
+BUSY = "Кузя занят другими вопросами, спроси чуть позже"
+MAX_CONCURRENT = 2  # ходов через API одновременно: модель общая с колонками
+QUEUE_WAIT_S = 10.0  # сколько вопрос ждёт места, пока идут другие ходы через API
 CHANNEL_NOTE = "{title}: вопрос не с колонки, ответ прочитают текстом"  # пометка для промпта
 
 
@@ -99,23 +103,30 @@ class ApiTurns:
         self._part_idle_s = part_idle_s
         self._limit_s = limit_s
         self._numbers = itertools.count(1)
+        self._slots = asyncio.Semaphore(MAX_CONCURRENT)
         self.accepting = True  # ядро останавливается — новых ходов не берём
 
     async def ask(self, question: Question) -> Answer:
         """Проводит ход отдельной задачей и возвращает ответ текстом.
 
         Ядро не готово (нет частей, а голосу — распознавания) или останавливается —
-        AskUnavailable. Отмена ожидания отменяет и ход.
+        AskUnavailable; не дождался места за QUEUE_WAIT_S — тоже (BUSY). Отмена ожидания
+        отменяет и ход.
         """
         parts = self._parts() if self.accepting else None
         if parts is None or (question.pcm and parts.stt is None):
             raise AskUnavailable(NOT_READY if self.accepting else STOPPING)
-        number = next(self._numbers)
-        now = time.monotonic()
-        utterance = Utterance(API_DEVICE, number, question.pcm, now, text=question.text, origin=API_ORIGIN)
-        title = source_title(question.source)
-        turn = Turn(utterance, title, now, text=question.text, source=question.source, person=question.person)
-        task = self._tasks.start(self._handle(turn, parts), name=f"turn {API_DEVICE}#{number}")
+        received = time.monotonic()
+        await self._admit()
+        try:
+            turn = self._new_turn(question, received)
+            task = self._tasks.start(
+                self._handle(turn, parts), name=f"turn {API_DEVICE}#{turn.utterance.turn}"
+            )
+        except BaseException:
+            self._slots.release()
+            raise
+        task.add_done_callback(lambda _: self._slots.release())  # место свободно, когда ход кончился
         try:
             await asyncio.wait((task,))
         except asyncio.CancelledError:
@@ -125,11 +136,31 @@ class ApiTurns:
             raise AskUnavailable(STOPPING)
         return Answer(reply_text(turn), str(turn_id(turn)))
 
+    async def _admit(self) -> None:
+        """Ждёт место среди идущих ходов через API не дольше QUEUE_WAIT_S; не дождался — BUSY."""
+        try:
+            async with asyncio.timeout(QUEUE_WAIT_S):
+                await self._slots.acquire()
+        except TimeoutError as error:
+            _log.warning("Ход через API отклонён: идут %d других", MAX_CONCURRENT)
+            raise AskUnavailable(BUSY) from error
+
+    def _new_turn(self, question: Question, received: float) -> Turn:
+        """Ход вопроса с новым номером; received — когда вопрос пришёл (от него считается limit_s)."""
+        number = next(self._numbers)
+        utterance = Utterance(
+            API_DEVICE, number, question.pcm, received, text=question.text, origin=API_ORIGIN
+        )
+        title = source_title(question.source)
+        return Turn(
+            utterance, title, received, text=question.text, source=question.source, person=question.person
+        )
+
     async def _handle(self, turn: Turn, parts: AskParts) -> None:
-        """Ход целиком в пределах limit_s; любая ошибка (кроме отмены) — ход с ошибкой."""
+        """Ход целиком в пределах limit_s от прихода вопроса; любая ошибка (кроме отмены) — ход с ошибкой."""
         activity = begin(turn, self._publish)
         try:
-            async with asyncio.timeout(self._limit_s):
+            async with asyncio.timeout(max(0.0, turn.received_at + self._limit_s - time.monotonic())):
                 await self._converse(turn, parts)
         except TimeoutError:
             _log.warning(

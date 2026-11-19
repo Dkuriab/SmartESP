@@ -64,7 +64,7 @@ async def test_ask_voice_decodes_and_recognizes(tmp_path: Path) -> None:
         )
     assert response.status_code == 200
     assert response.json()["answer"] == "Сейчас полдень."
-    assert core.history.messages()[0].content == "Который час?"
+    assert core.history.messages()[0].content == "[Telegram · Аня] Который час?"
     assert garbage.status_code == 422
     assert "OGG/Opus" in garbage.json()["detail"]
     await stop(core)

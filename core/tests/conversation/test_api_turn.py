@@ -19,8 +19,8 @@ from smartesp.contracts import (
     Question,
     ToolCall,
 )
-from smartesp.conversation import History, Orchestrator
-from smartesp.conversation.asking import FAILED_PHRASE, LATE_PHRASE, NOT_HEARD
+from smartesp.conversation import History, Orchestrator, asking
+from smartesp.conversation.asking import BUSY, FAILED_PHRASE, LATE_PHRASE, NOT_HEARD
 
 CHANNEL = "[канал] Telegram: вопрос не с колонки, ответ прочитают текстом"
 VOICE = b"\x01\x00" * 1600
@@ -47,8 +47,8 @@ async def test_text_question_answered_without_sound() -> None:
     assert (analyzer.seen[0].text, analyzer.seen[0].origin) == ("Какая погода?", "api")
     content = f"[время] сейчас 10:00\n{CHANNEL}\n[человек] Аня\n\nКакая погода?"
     assert executor.calls[0][-1] == ChatMessage("user", content)  # без строки «Колонка: …»
-    assert setup.history.messages() == [
-        ChatMessage("user", "Какая погода?"),
+    assert setup.history.messages() == [  # в истории видно, откуда вопрос
+        ChatMessage("user", "[Telegram · Аня] Какая погода?"),
         ChatMessage("assistant", "Сегодня солнечно. Тепло."),
     ]
     kinds = [kind for kind, _ in sink.events]
@@ -207,3 +207,35 @@ async def test_cancelled_wait_cancels_api_turn() -> None:
     await until(lambda: any(kind == "turn_finished" for kind, _ in sink.events))
     assert executor.closed_early
     assert finished(sink)["status"] == "interrupted"
+
+
+async def test_history_marks_source_without_person() -> None:
+    setup = Setup(FakeExecutor(["Да."]))
+    await setup.orchestrator.ask(Question(text="Привет", source="telegram"))
+    await setup.orchestrator.ask(Question(text="Ещё"))
+    users = [m.content for m in setup.history.messages() if m.role == "user"]
+    assert users == ["[Telegram] Привет", "[Api] Ещё"]
+
+
+async def test_at_most_two_api_turns_third_waits_then_busy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(asking, "QUEUE_WAIT_S", 0.2)
+    executor = FakeExecutor(["Долго."], delay=1.0)
+    setup = Setup(executor)
+    running_turns = [
+        asyncio.create_task(setup.orchestrator.ask(Question(text=f"Вопрос {i}"))) for i in (1, 2)
+    ]
+    await until(lambda: len(executor.calls) == 2)
+    with pytest.raises(AskUnavailable, match=BUSY):
+        await setup.orchestrator.ask(Question(text="Третий"))
+    assert len(executor.calls) == 2  # третий ход не начинался
+    assert [(await t).text for t in running_turns] == ["Долго.", "Долго."]
+    assert (await setup.orchestrator.ask(Question(text="Теперь можно"))).turn_id == "api3"
+
+
+async def test_third_turn_runs_when_a_place_frees_and_waits_in_its_limit() -> None:
+    sink = RecordingSink()
+    executor = FakeExecutor(["Ответ."], delay=0.2)
+    setup = Setup(executor, events=sink, ask_limit_s=0.3)
+    answers = await asyncio.gather(*(setup.orchestrator.ask(Question(text=f"В{i}")) for i in (1, 2, 3)))
+    assert [a.text for a in answers[:2]] == ["Ответ.", "Ответ."]
+    assert answers[2].text == LATE_PHRASE  # ждал места ~0,2 с из своих 0,3 с — ответ не успел

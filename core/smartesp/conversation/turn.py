@@ -74,6 +74,14 @@ def turn_id(turn: Turn) -> int | str:
     return f"{API_ORIGIN}{number}" if turn.utterance.origin == API_ORIGIN else number
 
 
+def history_question(turn: Turn) -> str:
+    """Вопрос хода для истории: у хода через API — с пометкой источника («[Telegram · Аня] текст»)."""
+    if not turn.source:
+        return turn.text
+    who = f"{turn.device_name} · {turn.person}" if turn.person else turn.device_name
+    return f"[{who}] {turn.text}"
+
+
 def format_ms(value: float | None) -> str:
     """Задержка для журнала: целые миллисекунды или «—», если до этого этапа не дошли."""
     return "—" if value is None else str(round(value))
