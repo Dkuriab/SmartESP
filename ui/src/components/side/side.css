@@ -1,0 +1,110 @@
+/* Левая панель: разделы со строками блоков и «Доступ из сети». */
+.sec {
+  padding: 14px 8px 6px;
+}
+
+section:first-child > .sec {
+  padding-top: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 12px;
+  border-radius: 9px;
+}
+
+.row.sel {
+  background: var(--accent-bg);
+  outline: 1px solid var(--accent);
+}
+
+.row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row .sub {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11.5px;
+  flex-shrink: 0;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ico {
+  width: 18px;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.dotg,
+.dotf {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.dotg {
+  background: var(--green);
+}
+
+.dotf {
+  background: var(--faint);
+}
+
+.side-none {
+  color: var(--muted);
+  margin: 0;
+  padding: 4px 12px;
+}
+
+.access {
+  margin-top: 18px;
+  padding: 12px 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.access-none {
+  color: var(--muted);
+  margin: 6px 0 0;
+}
+
+.access-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.access-url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+  font-size: 12px;
+}

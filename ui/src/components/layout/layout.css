@@ -39,7 +39,9 @@
   right: 16px;
   top: 66px;
   width: 300px;
+  max-height: calc(100% - 82px);
   padding: 16px;
+  overflow: auto;
 }
 
 .schema {

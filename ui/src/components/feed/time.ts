@@ -6,3 +6,8 @@ export function formatTime(at: number): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
+
+/** Unix-время в секундах -> HH:MM по местному времени. */
+export function formatClock(at: number): string {
+  return formatTime(at).slice(0, 5)
+}

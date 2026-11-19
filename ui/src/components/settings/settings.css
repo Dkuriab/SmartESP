@@ -1,0 +1,220 @@
+/* Правая панель: настройки выбранного блока. */
+.set-title {
+  margin: 0;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.set-sub {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 2px 0 12px;
+}
+
+.set-hint {
+  color: var(--muted);
+  margin: 0;
+}
+
+.set-note {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.set-note:empty {
+  display: none;
+}
+
+.set-note.warn {
+  color: var(--orange);
+}
+
+.set-note.bad {
+  color: var(--red-text);
+  overflow-wrap: anywhere;
+}
+
+.set-text {
+  color: var(--muted);
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.set-fine {
+  color: var(--faint);
+  font-size: 11px;
+  margin: 12px 0 0;
+}
+
+.field {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+}
+
+.set-sub + .field {
+  border-top: none;
+}
+
+.field-block {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.lbl {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.val {
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 10px;
+  min-width: 0;
+  width: 170px;
+  font: inherit;
+  text-align: right;
+}
+
+.val:disabled {
+  color: var(--muted);
+}
+
+.val-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Промпт на несколько экранов прокручивается внутри поля, панель не растёт. */
+.prompt {
+  width: 100%;
+  max-height: 240px;
+  overflow: auto;
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  font: inherit;
+  font-size: 12px;
+  resize: none;
+  overflow-wrap: anywhere;
+}
+
+.field-block > .btn {
+  align-self: flex-end;
+}
+
+.btn:disabled,
+.chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.small {
+  padding: 3px 9px;
+  font-size: 12px;
+}
+
+.chip {
+  background: var(--panel2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.switch {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Каталог голосов. */
+.voice-kind .cap {
+  margin: 14px 0 4px;
+}
+
+.voice-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.voice {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.voice-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.voice-current {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+}
+
+.voice-size {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.voice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.voice-ok {
+  color: var(--green);
+  font-size: 12px;
+}
+
+.voice-progress {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.voice-progress progress {
+  width: 70px;
+  height: 4px;
+  accent-color: var(--accent);
+}

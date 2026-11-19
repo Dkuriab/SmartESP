@@ -7,6 +7,10 @@ export default defineConfig({
   plugins: [react()],
   build: {
     rolldownOptions: {
+      // React Flow — отдельный файл: общий бандл иначе больше 500 КБ (предупреждение сборки)
+      output: {
+        codeSplitting: { groups: [{ name: 'xyflow', test: /node_modules[\\/]@xyflow[\\/]/ }] },
+      },
       // Предупреждение стороннего react-compiler-runtime («use no memo») безвредно.
       onLog(level, log, handler) {
         const id = String(log.id ?? log.loc?.file ?? '')

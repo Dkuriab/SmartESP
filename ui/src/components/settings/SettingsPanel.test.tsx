@@ -1,0 +1,83 @@
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { CoreState, Selection } from '../../state/model'
+import { makeActions, makeConfig, makeState, makeStatus } from '../fixtures'
+import SettingsPanel from './SettingsPanel'
+
+function setup(selected: Selection | null, over: Partial<CoreState> = {}) {
+  const actions = makeActions()
+  const state = makeState({ config: makeConfig(), selected, ...over })
+  render(<SettingsPanel state={state} actions={actions} />)
+  return { actions }
+}
+
+const seenAt = new Date(2024, 0, 2, 9, 5).getTime() / 1000
+const devices = [
+  { device_id: 'aa:bb', name: 'Спальня', connected: true, remote: '192.168.1.20:5123', fw: '1.4' },
+  { device_id: 'cc:dd', name: '', connected: false, remote: '', fw: '', last_seen: seenAt },
+]
+
+describe('SettingsPanel', () => {
+  it('без выбора — подсказка', () => {
+    setup(null)
+    expect(screen.getByText('Выберите блок на схеме или в списке')).toBeInTheDocument()
+  })
+
+  it('колонка: переименование по Enter вызывает renameDevice', async () => {
+    const { actions } = setup({ kind: 'device', id: 'aa:bb' }, { status: makeStatus({ devices }) })
+    const input = screen.getByLabelText('Имя')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Кухня{Enter}')
+    expect(actions.renameDevice).toHaveBeenCalledTimes(1)
+    expect(actions.renameDevice).toHaveBeenCalledWith('aa:bb', 'Кухня')
+  })
+
+  it('колонка: имя не изменилось — потеря фокуса ничего не шлёт', async () => {
+    const { actions } = setup({ kind: 'device', id: 'aa:bb' }, { status: makeStatus({ devices }) })
+    await userEvent.click(screen.getByLabelText('Имя'))
+    await userEvent.tab()
+    expect(actions.renameDevice).not.toHaveBeenCalled()
+  })
+
+  it('колонка: MAC, IP, прошивка, в сети', () => {
+    setup({ kind: 'device', id: 'aa:bb' }, { status: makeStatus({ devices }) })
+    expect(screen.getByText('aa:bb')).toBeInTheDocument()
+    expect(screen.getByText('192.168.1.20')).toBeInTheDocument()
+    expect(screen.getByText('1.4')).toBeInTheDocument()
+    expect(screen.getByText('в сети')).toBeInTheDocument()
+  })
+
+  it('колонка без имени и не в сети: MAC в заголовке, «была в HH:MM»', () => {
+    setup({ kind: 'device', id: 'cc:dd' }, { status: makeStatus({ devices }) })
+    expect(screen.getByRole('heading')).toHaveTextContent('cc:dd')
+    expect(screen.getByText('была в 09:05')).toBeInTheDocument()
+  })
+
+  it('колонка только из настроек — «не подключалась»', () => {
+    const config = makeConfig({ devices: { 'ee:ff': { name: 'Гараж' } } })
+    setup({ kind: 'device', id: 'ee:ff' }, { config })
+    expect(screen.getByLabelText('Имя')).toHaveValue('Гараж')
+    expect(screen.getByText('не подключалась')).toBeInTheDocument()
+  })
+
+  it('обработчик: выключение шлёт список без него', async () => {
+    const { actions } = setup({ kind: 'stage', id: 'whisper_detect' })
+    expect(screen.getByText('Шёпот: отвечает тихо, если вопрос сказан шёпотом')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('switch', { name: 'Включён' }))
+    expect(actions.setStages).toHaveBeenCalledWith([])
+  })
+
+  it('обработчик: включение добавляет {kind}', async () => {
+    const { actions } = setup({ kind: 'stage', id: 'whisper_detect' }, { config: makeConfig({ stages: [] }) })
+    const sw = screen.getByRole('switch', { name: 'Включён' })
+    expect(sw).not.toBeChecked()
+    await userEvent.click(sw)
+    expect(actions.setStages).toHaveBeenCalledWith([{ kind: 'whisper_detect' }])
+  })
+
+  it('обработчик: пока применяется — «Применяется…» и переключатель заблокирован', () => {
+    setup({ kind: 'stage', id: 'whisper_detect' }, { pending: { 3: 'Обработчики' } })
+    expect(screen.getByText('Применяется…')).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Включён' })).toBeDisabled()
+  })
+})

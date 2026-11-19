@@ -1,7 +1,7 @@
 // Общие данные для тестов компонентов: состояние ядра и поддельные действия.
 import { vi } from 'vitest'
 import type { CoreActions } from '../state/actions'
-import type { CoreState, Status, Turn } from '../state/model'
+import type { Config, CoreState, Status, Turn, Voice } from '../state/model'
 import { initialState } from '../state/model'
 
 export function makeTurn(id: number, over: Partial<Turn> = {}): Turn {
@@ -40,6 +40,26 @@ export function makeState(over: Partial<CoreState> = {}): CoreState {
   return { ...initialState('online'), status: makeStatus(), ...over }
 }
 
+export function makeConfig(effective: Record<string, unknown> = {}): Config {
+  return {
+    effective: {
+      stages: [{ kind: 'whisper_detect', timeout_ms: 50 }],
+      executors: [
+        { id: 'dispatcher', entry: true, model: 'qwen3', system_prompt: 'Отвечай коротко' },
+        { id: 'big', entry: false, model: 'gpt-oss' },
+      ],
+      tts: { kind: 'piper', voice: 'irina' },
+      ...effective,
+    },
+    overridden: [],
+    restart_sections: [],
+  }
+}
+
+export function makeVoice(over: Partial<Voice> = {}): Voice {
+  return { kind: 'piper', voice: 'irina', title: 'Ирина', size_mb: 60, downloaded: true, current: false, ...over }
+}
+
 export function makeActions(): CoreActions {
   return {
     patchConfig: vi.fn(),
@@ -50,7 +70,7 @@ export function makeActions(): CoreActions {
     setStages: vi.fn(),
     setDispatcher: vi.fn(),
     restart: vi.fn(),
-    loadAccess: vi.fn(),
+    loadAccess: vi.fn().mockResolvedValue([]),
     setToken: vi.fn(),
     select: vi.fn(),
     selectTurn: vi.fn(),
