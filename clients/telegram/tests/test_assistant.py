@@ -18,28 +18,7 @@ from telegram_bot.core_client import (
     CoreUnauthorizedError,
     CoreUnavailableError,
 )
-
-
-class FakeCore:
-    """Поддельное ядро: запоминает ходы, отвечает заданным текстом или ошибкой."""
-
-    def __init__(self, answer: str = "Ответ Кузи", error: CoreError | None = None) -> None:
-        self.answer = answer
-        self.error = error
-        self.calls: list[tuple[str, object, str]] = []
-
-    async def ask(self, text: str, *, person: str) -> str:
-        self.calls.append(("text", text, person))
-        return self._reply()
-
-    async def ask_voice(self, audio: bytes, *, person: str) -> str:
-        self.calls.append(("voice", audio, person))
-        return self._reply()
-
-    def _reply(self) -> str:
-        if self.error is not None:
-            raise self.error
-        return self.answer
+from tests.fakes import FakeCore
 
 
 def assistant(core: FakeCore, barcode: str | None = None) -> Assistant:
