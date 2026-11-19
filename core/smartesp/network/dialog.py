@@ -6,12 +6,20 @@ TASK_PREFIX = "\n\nЗадача от диспетчера: "  # дописыва
 
 
 def flatten(messages: list[ChatMessage]) -> list[ChatMessage]:
-    """Диалог для цели: без вызовов инструментов, ответы инструментов — обычные ответы assistant."""
-    return [
-        ChatMessage("assistant", m.content) if m.role == "tool" else ChatMessage(m.role, m.content)
-        for m in messages
-        if m.role != "assistant" or m.content or not m.tool_calls
-    ]
+    """Диалог для цели: без вызовов инструментов, ответы инструментов — ответы assistant.
+
+    Подряд идущие ответы assistant (фраза и ответ цели) склеиваются в один через пробел.
+    """
+    result: list[ChatMessage] = []
+    for m in messages:
+        if m.role == "assistant" and not m.content and m.tool_calls:
+            continue
+        role = "assistant" if m.role == "tool" else m.role
+        if role == "assistant" and result and result[-1].role == "assistant":
+            result[-1] = ChatMessage("assistant", f"{result[-1].content} {m.content}".strip())
+        else:
+            result.append(ChatMessage(role, m.content))
+    return result
 
 
 def with_task(messages: list[ChatMessage], task: str) -> list[ChatMessage]:

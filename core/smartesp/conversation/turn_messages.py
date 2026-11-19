@@ -15,20 +15,22 @@ def _segments(turn: Turn) -> list[str]:
 
 
 def turn_messages(turn: Turn) -> list[ChatMessage]:
-    """Сообщения хода: вопрос и ответ; при передачах — assistant с вызовом delegate и ответ tool.
+    """Сообщения хода: вопрос и ответ; с передачей — assistant с вызовом delegate и ответ tool.
 
-    На каждую передачу по паре assistant (фраза до неё; у вложенной — пустой текст)
-    и tool (то, что сказала цель). Если куски ответа не сходятся с передачами —
-    обычная пара user/assistant с полным текстом.
+    Диспетчер сам вызвал delegate один раз (первую передачу): фраза до неё и вызов —
+    в assistant, всё, что сказали цели (и вложенные тоже), через пробел — в tool.
+    Если куски ответа не сходятся с передачами — обычная пара user/assistant с
+    полным текстом.
     """
     user = ChatMessage("user", turn.text)
     segments = _segments(turn)
     if not turn.delegations or len(segments) != len(turn.delegations) + 1:
         return [user, ChatMessage("assistant", answer_text(turn))]
-    messages = [user]
-    for index, handoff in enumerate(turn.delegations):
-        call = ToolCall(DELEGATE_TOOL, {"executor": handoff.target, "task": handoff.task})
-        said = segments[index] if index == 0 else ""
-        messages.append(ChatMessage("assistant", said, tool_calls=(call,)))
-        messages.append(ChatMessage("tool", segments[index + 1], tool_name=DELEGATE_TOOL))
-    return messages
+    first = turn.delegations[0]
+    call = ToolCall(DELEGATE_TOOL, {"executor": first.target, "task": first.task})
+    targets_said = " ".join(text for text in segments[1:] if text)
+    return [
+        user,
+        ChatMessage("assistant", segments[0], tool_calls=(call,)),
+        ChatMessage("tool", targets_said, tool_name=DELEGATE_TOOL),
+    ]

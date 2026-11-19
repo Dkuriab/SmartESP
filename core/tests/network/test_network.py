@@ -302,10 +302,9 @@ async def test_target_gets_flat_dialog_without_tool_structure() -> None:
     ]
     big = FakeExecutor(["4913."])
     await collect(network(FakeExecutor([call()]), big), history)
-    assert big.calls[0][:3] == [
+    assert big.calls[0][:2] == [
         ChatMessage("user", "Привет"),
-        ChatMessage("assistant", "Минутку."),
-        ChatMessage("assistant", "Здравствуй"),
+        ChatMessage("assistant", "Минутку. Здравствуй"),
     ]
     assert all(not m.tool_calls and not m.tool_name and m.role != "tool" for m in big.calls[0])
 
@@ -320,3 +319,19 @@ async def test_entry_gets_structured_history_unchanged() -> None:
     entry = FakeExecutor(["Привет."])
     await collect(network(entry, FakeExecutor([])), history)
     assert entry.calls[0] == history
+
+
+async def test_entry_without_targets_gets_flat_dialog() -> None:
+    history = [
+        ChatMessage("user", "Привет"),
+        ChatMessage("assistant", "Минутку.", tool_calls=(ToolCall("delegate", {"executor": "big"}),)),
+        ChatMessage("tool", "Здравствуй", tool_name="delegate"),
+        ChatMessage("user", "Ещё"),
+    ]
+    entry = FakeExecutor(["Привет."])
+    await collect(network(entry, FakeExecutor([]), tools_ok=False), history)
+    assert entry.calls[0] == [
+        ChatMessage("user", "Привет"),
+        ChatMessage("assistant", "Минутку. Здравствуй"),
+        ChatMessage("user", "Ещё"),
+    ]

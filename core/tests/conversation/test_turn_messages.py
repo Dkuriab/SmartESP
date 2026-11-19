@@ -31,15 +31,13 @@ def test_handoff_is_tool_call_and_tool_answer() -> None:
     ]
 
 
-def test_nested_handoffs_give_pair_each_in_order() -> None:
+def test_nested_handoffs_give_dispatcher_one_pair_with_all_target_text() -> None:
     handoffs = [Handoff("a", "b", "Б", "t1"), Handoff("b", "c", "Ц", "t2")]
     turn = make_turn(["Минутку.", "Спрошу.", "Итог."], [1, 2], handoffs)
     assert turn_messages(turn) == [
         ChatMessage("user", "Вопрос"),
         ChatMessage("assistant", "Минутку.", tool_calls=(call("b", "t1"),)),
-        ChatMessage("tool", "Спрошу.", tool_name="delegate"),
-        ChatMessage("assistant", "", tool_calls=(call("c", "t2"),)),
-        ChatMessage("tool", "Итог.", tool_name="delegate"),
+        ChatMessage("tool", "Спрошу. Итог.", tool_name="delegate"),
     ]
 
 

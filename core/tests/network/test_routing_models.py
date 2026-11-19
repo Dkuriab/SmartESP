@@ -1,11 +1,9 @@
 """Проверка с настоящей моделью: правильно ли диспетчер (Gemma) выбирает, кому передать вопрос."""
 
-import httpx
-import ollama
 import pytest
 
 from smartesp.config.models import BIG_WHEN, DEFAULT_SYSTEM_PROMPT
-from smartesp.contracts import ChatMessage, ToolCall
+from smartesp.contracts import ChatMessage, ExecutorError, ToolCall
 from smartesp.executors import OllamaExecutor
 from smartesp.network import DELEGATE_TOOL, Target, delegate_rule, delegate_tool
 from smartesp.stages.whisper_detect import PROMPT_HINT
@@ -30,7 +28,7 @@ QUESTIONS = [
     ("coder", "Как в питоне развернуть список?"),
     ("coder", "Напиши функцию сортировки пузырьком на C"),
 ]
-MIN_RIGHT = 7
+MIN_RIGHT = 7  # из 8; на практике 8/8, один сбой в 15 прогонов допустим
 
 
 async def ask(executor: OllamaExecutor, question: str) -> tuple[str, str]:
@@ -51,8 +49,7 @@ async def test_gemma_routes_to_right_target() -> None:
     executor = OllamaExecutor(MODEL, prompt, "5m")
     try:
         await executor.warm_up()
-        await ollama.AsyncClient().show(MODEL)
-    except (httpx.HTTPError, ConnectionError, ollama.ResponseError):
+    except ExecutorError:
         pytest.skip("Ollama или модель недоступны")
     right = 0
     silent_calls: list[str] = []
@@ -88,7 +85,7 @@ async def test_gemma_default_config_one_target_with_whisper_hint() -> None:
     executor = OllamaExecutor(MODEL, prompt, "5m")
     try:
         await executor.warm_up()
-    except (httpx.HTTPError, ConnectionError, ollama.ResponseError):
+    except ExecutorError:
         pytest.skip("Ollama или модель недоступны")
     tools = [delegate_tool(DEFAULT_TARGET)]
 
@@ -101,7 +98,7 @@ async def test_gemma_default_config_one_target_with_whisper_hint() -> None:
     hard = [await delegated(q) for q in DEFAULT_HARD for _ in range(2)]
     simple = [await delegated(q) for q in DEFAULT_SIMPLE for _ in range(2)]
     print(f"\nhard delegated {sum(hard)} of {len(hard)}; simple delegated {sum(simple)} of {len(simple)}")
-    assert sum(hard) >= 5
+    assert sum(hard) >= 5  # из 6; на практике 5-6
     assert not any(simple)
 
 
@@ -112,7 +109,7 @@ async def test_gemma_delegates_after_prior_delegated_turn_in_history() -> None:
     executor = OllamaExecutor(MODEL, prompt, "5m")
     try:
         await executor.warm_up()
-    except (httpx.HTTPError, ConnectionError, ollama.ResponseError):
+    except ExecutorError:
         pytest.skip("Ollama или модель недоступны")
     task = "Объяснить, почему небо голубое"
     history = [
@@ -135,4 +132,4 @@ async def test_gemma_delegates_after_prior_delegated_turn_in_history() -> None:
             messages = [*history, ChatMessage("user", question)]
             results.append(any([p.tool_call is not None async for p in executor.run(messages, tools)]))
     print(f"\ndelegated {sum(results)} of {len(results)} with delegated turn in history")
-    assert sum(results) >= 5
+    assert sum(results) >= 5  # из 6; на практике 6/6

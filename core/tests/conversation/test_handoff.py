@@ -153,15 +153,79 @@ async def test_target_limit_speaks_phrase_instead_of_error_tone() -> None:
     assert setup.history.messages() == []
 
 
-async def test_handoff_without_phrase_thinks_at_once() -> None:
+CANNED = "Минутку, сейчас узнаю."
+
+
+async def test_silent_call_speaks_canned_phrase_and_stores_it() -> None:
     network = FakeNetwork([], ["Ответ большой модели."], delay=0.25)
     sink = RecordingSink()
     setup = Setup(network, events=sink, thinking_interval_s=0.1, delegate_limit_s=5)
     finished = await run_turn(setup, sink)
-    assert setup.port.tones == [THINKING, THINKING, THINKING]  # сразу, в 0,1 и 0,2 с
-    assert setup.tts.texts == ["Ответ большой модели."]
+    assert setup.tts.texts == [CANNED, "Ответ большой модели."]
+    assert setup.port.tones == [THINKING, THINKING]  # без немедленного «думаю»: в 0,1 и 0,2 с
     assert finished["status"] == "ok"
-    assert finished["answer"] == "Ответ большой модели."
+    assert finished["answer"] == f"{CANNED} Ответ большой модели."
+    assert setup.history.messages() == [
+        ChatMessage("user", "Какая погода?"),
+        ChatMessage(
+            "assistant", CANNED, tool_calls=(ToolCall("delegate", {"executor": "big", "task": TASK}),)
+        ),
+        ChatMessage("tool", "Ответ большой модели.", tool_name="delegate"),
+    ]
+
+
+async def test_silent_call_after_style_tag_only_keeps_quiet() -> None:
+    tts = StyledTTS()
+    sink = RecordingSink()
+    setup = Setup(FakeNetwork(["[style:quiet]"], ["Ответ."]), tts=tts, events=sink)
+    finished = await run_turn(setup, sink)
+    assert tts.texts[0] == CANNED
+    assert tts.used[0] == "quiet"
+    assert finished["answer"] == f"{CANNED} Ответ."
+
+
+async def test_call_after_blank_text_counts_as_silent() -> None:
+    sink = RecordingSink()
+    setup = Setup(FakeNetwork(["  "], ["Ответ."]), events=sink)
+    await run_turn(setup, sink)
+    assert CANNED in setup.tts.texts
+
+
+async def test_phrase_before_call_is_not_replaced() -> None:
+    sink = RecordingSink()
+    setup = Setup(FakeNetwork([PHRASE], ["Ответ."]), events=sink)
+    await run_turn(setup, sink)
+    assert CANNED not in setup.tts.texts
+
+
+async def test_auto_handoff_gets_no_canned_phrase() -> None:
+    class AutoNetwork(FakeNetwork):
+        async def run(
+            self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
+        ) -> AsyncIterator[ReplyPart]:
+            yield ReplyPart(PHRASE)
+            yield ReplyPart(handoff=Handoff("dispatcher", "big", "Большая модель", TASK, auto=True))
+            yield ReplyPart("Ответ.")
+
+    sink = RecordingSink()
+    setup = Setup(AutoNetwork([], []), events=sink)
+    await run_turn(setup, sink)
+    assert setup.tts.texts == [PHRASE, "Ответ."]
+
+
+async def test_second_silent_call_gets_no_canned_phrase() -> None:
+    class Nested(FakeNetwork):
+        async def run(
+            self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
+        ) -> AsyncIterator[ReplyPart]:
+            yield ReplyPart(handoff=HANDOFF)
+            yield ReplyPart(handoff=Handoff("big", "coder", "Программист", "t"))
+            yield ReplyPart("Итог.")
+
+    sink = RecordingSink()
+    setup = Setup(Nested([], []), events=sink)
+    await run_turn(setup, sink)
+    assert setup.tts.texts == [CANNED, "Итог."]
 
 
 async def test_failure_part_is_spoken_instead_of_error_tone() -> None:
@@ -235,13 +299,14 @@ async def test_silent_target_speaks_phrase(target: list[str]) -> None:
     assert finished["answer"] == f"{PHRASE} {SILENT}"
 
 
-async def test_silent_target_after_handoff_without_phrase() -> None:
+async def test_silent_call_to_unavailable_target_speaks_canned_and_failure() -> None:
     sink = RecordingSink()
     setup = Setup(FakeNetwork([], []), events=sink)
     finished = await run_turn(setup, sink)
-    assert setup.tts.texts == [SILENT]
-    assert setup.port.tones == [THINKING]  # «думаю» сразу после передачи, ошибка — фразой
+    assert setup.tts.texts == [CANNED, SILENT]
+    assert setup.port.tones == []
     assert finished["status"] == "error"
+    assert finished["answer"] == f"{CANNED} {SILENT}"
     assert setup.history.messages() == []
 
 
@@ -276,10 +341,10 @@ async def test_failure_phrase_starts_new_sentence() -> None:
     assert finished["status"] == "error"
 
 
-async def test_first_text_ms_waits_for_text() -> None:
-    # передача без текста — не первый текст: замер — по первому куску цели
+async def test_first_text_ms_is_canned_phrase_for_silent_call() -> None:
+    # передача без фразы: за диспетчера звучит «Минутку…», это и есть первый текст
     network = FakeNetwork([], ["Ответ большой модели."], delay=0.2)
     sink = RecordingSink()
     finished = await run_turn(Setup(network, events=sink), sink)
     first_text_ms = finished["first_text_ms"]
-    assert isinstance(first_text_ms, int) and first_text_ms >= 200
+    assert isinstance(first_text_ms, int) and first_text_ms < 100

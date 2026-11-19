@@ -1,10 +1,10 @@
-"""Озвучивает фразу голосом Silero (или другим из каталога) в WAV 16 кГц для fake_device.py.
+"""Озвучивает фразу голосом Silero в WAV 16 кГц для fake_device.py.
 
 Запуск из корня репозитория (ядро — виртуальный uv-проект, поэтому путь к нему
 добавляется в sys.path, а голоса берутся из SMARTESP_HOME или ~/SmartEsp):
     uv run --project core python tools/make_wav.py "Привет, как дела?" q.wav
     uv run --project core python tools/make_wav.py "текст" q.wav --voice silero/xenia
-Голос — вид/имя из каталога ядра; PCM 16 кГц, 16 бит, моно.
+Голос — silero/<имя> (скачанный в SMARTESP_HOME); PCM 16 кГц, 16 бит, моно.
 """
 
 from __future__ import annotations
@@ -27,7 +27,13 @@ async def synthesize(text: str, kind: str, voice: str, home: Path) -> bytes:
     """Озвучивает текст и склеивает куски PCM."""
     if kind != "silero":
         raise SystemExit("make_wav.py умеет только голоса silero/<имя>")
-    tts = SileroTTS(voice_path(kind, voice, home), voice)
+    try:
+        path = voice_path(kind, voice, home)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    if not path.exists():
+        raise SystemExit(f"Модель голоса не найдена: {path}. Скачайте голос в интерфейсе или ядром.")
+    tts = SileroTTS(path, voice)
     return b"".join([chunk async for chunk in tts.synthesize(text, "normal")])
 
 

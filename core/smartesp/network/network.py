@@ -133,6 +133,8 @@ class ExecutorNetwork:
         member = self._members[member_id]
         offered = member.targets if member.tools_ok and depth < self._max_depth else ()
         tools = _member_tools(member, offered, extra_tools)
+        if not offered:  # передать некому: структура вызовов delegate модели не нужна
+            own = flatten(own)
         outcome = _Outcome()
         parts = self._own_parts(member_id, member.executor.run(own, tools), offered, outcome)
         async with _closing(parts):

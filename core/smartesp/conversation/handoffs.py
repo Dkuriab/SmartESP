@@ -14,7 +14,7 @@ from smartesp.contracts import Executor, ExecutorError, Handoff, Identified, Rep
 
 from .sentences import DEFAULT_STYLE, clean_for_speech, split_sentences, strip_style_tag, take_style
 from .streams import closing, first_part, next_part
-from .turn import Turn, answer_text
+from .turn import Turn
 
 _log = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ DELEGATE_FIRST_PART_LIMIT_S = 90.0  # дольше первого куска ц�
 LIVE_POLL_S = 0.1  # как часто проверять, актуален ли ход, пока ждём цель
 TIMEOUT_PHRASE = "Не успела ответить, спроси попозже."  # цель не ответила в срок
 SILENT_PHRASE = "{name} сейчас не отвечает."  # цель ничего не сказала
+CANNED_PHRASE = "Минутку, сейчас узнаю."  # вызов передачи без фразы: говорим за диспетчера
 ENTRY_ID = "entry"  # id входного исполнителя, который своего id не знает
 
 
@@ -77,6 +78,10 @@ async def collect(
     part, target_start = first, 0
     while part is not None:
         if part.handoff is not None:
+            canned = _canned_part(turn)
+            if canned is not None:
+                _take(turn, canned)
+                yield canned
             target_start = len(turn.answer)
         _take(turn, part)
         yield part
@@ -95,6 +100,19 @@ async def collect(
         failure = _silent_part(turn)
         _take(turn, failure)
         yield failure
+
+
+def _spoken(turn: Turn) -> bool:
+    """True, если в ходе уже сказано что-то, что можно озвучить (метка стиля и «…» не считаются)."""
+    return bool(clean_for_speech(strip_style_tag("".join(turn.answer))[1]))
+
+
+def _canned_part(turn: Turn) -> ReplyPart | None:
+    """Фраза за диспетчера, если он вызвал передачу молча; только для первой передачи хода."""
+    if turn.delegations or _spoken(turn):
+        return None
+    _log.info("Колонка %s: вызов без фразы — говорим «Минутку…»", turn.device_name)
+    return ReplyPart(CANNED_PHRASE)
 
 
 def _take(turn: Turn, part: ReplyPart) -> None:
@@ -143,7 +161,7 @@ async def _target_first(turn: Turn, parts: AsyncIterator[ReplyPart], waiting: Wa
 
     Не дождались за delegate_limit_s — ExecutorError.
     """
-    if not answer_text(turn):  # до передачи ничего не сказано — колонка не должна ждать молча
+    if not _spoken(turn):  # до передачи ничего не сказано — колонка не должна ждать молча
         await waiting.thinking()
     try:
         async with asyncio.timeout(None) as deadline:
