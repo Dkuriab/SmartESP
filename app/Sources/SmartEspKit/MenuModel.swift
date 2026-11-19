@@ -21,7 +21,7 @@ public struct MenuModel: Equatable, Sendable {
     public let showsAccessSettings: Bool
     /// Доступен ли «Открыть SmartESP».
     public let canOpen: Bool
-    /// Доступен ли «Перезапустить ядро».
+    /// Доступен ли «Перезапустить ядро» (не во время остановки и не у остановленного ядра).
     public let canRestart: Bool
 }
 
@@ -51,8 +51,12 @@ public func menuModel(state: CoreState) -> MenuModel {
     default:
         break
     }
+    // Остановленное ядро запускают «Запустить ядро»; во время остановки перезапуск ждёт
     var canRestart = true
-    if case .stopping = state { canRestart = false }
+    switch state {
+    case .stopping, .stopped: canRestart = false
+    default: break
+    }
     return MenuModel(
         statusText: text, symbolName: symbol, hint: hint, showsAccessSettings: showsAccessSettings,
         canOpen: true, canRestart: canRestart)

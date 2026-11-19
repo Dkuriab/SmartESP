@@ -57,7 +57,7 @@ import Testing
         let model = menuModel(state: .stopped)
         #expect(model.statusText == "Ядро остановлено")
         #expect(model.symbolName == "exclamationmark.triangle.fill")
-        #expect(model.canOpen && model.canRestart)
+        #expect(model.canOpen && !model.canRestart)
     }
 
     @Test func failed() {
