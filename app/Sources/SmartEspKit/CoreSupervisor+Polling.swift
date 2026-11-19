@@ -64,6 +64,7 @@ extension CoreSupervisor {
             }
             mode = .own(handle)
             launchedAt = clock()
+            probeFailures = 0
             state = .starting
         } catch {
             fail("Не удалось запустить ядро: \(error.localizedDescription)")
@@ -87,29 +88,54 @@ extension CoreSupervisor {
 
     func refreshOwn(_ handle: any CoreHandle) async {
         // Файл запуска с мёртвым pid — от прошлого ядра: своё его ещё не переписало
-        guard let info = RunFile.read(paths.runFile), pidAlive(info.pid) else { return state = silentStartState() }
+        guard let info = RunFile.read(paths.runFile), pidAlive(info.pid) else {
+            return await refreshWithoutRunFile(handle)
+        }
         port = info.port
         guard let token = TokenFile.read(paths.tokenFile) else { return state = .starting }
         self.token = token
         let current = generation
         let result = await probe.status(port: info.port, token: token)
         guard current == generation, case .own(let now) = mode, now === handle else { return }
+        applyOwnStatus(result, port: info.port)
+    }
+
+    /// Ответ `status` своего ядра. Неудача при живом ядре сбрасывает `running`
+    /// только после `probeFailureLimit` неудач подряд — иначе окно мигало бы заглушкой.
+    private func applyOwnStatus(_ result: ProbeResult, port: Int) {
         if case let .ok(phase, online, total, ollama) = result {
-            state = .running(port: info.port, phase: phase, devices: (online, total), ollama: ollama)
-        } else {
-            state = .starting
+            probeFailures = 0
+            state = .running(port: port, phase: phase, devices: (online, total), ollama: ollama)
+            return
         }
+        probeFailures += 1
+        if case .running = state, probeFailures < Self.probeFailureLimit { return }
+        state = .starting
+    }
+
+    /// Файла запуска нет или его pid мёртв. Файл пропал (удалили папку данных), а ядро
+    /// отвечает по прежним порту и токену — остаёмся в `running`; иначе сразу `starting`.
+    private func refreshWithoutRunFile(_ handle: any CoreHandle) async {
+        if RunFile.read(paths.runFile) == nil, case .running = state, let port, let token {
+            let current = generation
+            let result = await probe.status(port: port, token: token)
+            guard current == generation, case .own(let now) = mode, now === handle else { return }
+            if case .ok = result { return applyOwnStatus(result, port: port) }
+        }
+        probeFailures = 0
+        state = silentStartState()
     }
 
     /// Ядро ещё не написало файл запуска. Если оно молчит дольше `silentStartLimit`
     /// (ни stderr, ни новых строк журнала), а репозиторий в защищённой папке, —
-    /// скорее всего `uv` ждёт ответа на запрос доступа (например, после пересборки).
+    /// возможно, `uv` ждёт ответа на запрос доступа (например, после пересборки)
+    /// или ещё молча ставит зависимости.
     private func silentStartState() -> CoreState {
         guard clock() - launchedAt >= Self.silentStartLimit,
               let folder = protectedFolderName(of: paths.repo, home: home),
               CoreLog.size(paths.stderrLogFile) == 0,
               CoreLog.size(paths.logFile) == logOffset else { return .starting }
-        return .waitingForAccess(folder: folder)
+        return .silentStart(folder: folder)
     }
 
     func refreshExternal(_ pid: Int32) async {

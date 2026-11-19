@@ -19,6 +19,9 @@ import Foundation
     /// Ядро после запуска молчит столько (нет файла запуска, stderr и записей в журнале),
     /// а репозиторий в защищённой папке — показываем подсказку про доступ, секунд.
     public static let silentStartLimit: TimeInterval = 20
+    /// Столько неудачных опросов подряд (ядро живо, но `status` не ответил),
+    /// прежде чем `running` сменится на `starting`: единичный таймаут окно не трогает.
+    public static let probeFailureLimit = 3
 
     /// Текущее состояние.
     public internal(set) var state: CoreState = .stopped {
@@ -51,6 +54,8 @@ import Foundation
 
     var mode: Mode = .idle
     var crashTimes: [TimeInterval] = []
+    /// Неудачные опросы своего ядра подряд.
+    var probeFailures = 0
     var logOffset: UInt64 = 0
     /// Когда запущен свой процесс (по `clock`).
     var launchedAt: TimeInterval = 0

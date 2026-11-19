@@ -45,6 +45,9 @@ public func menuModel(state: CoreState) -> MenuModel {
     case let .waitingForAccess(folder), let .accessDenied(folder):
         hint = accessHint(folder: folder)
         showsAccessSettings = true
+    case let .silentStart(folder):
+        hint = silentStartHint(folder: folder)
+        showsAccessSettings = true
     default:
         break
     }
@@ -70,6 +73,8 @@ private func describe(_ state: CoreState) -> (String, String) {
         return ("Нужно разрешение на папку «\(folder)»", Symbol.problem)
     case let .accessDenied(folder):
         return ("Ошибка: нет доступа к папке «\(folder)»", Symbol.problem)
+    case let .silentStart(folder):
+        return ("Ядро молчит — возможно, ждёт доступа к папке «\(folder)»", Symbol.busy)
     case let .running(_, phase, devices, ollama):
         let details = " · колонок \(devices.online) из \(devices.total) · Ollama \(ollama ? "✓" : "✗")"
         switch phase {

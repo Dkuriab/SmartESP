@@ -79,7 +79,7 @@ private let documentsRepo = "Documents/SmartEsp"
         #expect(rig.supervisor.state == .starting)
         rig.clock.now += 2
         await rig.supervisor.tick()
-        #expect(rig.supervisor.state == .waitingForAccess(folder: "Документы"))
+        #expect(rig.supervisor.state == .silentStart(folder: "Документы"))
 
         // Разрешили — ядро пишет файл запуска и отвечает
         rig.writeRunFile(port: 8765, pid: 4242)
@@ -164,6 +164,19 @@ private let documentsRepo = "Documents/SmartEsp"
         #expect(model.symbolName == "exclamationmark.triangle.fill")
         #expect(model.hint == accessHint(folder: "Документы"))
         #expect(model.showsAccessSettings && model.canRestart)
+    }
+
+    @Test func silentStartMenuIsSoft() {
+        let model = menuModel(state: .silentStart(folder: "Документы"))
+        #expect(model.statusText == "Ядро молчит — возможно, ждёт доступа к папке «Документы»")
+        #expect(model.symbolName == "waveform.circle")
+        #expect(model.hint == silentStartHint(folder: "Документы"))
+        #expect(model.hint?.contains("Возможно, macOS спрашивает доступ — нажмите «Разрешить»") == true)
+        #expect(model.hint?.contains("Файлы и папки → SmartEsp → «Папка „Документы“»") == true)
+        #expect(model.hint?.hasSuffix("…или ядро ещё ставит зависимости — откройте «Журнал».") == true)
+        #expect(model.showsAccessSettings && model.canRestart && model.canOpen)
+        let text = model.statusText + "\n\n" + silentStartHint(folder: "Документы")
+        #expect(windowContent(state: .silentStart(folder: "Документы"), token: nil) == .placeholder(text))
     }
 
     @Test func otherStatesHideAccessSettings() {

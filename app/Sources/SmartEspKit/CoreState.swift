@@ -13,9 +13,11 @@ public enum CoreState: Equatable, Sendable {
     case stopping
     /// Ошибка с текстом для меню; выход из неё — «Перезапустить ядро».
     case failed(String)
-    /// macOS спрашивает доступ к защищённой папке с репозиторием (`folder` — её
-    /// русское имя), или ядро после запуска молчит так, будто ждёт этого ответа.
+    /// macOS спрашивает доступ к защищённой папке с репозиторием (`folder` — её русское имя).
     case waitingForAccess(folder: String)
+    /// Ядро после запуска долго молчит, а репозиторий в защищённой папке: возможно,
+    /// `uv` ждёт ответа на запрос доступа, а возможно, ещё ставит зависимости.
+    case silentStart(folder: String)
     /// В доступе к папке отказано; «Перезапустить ядро» проверяет заново.
     case accessDenied(folder: String)
 
@@ -28,6 +30,7 @@ public enum CoreState: Equatable, Sendable {
             return p1 == p2 && s1 == s2 && d1 == d2 && o1 == o2
         case let (.failed(a), .failed(b)),
              let (.waitingForAccess(a), .waitingForAccess(b)),
+             let (.silentStart(a), .silentStart(b)),
              let (.accessDenied(a), .accessDenied(b)):
             return a == b
         default:

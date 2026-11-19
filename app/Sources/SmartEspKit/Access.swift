@@ -49,8 +49,20 @@ public func protectedFolderName(of url: URL, home: URL) -> String? {
 /// - Parameter folder: русское имя папки.
 /// - Returns: две строки через `\n`.
 public func accessHint(folder: String) -> String {
-    "macOS спрашивает доступ — нажмите «Разрешить».\n"
-        + "Если окна нет: Системные настройки → Конфиденциальность и безопасность → "
+    "macOS спрашивает доступ — нажмите «Разрешить».\n" + settingsPathHint(folder: folder)
+}
+
+/// Подсказка, когда ядро долго молчит после запуска: причина не известна точно.
+/// - Parameter folder: русское имя папки.
+/// - Returns: три строки через `\n`: про запрос доступа, путь в настройках и про «Журнал».
+public func silentStartHint(folder: String) -> String {
+    "Возможно, macOS спрашивает доступ — нажмите «Разрешить».\n" + settingsPathHint(folder: folder)
+        + "\n…или ядро ещё ставит зависимости — откройте «Журнал»."
+}
+
+/// Где включить доступ вручную.
+private func settingsPathHint(folder: String) -> String {
+    "Если окна нет: Системные настройки → Конфиденциальность и безопасность → "
         + "Файлы и папки → SmartEsp → «Папка „\(folder)“»."
 }
 
