@@ -4,6 +4,7 @@ from .loader import data_dir, load_config
 from .models import (
     ArbitrationConfig,
     Config,
+    ConnectorConfig,
     DeviceConfig,
     ExecutorConfig,
     HistoryConfig,
@@ -19,6 +20,7 @@ __all__ = [
     "ArbitrationConfig",
     "Config",
     "ConfigFile",
+    "ConnectorConfig",
     "DeviceConfig",
     "ExecutorConfig",
     "HistoryConfig",

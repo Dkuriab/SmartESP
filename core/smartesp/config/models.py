@@ -1,5 +1,7 @@
 """Модели настроек ядра."""
 
+from pathlib import Path
+
 from pydantic import BaseModel, Field, model_validator
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -9,6 +11,16 @@ DEFAULT_SYSTEM_PROMPT = (
 CONFIG_VERSION = 3  # 2 — в config.yaml только изменения владельца; 3 — умолчание tts стало silero
 DEFAULT_MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
 BIG_WHEN = "сложные вопросы: рассуждения, расчёты, подробные объяснения, знания, которых может не быть у тебя"
+# корень репозитория: core/smartesp/config/models.py → вверх на четыре уровня
+REPO_DIR = Path(__file__).resolve().parents[3]
+# наши коннекторы по умолчанию: (id, имя для людей, дополнительное окружение)
+DEFAULT_CONNECTORS: tuple[tuple[str, str, dict[str, str]], ...] = (
+    ("notes", "Заметки", {}),
+    ("calc", "Калькулятор", {}),
+    ("timers", "Таймеры", {}),
+    ("weather", "Погода", {"WEATHER_PLACE": ""}),  # место впишет владелец; без него — «место не задано»
+    ("food", "Питание", {}),
+)
 BIG_SYSTEM_PROMPT = (
     "Ты отвечаешь голосом через колонку: по-русски, без разметки и списков, связно, до 6–8 предложений."
 )
@@ -91,6 +103,34 @@ class SpeechConfig(BaseModel):
     listen_after_question: bool = True
 
 
+class ConnectorConfig(BaseModel):
+    """MCP-коннектор: команда запуска (stdio), окружение, включён ли.
+
+    id — короткое имя из [A-Za-z0-9_-]: по нему папка данных коннектора.
+    """
+
+    id: str = Field(pattern=r"^[A-Za-z0-9_-]+$")
+    name: str
+    command: str
+    args: list[str] = Field(default_factory=list[str])
+    env: dict[str, str] = Field(default_factory=dict[str, str])
+    enabled: bool = True
+
+
+def _default_connectors() -> list[ConnectorConfig]:
+    """Наши коннекторы из папки connectors/ репозитория: `uv run --project <папка> <id>-mcp`."""
+    return [
+        ConnectorConfig(
+            id=cid,
+            name=name,
+            command="uv",
+            args=["run", "--project", str(REPO_DIR / "connectors" / cid), f"{cid}-mcp"],
+            env=dict(env),
+        )
+        for cid, name, env in DEFAULT_CONNECTORS
+    ]
+
+
 def _default_executors() -> list[ExecutorConfig]:
     return [
         ExecutorConfig(
@@ -124,6 +164,7 @@ class Config(BaseModel):
     stages: list[StageConfig] = Field(default_factory=lambda: [StageConfig(kind="whisper_detect")])
     history: HistoryConfig = Field(default_factory=HistoryConfig)
     speech: SpeechConfig = Field(default_factory=SpeechConfig)
+    connectors: list[ConnectorConfig] = Field(default_factory=_default_connectors)
 
     @model_validator(mode="after")
     def _check_single_entry(self) -> "Config":
@@ -147,6 +188,14 @@ class Config(BaseModel):
                     raise ValueError(f"исполнитель {executor.id} ссылается на несуществующего: {to}")
                 if targets.count(to) > 1:
                     raise ValueError(f"исполнитель {executor.id} ссылается на {to} повторно")
+        return self
+
+    @model_validator(mode="after")
+    def _check_connector_ids(self) -> "Config":
+        ids = [c.id for c in self.connectors]
+        for id_ in ids:
+            if ids.count(id_) > 1:
+                raise ValueError(f"id коннектора повторяется: {id_}")
         return self
 
     def entry_executor(self) -> ExecutorConfig:
