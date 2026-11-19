@@ -91,3 +91,17 @@ async def test_failing_preempt_is_treated_as_busy() -> None:
     port.busy = set()
     await until(lambda: bool(finished(sink)))
     await announcer.aclose()
+
+
+async def test_still_busy_after_preempt_is_not_synthesized() -> None:
+    async def preempt(device_id: str) -> bool:
+        return True  # что-то остановили, но колонку занимает разговор
+
+    port, sink, speak, announcer = setup(preempt)
+    port.busy = {"kitchen"}
+    announcer.say("kitchen", "Таймер.", "timer")
+    await asyncio.sleep(RETRY_S * 5)
+    assert speak.calls == 0 and port.announces == []
+    port.busy = set()
+    await until(lambda: bool(finished(sink)))
+    await announcer.aclose()

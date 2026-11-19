@@ -77,7 +77,7 @@ def conversation(
     history = History(config.history.max_turns, config.history.max_age_s)
     orchestrator = Orchestrator(hub, None, None, None, None, history, events=bus)
     files = FilePlayer(hub, hub.devices, decode_file, events=bus)  # разбор ffmpeg по ходу, итог — в ленту
-    announcer = Announcer(hub, orchestrator.speech, events=bus, preempt=files.stop_file)
+    announcer = Announcer(hub, orchestrator.speech, events=bus, preempt=files.preempt)
     orchestrator.use_announcer(announcer)
     use_speech = speech_settings(orchestrator, announcer)
     use_speech(config.speech)

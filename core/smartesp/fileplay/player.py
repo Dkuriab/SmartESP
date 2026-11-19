@@ -32,6 +32,7 @@ BUSY = "Колонка занята: идёт разговор или объяв
 NO_ANSWER = "Колонка не ответила"
 STOPPING = "Ядро останавливается"
 STOPPED = "Файл остановлен до начала"
+PREEMPTED = "Файл прерван объявлением до начала"
 SILENT = "В файле нет звука"
 MAX_PLAY_S = 15 * 60 + 30  # потолок хода по стенным часам: 15 мин звука и запас
 
@@ -45,6 +46,7 @@ class _Playback:
     pcm: AsyncGenerator[bytes]
     started: asyncio.Event = field(default_factory=asyncio.Event)  # колонка забрала первый кусок
     entered: bool = False  # задача хода начала работу (отменённая до первого шага — нет)
+    stopped: str = STOPPED  # текст отказа POST, если ход отменят до первого куска
 
 
 class FilePlayer:
@@ -76,6 +78,7 @@ class FilePlayer:
         self._busy: set[str] = set()  # колонки с файлом: от начала загрузки до итога
         self._stop_asked: set[str] = set()  # остановить просили, пока файл ещё загружался
         self._tasks: dict[str, asyncio.Task[Delivery]] = {}
+        self._playing: dict[str, _Playback] = {}  # колонка → файл, отданный колонке
         self._closing: set[asyncio.Task[None]] = set()  # закрытие разбора у отменённых до начала
         self._closed = False
 
@@ -99,9 +102,10 @@ class FilePlayer:
         playback = _Playback(device_id, path, pcm)
         audio = _feed(first, pcm, lambda: self._on_start(playback))
         task = asyncio.create_task(self._run(playback, audio), name=f"file-{device_id}")
-        task.add_done_callback(lambda _: self._unstarted(playback))
+        task.add_done_callback(lambda done: self._finished(done, playback))
         self._tasks[device_id] = task
-        await self._wait_start(task, playback.started)
+        self._playing[device_id] = playback
+        await self._wait_start(task, playback)
 
     async def stop_file(self, device_id: str) -> bool:
         """Отменяет файл колонки (колонке уйдёт cancel_turn); False — файл не играл.
@@ -110,24 +114,43 @@ class FilePlayer:
         """
         if self._info(device_id) is None:
             raise PlaybackRefused("unknown_device", UNKNOWN)
-        task = self._tasks.get(device_id)
-        if task is not None:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+        if await self._cancel(device_id):
             return True
         if device_id in self._busy:
             self._stop_asked.add(device_id)
             return True
         return False
 
+    async def preempt(self, device_id: str) -> bool:
+        """Вытеснение объявлением: останавливает только файл, уже отданный колонке; True — остановлен.
+
+        Загрузку не трогает: колонку тогда занимает не файл.
+        """
+        playback = self._playing.get(device_id)
+        if playback is not None:
+            playback.stopped = PREEMPTED
+        return await self._cancel(device_id)
+
     async def aclose(self) -> None:
         """Останавливает все файлы; новые больше не принимаются. Повторный вызов безопасен."""
         self._closed = True
-        tasks = list(self._tasks.values())
-        for task in tasks:
+        await asyncio.gather(*(self._cancel(device_id) for device_id in list(self._tasks)))
+        if self._closing:
+            await asyncio.wait(set(self._closing))
+
+    async def _cancel(self, device_id: str) -> bool:
+        """Отменяет ход файла колонки и ждёт его конца; False — хода нет.
+
+        Повторный вызов во время отмены не отменяет второй раз (уборка не прерывается), а ждёт ту же
+        отмену. Ожидание через wait: отмена самого вызывающего не отменяет ход.
+        """
+        task = self._tasks.get(device_id)
+        if task is None:
+            return False
+        if not task.done() and not task.cancelling():
             task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        await asyncio.gather(*self._closing, return_exceptions=True)
+        await asyncio.wait({task})
+        return True
 
     def _info(self, device_id: str) -> DeviceInfo | None:
         return next((d for d in self._devices() if d.device_id == device_id), None)
@@ -150,7 +173,7 @@ class FilePlayer:
         """Колонка снова свободна для файла."""
         self._busy.discard(device_id)
         self._stop_asked.discard(device_id)
-        self._tasks.pop(device_id, None)
+        self._playing.pop(device_id, None)
 
     async def _prepare(self, source: AsyncIterator[bytes]) -> tuple[Path, AsyncGenerator[bytes], bytes]:
         """Сохраняет загрузку и ждёт первый кусок PCM: так плохой файл отказывает до «внимания»."""
@@ -169,8 +192,9 @@ class FilePlayer:
                 raise PlaybackRefused("undecodable", SILENT) from None
             raise
 
-    async def _wait_start(self, task: asyncio.Task[Delivery], started: asyncio.Event) -> None:
+    async def _wait_start(self, task: asyncio.Task[Delivery], playback: _Playback) -> None:
         """Ждёт начала звука; ход кончился раньше — PlaybackRefused по его итогу."""
+        started = playback.started
         waiter = asyncio.ensure_future(started.wait())
         try:
             await asyncio.wait({task, waiter}, return_when=asyncio.FIRST_COMPLETED)
@@ -179,7 +203,9 @@ class FilePlayer:
         if started.is_set():
             return
         if task.cancelled():
-            raise PlaybackRefused(*(("unavailable", STOPPING) if self._closed else ("stopped", STOPPED)))
+            raise PlaybackRefused(
+                *(("unavailable", STOPPING) if self._closed else ("stopped", playback.stopped))
+            )
         if task.result() == "busy":
             raise PlaybackRefused("busy", BUSY)
         raise PlaybackRefused("offline", NO_ANSWER)
@@ -204,22 +230,31 @@ class FilePlayer:
             delivery = "interrupted"
             raise
         finally:
-            await playback.pcm.aclose()
+            # сначала синхронная уборка: её не прервёт никакая отмена
             playback.path.unlink(missing_ok=True)
             self._release(device_id)
             if playback.started.is_set():
                 self._events.publish("playback_finished", {"device_id": device_id, "delivery": delivery})
+            await asyncio.shield(self._close_pcm(playback))  # ffmpeg закроется и при новой отмене
         return delivery
 
-    def _unstarted(self, playback: _Playback) -> None:
-        """Задачу отменили до её первого шага (её finally не выполнялся) — убрать за ней."""
+    def _finished(self, task: asyncio.Task[Delivery], playback: _Playback) -> None:
+        """Ход кончился: убрать его из задач; отменили до первого шага (finally не выполнялся) —
+        убрать и за ним."""
+        if self._tasks.get(playback.device_id) is task:
+            del self._tasks[playback.device_id]
         if playback.entered:
             return
         self._release(playback.device_id)
         playback.path.unlink(missing_ok=True)
+        self._close_pcm(playback)
+
+    def _close_pcm(self, playback: _Playback) -> asyncio.Task[None]:
+        """Закрывает разбор файла отдельной задачей (её ждёт aclose), чтобы отмена не прервала."""
         closing = asyncio.get_running_loop().create_task(playback.pcm.aclose())
         self._closing.add(closing)
         closing.add_done_callback(self._closing.discard)
+        return closing
 
 
 async def _feed(

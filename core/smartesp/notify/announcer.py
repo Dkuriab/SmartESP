@@ -210,8 +210,10 @@ class Announcer:
         или сбой колонки — "lost".
         """
         async with self._speaking.setdefault(device_id, asyncio.Lock()):
-            if self._devices.is_busy(device_id) and not await self._free(device_id):
-                return "busy"  # синтезировать незачем: повтор через retry_s
+            if self._devices.is_busy(device_id):
+                await self._free(device_id)
+                if self._devices.is_busy(device_id):
+                    return "busy"  # синтезировать незачем: повтор через retry_s
             speech: _Speech | None = None
             try:
                 speech = await self._synthesize(text)

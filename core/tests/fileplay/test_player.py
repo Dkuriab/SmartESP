@@ -58,6 +58,7 @@ class Decoder:
         self.paths: list[Path] = []
         self.error: Exception | None = None
         self.closed = 0
+        self.close_s = 0.0  # сколько «останавливается ffmpeg» при закрытии
 
     async def __call__(self, path: Path) -> AsyncGenerator[bytes]:
         self.paths.append(path)
@@ -68,6 +69,8 @@ class Decoder:
             yield b"pcm1"
             yield b"pcm2"
         finally:
+            if self.close_s:
+                await asyncio.sleep(self.close_s)
             self.closed += 1
 
 
@@ -328,3 +331,83 @@ async def test_wall_clock_cap(
     await finished(events)
     assert events.events[-1] == ("playback_finished", {"device_id": "d1", "delivery": "interrupted"})
     assert list(tmp_path.iterdir()) == []
+
+
+def finished_count(events: RecordingSink) -> int:
+    return sum(kind == "playback_finished" for kind, _ in events.events)
+
+
+async def stopped_cleanly(
+    player: FilePlayer, decoder: Decoder, events: RecordingSink, tmp_path: Path
+) -> None:
+    """Ровно один итог, временного файла нет, разбор закрыт, колонка снова свободна."""
+    await asyncio.sleep(decoder.close_s * 2)
+    assert finished_count(events) == 1
+    assert events.events[-1] == ("playback_finished", {"device_id": "d1", "delivery": "interrupted"})
+    assert list(tmp_path.iterdir()) == []
+    assert decoder.closed == 1
+    await player.play_file("d1", upload())
+
+
+@pytest.mark.parametrize("second", ["stop", "preempt", "aclose"])
+async def test_concurrent_stops_are_safe(
+    player: FilePlayer, port: HeldPort, decoder: Decoder, events: RecordingSink, tmp_path: Path, second: str
+) -> None:
+    port.gate.clear()
+    decoder.close_s = 0.05
+    await player.play_file("d1", upload())
+    first = asyncio.create_task(player.stop_file("d1"))
+    await asyncio.sleep(0.01)  # первая остановка уже закрывает разбор
+    if second == "aclose":
+        await asyncio.gather(first, player.aclose())
+        await asyncio.sleep(decoder.close_s * 2)
+        assert finished_count(events) == 1 and list(tmp_path.iterdir()) == [] and decoder.closed == 1
+        return
+    again = player.stop_file("d1") if second == "stop" else player.preempt("d1")
+    assert await asyncio.gather(first, again) == [True, True]
+    await stopped_cleanly(player, decoder, events, tmp_path)
+
+
+async def test_simultaneous_stop_and_preempt(
+    player: FilePlayer, port: HeldPort, decoder: Decoder, events: RecordingSink, tmp_path: Path
+) -> None:
+    port.gate.clear()
+    decoder.close_s = 0.05
+    await player.play_file("d1", upload())
+    assert await asyncio.gather(player.preempt("d1"), player.stop_file("d1"), player.stop_file("d1")) == [
+        True,
+        True,
+        True,
+    ]
+    await stopped_cleanly(player, decoder, events, tmp_path)
+
+
+async def test_cancelled_stop_caller_does_not_recancel(
+    player: FilePlayer, port: HeldPort, decoder: Decoder, events: RecordingSink, tmp_path: Path
+) -> None:
+    port.gate.clear()
+    decoder.close_s = 0.05
+    await player.play_file("d1", upload())
+    stopping = asyncio.create_task(player.stop_file("d1"))
+    await asyncio.sleep(0.01)
+    stopping.cancel()  # запрос DELETE оборвался посреди остановки
+    await asyncio.sleep(0)
+    await stopped_cleanly(player, decoder, events, tmp_path)
+
+
+async def test_preempt_leaves_upload_alone(player: FilePlayer, port: HeldPort) -> None:
+    playing = asyncio.create_task(player.play_file("d1", slow_upload()))
+    await asyncio.sleep(0.01)
+    assert await player.preempt("d1") is False  # колонку занимает не файл
+    await playing
+    assert port.received
+
+
+async def test_preempted_before_first_chunk_says_so(player: FilePlayer, port: HeldPort) -> None:
+    port.hold.clear()
+    playing = asyncio.create_task(player.play_file("d1", upload()))
+    await asyncio.sleep(0.01)
+    assert await player.preempt("d1") is True
+    with pytest.raises(PlaybackRefused, match="объявлением") as refused:
+        await playing
+    assert refused.value.reason == "stopped"
