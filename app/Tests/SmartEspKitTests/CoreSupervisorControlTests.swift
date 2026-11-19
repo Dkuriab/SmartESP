@@ -131,6 +131,23 @@ private let coreCommand = ["/repo/core/.venv/bin/python3", "-m", "smartesp", "--
         #expect(rig.launcher.handles.count == 1)
     }
 
+    @Test func startAfterCrashLimitResetsCounter() async {
+        let rig = Rig()
+        await rig.supervisor.performStart()
+        for _ in 1...3 {
+            rig.crashLast()
+            await rig.supervisor.tick()
+        }
+        if case .failed = rig.supervisor.state {} else { Issue.record("ожидали ошибку после 3 падений") }
+        rig.supervisor.start()
+        await rig.supervisor.startTask?.value
+        #expect(rig.launcher.handles.count == 4)
+        rig.crashLast()
+        await rig.supervisor.tick()
+        #expect(rig.launcher.handles.count == 5)
+        #expect(rig.supervisor.state == .starting)
+    }
+
     @Test func failingExitOfOwnCoreIsRestarted() async {
         let rig = Rig()
         await rig.supervisor.performStart()
@@ -159,6 +176,16 @@ private let coreCommand = ["/repo/core/.venv/bin/python3", "-m", "smartesp", "--
         let args = processArguments(ProcessInfo.processInfo.processIdentifier)
         #expect(args?.first.map { URL(fileURLWithPath: $0).lastPathComponent } != nil)
         #expect(args?.count == CommandLine.arguments.count)
+    }
+
+    @Test func readsOtherProcessArguments() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["30"]
+        try process.run()
+        defer { process.terminate() }
+        #expect(processArguments(process.processIdentifier) == ["/bin/sleep", "30"])
+        #expect(!isSmartEspCoreCommand(processArguments(process.processIdentifier) ?? []))
     }
 
     @Test func unknownPidHasNoArguments() {

@@ -2,18 +2,25 @@ import AppKit
 import SmartEspKit
 import WebKit
 
-/// Главное окно: веб-интерфейс ядра в WKWebView или заглушка с текстом.
+/// Главное окно: веб-интерфейс ядра в WKWebView или заглушка с состоянием и кнопками пульта.
 @MainActor final class MainWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate {
     /// Сколько раз подряд повторять неудачную загрузку страницы (раз в секунду).
     private static let maxRetries = 30
 
     private let window: NSWindow
     private let webView: WKWebView
-    private let placeholder = NSTextField(labelWithString: "")
+    private let placeholder = PlaceholderView()
     private var shown: WindowContent?
     private var retries = 0
     /// Вызывается, когда пользователь закрыл окно.
     var onClose: (() -> Void)?
+    /// Кнопка пульта на заглушке.
+    var onAction: ((ControlAction) -> Void)? {
+        get { placeholder.onAction }
+        set { placeholder.onAction = newValue }
+    }
+    /// Просьба страницы через мост (`openDataFolder`, `openConfig`, `revealLog`).
+    var onBridge: ((BridgeAction) -> Void)?
 
     override init() {
         window = NSWindow(
@@ -27,6 +34,9 @@ import WebKit
         config.mediaTypesRequiringUserActionForPlayback = []
         webView = WKWebView(frame: .zero, configuration: config)
         super.init()
+        // Мост ставится до первой загрузки страницы; контроллер содержимого общий с WKWebView
+        WebBridge { [weak self] in self?.onBridge?($0) }
+            .install(in: webView.configuration.userContentController)
         window.title = "SmartESP"
         window.minSize = NSSize(width: 900, height: 600)
         window.isReleasedWhenClosed = false
@@ -46,8 +56,11 @@ import WebKit
 
     /// Показывает страницу или заглушку. Страница грузится заново, только если
     /// сменился адрес или до неё была заглушка.
-    /// - Parameter content: что показать (из `windowContent`).
-    func show(_ content: WindowContent) {
+    /// - Parameters:
+    ///   - content: что показать (из `windowContent`).
+    ///   - controls: кнопки пульта на заглушке.
+    ///   - ollama: строка состояния Ollama на заглушке.
+    func show(_ content: WindowContent, controls: [ControlAction], ollama: String) {
         let reload = content.needsLoad(after: shown)
         shown = content
         switch content {
@@ -59,7 +72,7 @@ import WebKit
                 webView.load(URLRequest(url: url))
             }
         case let .placeholder(text):
-            placeholder.stringValue = text
+            placeholder.show(text, controls: controls, ollamaText: ollama)
             placeholder.isHidden = false
             webView.isHidden = true
         }
@@ -127,19 +140,15 @@ import WebKit
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
         }
-        placeholder.font = .systemFont(ofSize: 17)
-        placeholder.textColor = .secondaryLabelColor
-        placeholder.alignment = .center
-        placeholder.maximumNumberOfLines = 0
-        placeholder.preferredMaxLayoutWidth = 600
         NSLayoutConstraint.activate([
             webView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             webView.topAnchor.constraint(equalTo: root.topAnchor),
             webView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            placeholder.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            placeholder.centerYAnchor.constraint(equalTo: root.centerYAnchor),
-            placeholder.widthAnchor.constraint(lessThanOrEqualTo: root.widthAnchor, constant: -48),
+            placeholder.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            placeholder.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            placeholder.topAnchor.constraint(equalTo: root.topAnchor),
+            placeholder.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
         window.contentView = root
     }

@@ -118,7 +118,10 @@ import Foundation
     }
 
     /// Подключается к живому чужому ядру или запускает своё; сразу возвращается.
+    /// Это и «Запустить ядро»: из остановки или ошибки счётчик падений сбрасывается.
+    /// Если надзор уже ведёт ядро — ничего не делает.
     public func start() {
+        if case .idle = mode, !startInProgress { crashTimes = [] }
         startTask = Task { await self.performStart() }
     }
 

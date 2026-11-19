@@ -1,10 +1,12 @@
 import AppKit
 import SmartEspKit
 
-/// Связка: надзор за ядром → меню и окно; выход дожидается остановки ядра.
+/// Связка: надзор за ядром и Ollama → меню и окно; пульт и мост → надзор и Finder;
+/// выход дожидается остановки ядра.
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, StatusMenuActions {
     private var paths: AppPaths?
     private var supervisor: CoreSupervisor?
+    private var ollama: OllamaControl?
     private var statusMenu: StatusMenu?
     private var window: MainWindow?
     private var quitting = false
@@ -27,6 +29,8 @@ import SmartEspKit
         let window = MainWindow()
         // Закрытое окно прячет значок из Dock; приложение остаётся в строке меню
         window.onClose = { NSApp.setActivationPolicy(.accessory) }
+        window.onAction = { [weak self] in self?.perform($0) }
+        window.onBridge = { [weak self] in WebBridge.perform($0, paths: self?.paths) }
         self.window = window
         SingleInstance.listen { [weak self] in self?.answerShowRequest() ?? .shown }
         applyFirstLaunchLoginDefault()
@@ -102,6 +106,20 @@ import SmartEspKit
         render()
     }
 
+    func perform(_ action: ControlAction) {
+        guard let supervisor, !quitting else { return }
+        switch action {
+        case .startCore: supervisor.start()
+        case .stopCore: Task { await supervisor.stop() }
+        case .takeOver: supervisor.takeOver()
+        case .startOllama: Task { await self.ollama?.launch() }
+        }
+    }
+
+    func menuWillOpen() {
+        Task { await ollama?.refresh() }
+    }
+
     func openAccessSettings() {
         NSWorkspace.shared.open(accessSettingsURL)
     }
@@ -151,6 +169,23 @@ import SmartEspKit
         supervisor.onChange = { [weak self] _ in self?.render() }
         self.supervisor = supervisor
         supervisor.start()
+        startOllamaControl(paths: paths, env: env, home: home)
+    }
+
+    /// Опрос Ollama и её запуск по «Запустить Ollama».
+    private func startOllamaControl(paths: AppPaths, env: [String: String], home: URL) {
+        let control = OllamaControl(
+            probe: HTTPOllamaProbe(),
+            launcher: ProcessOllamaLauncher(log: paths.ollamaLogFile, env: env),
+            plan: {
+                let files = FileManager.default
+                return ollamaLaunchPlan(
+                    env: env, home: home, exists: { files.fileExists(atPath: $0) },
+                    isExecutable: { files.isExecutableFile(atPath: $0) })
+            })
+        control.onChange = { [weak self] _ in self?.render() }
+        ollama = control
+        control.startPolling()
     }
 
     /// Показывает текущее состояние в меню и окне. Во время выхода меню держит
@@ -158,10 +193,14 @@ import SmartEspKit
     private func render() {
         guard !quitting else { return }
         let current = state
+        let ollamaState = ollama?.state ?? .unknown
+        // Без надзора (нет пути к репозиторию) пульт ядра бесполезен
+        let controls = supervisor == nil ? [] : controlActions(state: current, ollama: ollamaState)
+        let ollamaText = ollamaStatusText(ollamaState)
         statusMenu?.show(
-            menuModel(state: current), canRestart: supervisor != nil,
-            login: loginItem.menuState)
-        window?.show(windowContent(state: current, token: supervisor?.token))
+            menuModel(state: current), controls: controls, ollama: ollamaText,
+            canRestart: supervisor != nil, login: loginItem.menuState)
+        window?.show(windowContent(state: current, token: supervisor?.token), controls: controls, ollama: ollamaText)
     }
 
     private func showAlert(_ title: String, _ text: String) {
