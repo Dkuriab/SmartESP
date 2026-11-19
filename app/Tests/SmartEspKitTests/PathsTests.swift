@@ -29,6 +29,7 @@ private let home = URL(fileURLWithPath: "/Users/tester")
         #expect(paths?.runFile.path == "/Users/tester/SmartEsp/run/core.json")
         #expect(paths?.tokenFile.path == "/Users/tester/SmartEsp/token")
         #expect(paths?.logFile.path == "/Users/tester/SmartEsp/logs/core.log")
+        #expect(paths?.stderrLogFile.path == "/Users/tester/SmartEsp/logs/core-stderr.log")
     }
 
     @Test func smartespHomeBeatsDefault() {

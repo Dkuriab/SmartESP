@@ -20,6 +20,8 @@ public struct AppPaths: Equatable, Sendable {
     public var tokenFile: URL { dataDir.appendingPathComponent("token") }
     /// Журнал ядра.
     public var logFile: URL { dataDir.appendingPathComponent("logs/core.log") }
+    /// stderr процесса ядра (`uv` и Python до настройки журнала); очищается при каждом запуске.
+    public var stderrLogFile: URL { dataDir.appendingPathComponent("logs/core-stderr.log") }
 
     /// Определяет пути.
     /// - Parameters:

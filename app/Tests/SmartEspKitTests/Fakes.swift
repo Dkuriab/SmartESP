@@ -14,8 +14,15 @@ import Foundation
     var exitsOnTerminate = true
     var terminateCount = 0
     var killCount = 0
+    private var exitCallbacks: [@Sendable (Int32) -> Void] = []
 
     init(pid: Int32) { self.pid = pid }
+
+    /// Процесс выходит сам и сообщает подписчикам, как настоящий.
+    func exit(code: Int32 = 1) {
+        isRunning = false
+        exitCallbacks.forEach { $0(code) }
+    }
 
     func terminate() {
         terminateCount += 1
@@ -27,7 +34,9 @@ import Foundation
         isRunning = false
     }
 
-    func onExit(_ callback: @escaping @Sendable (Int32) -> Void) {}
+    func onExit(_ callback: @escaping @Sendable (Int32) -> Void) {
+        exitCallbacks.append(callback)
+    }
 }
 
 /// Поддельный запуск: запоминает аргументы и выданные процессы.
@@ -53,10 +62,21 @@ import Foundation
     var statusCalls = 0
     var restartAccepted = false
     var restartCalls = 0
+    /// `true` — `status` ждёт `release()`.
+    var hold = false
+    private(set) var waiter: CheckedContinuation<Void, Never>?
 
     func status(port: Int, token: String) async -> ProbeResult {
         statusCalls += 1
+        if hold { await withCheckedContinuation { waiter = $0 } }
         return result
+    }
+
+    /// Отпускает ждущий `status`.
+    func release() {
+        hold = false
+        waiter?.resume()
+        waiter = nil
     }
 
     func restart(port: Int, token: String) async -> Bool {
@@ -73,6 +93,8 @@ import Foundation
     let launcher = FakeLauncher()
     let probe = FakeProbe()
     var alive: Set<Int32> = []
+    /// Время (по поддельным часам), когда pid перестаёт быть живым.
+    var diesAt: [Int32: TimeInterval] = [:]
     var uvExists = true
     private(set) var changes: [CoreState] = []
     private(set) lazy var supervisor: CoreSupervisor = makeSupervisor()
@@ -89,7 +111,7 @@ import Foundation
             clock: { [unowned self] in clock.now },
             sleep: { [unowned self] in await clock.sleep($0) },
             fileExists: { [unowned self] _ in uvExists },
-            pidAlive: { [unowned self] in alive.contains($0) },
+            pidAlive: { [unowned self] in alive.contains($0) && clock.now < diesAt[$0, default: .infinity] },
             env: ["PATH": "/bin"], home: dir, autoPoll: false)
         sup.onChange = { [unowned self] in changes.append($0) }
         return sup
@@ -101,6 +123,10 @@ import Foundation
 
     func writeToken(_ token: String = "tok") {
         write(token + "\n", to: paths.tokenFile)
+    }
+
+    func writeStderr(_ text: String) {
+        write(text, to: paths.stderrLogFile)
     }
 
     func appendLog(_ lines: [String]) {

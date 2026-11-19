@@ -2,8 +2,9 @@ import Foundation
 
 /// Надзор за ядром: запуск или подключение к уже запущенному, опрос раз в секунду,
 /// перезапуск после падений (не больше 3 за 60 с), остановка SIGTERM → 15 с → SIGKILL.
+/// Запуск, опрос и падения — в `CoreSupervisor+Polling.swift`.
 @MainActor public final class CoreSupervisor {
-    /// Сколько ждать выхода ядра после SIGTERM, секунд.
+    /// Сколько ждать выхода ядра (своего после SIGTERM или прежнего, которое ещё останавливается), секунд.
     public static let stopTimeout: TimeInterval = 15
     /// Период опроса, секунд.
     public static let pollInterval: TimeInterval = 1
@@ -11,44 +12,46 @@ import Foundation
     public static let crashLimit = 3
     /// Окно подсчёта падений, секунд.
     public static let crashWindow: TimeInterval = 60
-    /// Шаг ожидания выхода при остановке, секунд.
-    static let stopStep: TimeInterval = 0.1
+    /// Шаг ожидания выхода процесса, секунд.
+    static let waitStep: TimeInterval = 0.1
 
     /// Текущее состояние.
-    public private(set) var state: CoreState = .stopped {
+    public internal(set) var state: CoreState = .stopped {
         didSet { if state != oldValue { onChange?(state) } }
     }
     /// Вызывается при каждой смене состояния.
     public var onChange: ((CoreState) -> Void)?
     /// Токен API, когда он прочитан.
-    public private(set) var token: String?
+    public internal(set) var token: String?
     /// Порт ядра из файла запуска.
-    public private(set) var port: Int?
+    public internal(set) var port: Int?
 
-    private enum Mode {
+    enum Mode {
         case idle
         case own(any CoreHandle)
         case external(pid: Int32)
     }
 
-    private let paths: AppPaths
-    private let launcher: any CoreLaunching
-    private let probe: any StatusProbing
-    private let clock: () -> TimeInterval
-    private let sleep: @MainActor (TimeInterval) async -> Void
-    private let fileExists: (String) -> Bool
-    private let pidAlive: (Int32) -> Bool
-    private let env: [String: String]
-    private let home: URL
-    private let autoPoll: Bool
+    let paths: AppPaths
+    let launcher: any CoreLaunching
+    let probe: any StatusProbing
+    let clock: () -> TimeInterval
+    let sleep: @MainActor (TimeInterval) async -> Void
+    let fileExists: (String) -> Bool
+    let pidAlive: (Int32) -> Bool
+    let env: [String: String]
+    let home: URL
+    let autoPoll: Bool
 
-    private var mode: Mode = .idle
-    private var crashTimes: [TimeInterval] = []
-    private var logOffset: UInt64 = 0
+    var mode: Mode = .idle
+    var crashTimes: [TimeInterval] = []
+    var logOffset: UInt64 = 0
+    /// Растёт при каждом `stop()`: долгие ожидания видят, что их отменили.
+    var generation = 0
+    var pollTask: Task<Void, Never>?
     private var ticking = false
     private var startInProgress = false
-    private var stopInProgress = false
-    private var pollTask: Task<Void, Never>?
+    private var stopTask: Task<Void, Never>?
     /// Задача, которую создал последний `start()`.
     private(set) var startTask: Task<Void, Never>?
 
@@ -109,37 +112,36 @@ import Foundation
     }
 
     /// Останавливает своё ядро: SIGTERM, до 15 с ожидания, затем SIGKILL.
-    /// Чужое ядро не трогает.
+    /// Чужое ядро не трогает. Повторный вызов во время остановки ждёт первую.
     public func stop() async {
+        generation += 1
         await startTask?.value
+        if let inFlight = stopTask { return await inFlight.value }
         switch mode {
         case .external:
             return
         case .idle:
             stopPolling()
+            clearConnection()
             state = .stopped
         case .own(let handle):
-            stopInProgress = true
-            stopPolling()
-            state = .stopping
-            await terminate(handle)
-            mode = .idle
-            port = nil
-            stopInProgress = false
-            state = .stopped
+            let task = Task { await self.performStop(handle) }
+            stopTask = task
+            await task.value
+            stopTask = nil
         }
     }
 
     /// Один шаг опроса: падение своего ядра, файл запуска, токен, `status`.
     public func tick() async {
-        guard !ticking, !stopInProgress else { return }
+        guard !ticking, stopTask == nil else { return }
         ticking = true
         defer { ticking = false }
         switch mode {
         case .idle:
             return
         case .own(let handle):
-            if handle.isRunning { await refreshOwn(handle) } else { handleCrash() }
+            if handle.isRunning { await refreshOwn(handle) } else { await handleCrash() }
         case .external(let pid):
             await refreshExternal(pid)
         }
@@ -150,128 +152,35 @@ import Foundation
         guard case .idle = mode, !startInProgress else { return }
         startInProgress = true
         defer { startInProgress = false }
+        let current = generation
         state = .starting
-        if !(await adoptExternal()) { launchOwn() }
+        let adopted = await adoptExternal(current)
+        guard current == generation else { return }
+        if !adopted { launchOwn() }
         ensurePolling()
     }
 
-    // MARK: - Запуск
-
-    private func adoptExternal() async -> Bool {
-        guard let info = RunFile.read(paths.runFile), pidAlive(info.pid),
-              let token = TokenFile.read(paths.tokenFile) else { return false }
-        guard case let .ok(phase, online, total, ollama) = await probe.status(port: info.port, token: token)
-        else { return false }
-        mode = .external(pid: info.pid)
-        self.port = info.port
-        self.token = token
-        state = .external(port: info.port, phase: phase, devices: (online, total), ollama: ollama)
-        return true
-    }
-
-    private func launchOwn() {
-        guard let uv = findUv(env: env, home: home, fileExists: fileExists) else { return fail("Не найден uv") }
-        logOffset = CoreLog.size(paths.logFile)
-        do {
-            let handle = try launcher.launch(uv: uv, cwd: paths.coreDir, env: env)
-            handle.onExit { [weak self] _ in
-                Task { @MainActor in await self?.tick() }
-            }
-            mode = .own(handle)
-            state = .starting
-        } catch {
-            fail("Не удалось запустить ядро: \(error.localizedDescription)")
+    /// Ждёт смерти процесса не дольше `stopTimeout`; прерывается `stop()`.
+    /// - Returns: `true`, если ожидание не отменили.
+    func waitForExit(_ pid: Int32, _ current: Int) async -> Bool {
+        let deadline = clock() + Self.stopTimeout
+        while pidAlive(pid) && clock() < deadline && current == generation {
+            await sleep(Self.waitStep)
         }
+        return current == generation
     }
 
-    private func fail(_ message: String) {
-        mode = .idle
-        port = nil
+    private func performStop(_ handle: any CoreHandle) async {
         stopPolling()
-        state = .failed(message)
-    }
-
-    // MARK: - Опрос
-
-    private func refreshOwn(_ handle: any CoreHandle) async {
-        // Файл запуска с мёртвым pid — от прошлого ядра: своё его ещё не переписало
-        guard let info = RunFile.read(paths.runFile), pidAlive(info.pid) else { return state = .starting }
-        port = info.port
-        guard let token = TokenFile.read(paths.tokenFile) else { return state = .starting }
-        self.token = token
-        let result = await probe.status(port: info.port, token: token)
-        guard !stopInProgress, case .own(let current) = mode, current === handle else { return }
-        if case let .ok(phase, online, total, ollama) = result {
-            state = .running(port: info.port, phase: phase, devices: (online, total), ollama: ollama)
-        } else {
-            state = .starting
-        }
-    }
-
-    private func refreshExternal(_ pid: Int32) async {
-        guard pidAlive(pid) else {
-            mode = .idle
-            port = nil
-            stopPolling()
-            return state = .stopped
-        }
-        // Во время перезапуска чужое ядро переписывает файл — пока его нет, состояние не трогаем
-        guard let info = RunFile.read(paths.runFile), info.pid == pid,
-              let token = TokenFile.read(paths.tokenFile) else { return }
-        let result = await probe.status(port: info.port, token: token)
-        guard case .external(let current) = mode, current == pid,
-              case let .ok(phase, online, total, ollama) = result else { return }
-        port = info.port
-        self.token = token
-        state = .external(port: info.port, phase: phase, devices: (online, total), ollama: ollama)
-    }
-
-    private func handleCrash() {
-        mode = .idle
-        port = nil
-        let log = CoreLog.read(paths.logFile, from: logOffset)
-        if log.portConflict {
-            let busy = log.conflictPort ?? RunFile.read(paths.runFile)?.port
-            return fail(busy.map { "Порт \($0) занят другой программой" } ?? "Порт занят другой программой")
-        }
-        let now = clock()
-        crashTimes = crashTimes.filter { now - $0 < Self.crashWindow } + [now]
-        if crashTimes.count >= Self.crashLimit {
-            return fail(log.failureLine ?? "Ядро завершилось, в журнале нет новых записей")
-        }
-        state = .starting
-        launchOwn()
-    }
-
-    private func ensurePolling() {
-        guard autoPoll, pollTask == nil, !isIdle else { return }
-        pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                await self.tick()
-                await self.sleep(Self.pollInterval)
-            }
-        }
-    }
-
-    private func stopPolling() {
-        pollTask?.cancel()
-        pollTask = nil
-    }
-
-    private var isIdle: Bool {
-        if case .idle = mode { return true }
-        return false
-    }
-
-    // MARK: - Остановка
-
-    private func terminate(_ handle: any CoreHandle) async {
+        state = .stopping
         handle.terminate()
         let deadline = clock() + Self.stopTimeout
         while handle.isRunning && clock() < deadline {
-            await sleep(Self.stopStep)
+            await sleep(Self.waitStep)
         }
         if handle.isRunning { handle.kill() }
+        mode = .idle
+        clearConnection()
+        state = .stopped
     }
 }

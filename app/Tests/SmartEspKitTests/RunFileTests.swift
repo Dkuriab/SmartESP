@@ -35,13 +35,14 @@ private func tempFile(_ text: String?) -> URL {
         try? "old line\nnew INFO a\nnew ERROR b\n\nnew INFO c\n".write(to: url, atomically: true, encoding: .utf8)
         let excerpt = CoreLog.read(url, from: offset)
         #expect(excerpt.lines == ["new INFO a", "new ERROR b", "new INFO c"])
-        #expect(excerpt.failureLine == "new ERROR b")
+        #expect(excerpt.errorLine == "new ERROR b")
     }
 
-    @Test func failureLineFallsBackToLastLine() {
+    @Test func noErrorLineWithoutErrors() {
         let url = tempFile("2026 INFO x: a\n2026 INFO x: b\n")
-        #expect(CoreLog.read(url, from: 0).failureLine == "2026 INFO x: b")
-        #expect(CoreLog.read(tempFile(nil), from: 0).failureLine == nil)
+        #expect(CoreLog.read(url, from: 0).errorLine == nil)
+        #expect(CoreLog.read(url, from: 0).lines.last == "2026 INFO x: b")
+        #expect(CoreLog.read(tempFile(nil), from: 0).lines.isEmpty)
     }
 
     @Test func rotatedLogIsReadFromStart() {
@@ -104,5 +105,20 @@ private func tempFile(_ text: String?) -> URL {
     @Test func deadPidIsNotAlive() {
         #expect(!isProcessAlive(0))
         #expect(isProcessAlive(getpid()))
+    }
+}
+
+@MainActor @Suite struct ProcessCoreLauncherStderrTests {
+    @Test func stderrGoesToFreshFile() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("smartesp-\(UUID().uuidString)")
+        let log = dir.appendingPathComponent("logs/core-stderr.log")
+        try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "old junk\n".write(to: log, atomically: true, encoding: .utf8)
+        let handle = try ProcessCoreLauncher(stderrLog: log).launch(
+            uv: URL(fileURLWithPath: "/bin/sh"), cwd: FileManager.default.temporaryDirectory, env: [:])
+        _ = await withCheckedContinuation { cont in handle.onExit { cont.resume(returning: $0) } }
+        let text = try String(contentsOf: log, encoding: .utf8)
+        #expect(!text.contains("old junk"))
+        #expect(text.contains("run"))
     }
 }

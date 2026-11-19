@@ -38,7 +38,13 @@ public func isProcessAlive(_ pid: Int32) -> Bool {
 
 /// Настоящий запуск через `Process`.
 @MainActor public final class ProcessCoreLauncher: CoreLaunching {
-    public init() {}
+    private let stderrLog: URL?
+
+    /// - Parameter stderrLog: куда писать stderr процесса (файл очищается при каждом запуске);
+    ///   `nil` — в `/dev/null`.
+    public init(stderrLog: URL? = nil) {
+        self.stderrLog = stderrLog
+    }
 
     public func launch(uv: URL, cwd: URL, env: [String: String]) throws -> any CoreHandle {
         let process = Process()
@@ -50,11 +56,20 @@ public func isProcessAlive(_ pid: Int32) -> Bool {
         let stdin = Pipe()
         process.standardInput = stdin
         process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        process.standardError = try stderrHandle()
         let notifier = ExitNotifier()
         process.terminationHandler = { notifier.fire($0.terminationStatus) }
         try process.run()
         return ProcessCoreHandle(process: process, stdin: stdin, notifier: notifier)
+    }
+
+    /// Открывает пустой файл для stderr (`uv run` может упасть до того, как Python настроит журнал).
+    private func stderrHandle() throws -> FileHandle {
+        guard let stderrLog else { return FileHandle.nullDevice }
+        try FileManager.default.createDirectory(
+            at: stderrLog.deletingLastPathComponent(), withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: stderrLog.path, contents: nil)
+        return try FileHandle(forWritingTo: stderrLog)
     }
 }
 

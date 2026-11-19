@@ -5,11 +5,10 @@ public struct CoreLogExcerpt: Equatable, Sendable {
     /// Непустые строки по порядку.
     public let lines: [String]
 
-    /// Строка для сообщения об ошибке: последняя с уровнем ERROR или CRITICAL,
-    /// иначе просто последняя. После падения ядро ещё пишет «Ядро остановлено» —
-    /// такая строка причину не объясняет.
-    public var failureLine: String? {
-        lines.last(where: { $0.contains(" ERROR ") || $0.contains(" CRITICAL ") }) ?? lines.last
+    /// Последняя строка с уровнем ERROR или CRITICAL. После падения ядро ещё пишет
+    /// «Ядро остановлено» — такая строка причину не объясняет.
+    public var errorLine: String? {
+        lines.last(where: { $0.contains(" ERROR ") || $0.contains(" CRITICAL ") })
     }
 
     /// uvicorn не смог занять порт («address already in use»).
