@@ -96,15 +96,20 @@ class FakeDevicePort:
 
     async def announce(self, device_id: str, audio: AsyncIterator[bytes]) -> Delivery:
         # Колонка не v3 — lost без звука, как у хаба; иначе забирает весь звук.
+        # Источник звука упал — lost, как у хаба (ход потерян, колонке cancel_turn).
         received: list[bytes] = []
+        broken = False
         try:
             if device_id in self.proactive:
-                received = [chunk async for chunk in audio]
+                async for chunk in audio:
+                    received.append(chunk)
+        except Exception:
+            broken = True
         finally:
             if isinstance(audio, AsyncGenerator):
                 await audio.aclose()
         result: Delivery = "lost"
-        if device_id in self.proactive:
+        if device_id in self.proactive and not broken:
             result = self.deliveries.pop(0) if self.deliveries else "delivered"
         self.announces.append(AnnounceCall(device_id, b"".join(received), result))
         async with self._changed:
