@@ -45,8 +45,10 @@
    `~/SmartEsp/config.yaml`. Готово, когда в журнале «Запускаю сервер на
    ws://0.0.0.0:8765/device». Если macOS спросит про входящие подключения —
    разрешить, иначе колонка не достучится.
-   Или приложением в строке меню, которое запускает ядро само (нужен только
-   `uv` и Swift-тулчейн):
+   Или приложением в строке меню, которое запускает ядро само. Нужны `uv` и
+   Swift-тулчейн swift.org (https://www.swift.org/install/macos/, `.pkg` ставится
+   в `~/Library/Developer/Toolchains`) или Xcode: Swift из Command Line Tools
+   не умеет собирать пакеты на этой macOS.
    ```bash
    cd app && ./build.sh --install
    ```

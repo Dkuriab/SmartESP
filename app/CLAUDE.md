@@ -23,26 +23,27 @@ app/
   остальное — `lowerCamelCase`.
 - Файл ≤ 300 строк, функция ≤ 50 строк.
 - Минимальная macOS — 14. Язык Swift 6.
-- Перед коммитом: `swift build`, `swift test`; с задачи 4 — ещё `./build.sh`.
+- Перед коммитом: `./swift.sh build`, `./swift.sh test`; с задачи 4 — ещё `./build.sh`.
 
 ## Команды
 
-Из папки `app/`:
+Из папки `app/` (`swift.sh` сам выбирает тулчейн, см. «Инструменты»):
 
 ```bash
-swift build
-swift test
+./swift.sh build
+./swift.sh test
 ./build.sh            # app/build/SmartEsp.app, подпись ad-hoc
-./build.sh --install  # плюс копия в /Applications
+./build.sh --install  # закрывает запущенное приложение, копирует в /Applications
 ```
 
 ## Инструменты
 
 - Только Command Line Tools, без Xcode. Их `swift` на этом Mac не линкует
   манифест пакета (`Invalid manifest`, `Undefined symbols ... PackageDescription`),
-  поэтому используется тулчейн swift.org 6.1.2:
-  `~/Library/Developer/Toolchains/swift-6.1.2-RELEASE.xctoolchain`.
-  `build.sh` подставляет его сам; для `swift build`/`swift test` вручную:
-  `export PATH=~/Library/Developer/Toolchains/swift-6.1.2-RELEASE.xctoolchain/usr/bin:$PATH`.
+  поэтому нужен тулчейн swift.org (https://www.swift.org/install/macos/, `.pkg`
+  ставится в `~/Library/Developer/Toolchains`) или Xcode.
+- `swift.sh` берёт самый свежий `~/Library/Developer/Toolchains/swift-*.xctoolchain`,
+  иначе системный `swift`; при ошибке сборки печатает подсказку про тулчейн.
+  `build.sh` ходит через `swift.sh`. Здесь стоит swift.org 6.1.2.
 - Тесты — **swift-testing** (`import Testing`, `@Test`, `#expect`): XCTest без
   Xcode недоступен (`no such module 'XCTest'`).
