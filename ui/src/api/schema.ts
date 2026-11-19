@@ -213,6 +213,27 @@ export interface components {
             restart_sections: string[];
             /** Dispatcher Prompt */
             dispatcher_prompt: string;
+            /** Executor Prompts */
+            executor_prompts: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * DelegationOut
+         * @description Передача задачи в ходе: от кого, кому, какая задача; auto — по фразе без вызова.
+         */
+        DelegationOut: {
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+            /** Task */
+            task: string;
+            /**
+             * Auto
+             * @default false
+             */
+            auto: boolean;
         };
         /**
          * DeviceOut
@@ -264,6 +285,8 @@ export interface components {
             name: string;
             /** Size Bytes */
             size_bytes: number;
+            /** Supports Tools */
+            supports_tools: boolean;
         };
         /**
          * OllamaOut
@@ -347,6 +370,16 @@ export interface components {
             first_text_ms?: number | null;
             /** First Audio Ms */
             first_audio_ms?: number | null;
+            /**
+             * Path
+             * @default []
+             */
+            path: string[];
+            /**
+             * Delegations
+             * @default []
+             */
+            delegations: components["schemas"]["DelegationOut"][];
         };
         /** ValidationError */
         ValidationError: {

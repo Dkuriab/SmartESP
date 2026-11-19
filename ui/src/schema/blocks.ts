@@ -78,3 +78,38 @@ export function isApplying(state: CoreState): boolean {
 export function stagesLocked(state: CoreState): boolean {
   return isApplying(state) || state.config === null
 }
+
+/** Связь исполнителя: активна, если задано условие или у цели есть описание. */
+export type LinkItem = { to: string; when: string; active: boolean }
+
+/** Исполнитель для списка и схемы. */
+export type ExecutorItem = {
+  id: string
+  name: string
+  model: string
+  description: string
+  systemPrompt: string
+  entry: boolean
+  links: LinkItem[]
+}
+
+/** Исполнители из настроек, входной первым. */
+export function listExecutors(state: CoreState): ExecutorItem[] {
+  const raw = asList(state.config?.effective.executors)
+  const str = (v: unknown) => (typeof v === 'string' ? v : '')
+  const description = (id: string) => str(raw.find((e) => e.id === id)?.description)
+  const items = raw.map((e) => ({
+    id: str(e.id),
+    name: str(e.name),
+    model: str(e.model),
+    description: str(e.description),
+    systemPrompt: str(e.system_prompt),
+    entry: e.entry === true,
+    links: asList(e.delegates).map((d) => {
+      const to = str(d.to)
+      const when = str(d.when)
+      return { to, when, active: when.trim() !== '' || description(to).trim() !== '' }
+    }),
+  }))
+  return [...items.filter((e) => e.entry), ...items.filter((e) => !e.entry)]
+}

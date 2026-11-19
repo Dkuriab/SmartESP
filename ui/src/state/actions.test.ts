@@ -24,6 +24,7 @@ function config(): Config {
     overridden: [],
     restart_sections: [],
     dispatcher_prompt: 'p',
+    executor_prompts: {},
   }
 }
 

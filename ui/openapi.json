@@ -533,6 +533,13 @@
           "dispatcher_prompt": {
             "type": "string",
             "title": "Dispatcher Prompt"
+          },
+          "executor_prompts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Executor Prompts"
           }
         },
         "type": "object",
@@ -540,10 +547,40 @@
           "effective",
           "overridden",
           "restart_sections",
-          "dispatcher_prompt"
+          "dispatcher_prompt",
+          "executor_prompts"
         ],
         "title": "ConfigOut",
         "description": "Настройки: целиком, изменённые владельцем и разделы, требующие перезапуска."
+      },
+      "DelegationOut": {
+        "properties": {
+          "from": {
+            "type": "string",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "title": "To"
+          },
+          "task": {
+            "type": "string",
+            "title": "Task"
+          },
+          "auto": {
+            "type": "boolean",
+            "title": "Auto",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "from",
+          "to",
+          "task"
+        ],
+        "title": "DelegationOut",
+        "description": "Передача задачи в ходе: от кого, кому, какая задача; auto — по фразе без вызова."
       },
       "DeviceOut": {
         "properties": {
@@ -645,12 +682,17 @@
           "size_bytes": {
             "type": "integer",
             "title": "Size Bytes"
+          },
+          "supports_tools": {
+            "type": "boolean",
+            "title": "Supports Tools"
           }
         },
         "type": "object",
         "required": [
           "name",
-          "size_bytes"
+          "size_bytes",
+          "supports_tools"
         ],
         "title": "ModelOut",
         "description": "Модель Ollama."
@@ -853,6 +895,22 @@
               }
             ],
             "title": "First Audio Ms"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Path",
+            "default": []
+          },
+          "delegations": {
+            "items": {
+              "$ref": "#/components/schemas/DelegationOut"
+            },
+            "type": "array",
+            "title": "Delegations",
+            "default": []
           }
         },
         "type": "object",

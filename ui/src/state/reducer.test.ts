@@ -15,6 +15,8 @@ function turn(id: number | string, text = `вопрос ${id}`): Turn {
     answer: 'ответ',
     status: 'ok',
     at: 1700000000,
+    path: [],
+    delegations: [],
     stt_ms: 100,
     first_text_ms: null,
     first_audio_ms: null,

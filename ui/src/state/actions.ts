@@ -2,6 +2,8 @@
 import type { createClient } from '../api/client'
 import type { Config, Notice, Selection } from './model'
 import type { Dispatch } from './request'
+import type { Executor, ExecutorPatch } from './executors'
+import { executorsOf, withAdded, withLink, withRemoved, withUpdated } from './executors'
 import { send, sendNotify } from './request'
 
 export type Client = ReturnType<typeof createClient>
@@ -22,6 +24,13 @@ export type CoreActions = {
   renameDevice(id: string, name: string): Promise<void>
   setStages(list: StageEntry[]): Promise<void>
   setDispatcher(patch: DispatcherPatch): Promise<void>
+  /** Новый исполнитель executor-N с моделью входного. */
+  addExecutor(): Promise<void>
+  updateExecutor(id: string, patch: ExecutorPatch): Promise<void>
+  /** Убирает исполнителя и ссылки на него; входного убрать нельзя. */
+  removeExecutor(id: string): Promise<void>
+  /** Включает/выключает связь from → to; when — условие передачи. */
+  setLink(from: string, to: string, enabled: boolean, when: string): Promise<void>
   restart(): Promise<void>
   /** Адреса для входа из сети; ошибка — пустой список. */
   loadAccess(): Promise<string[]>
@@ -44,19 +53,6 @@ export type ActionDeps = {
   onToken: (token: string) => void
   /** Часы, мс (в тестах — поддельные). */
   now?: () => number
-}
-
-type Executor = Record<string, unknown> & { entry?: unknown }
-
-/** Список executors с правкой у входного; null — настроек ещё нет. */
-function patchedExecutors(config: Config | null, patch: DispatcherPatch): Executor[] | null {
-  const list = config?.effective.executors
-  if (!Array.isArray(list)) return null
-  const executors = list.filter((e): e is Executor => typeof e === 'object' && e !== null)
-  if (!executors.some((e) => e.entry === true)) return null
-  // не переданные поля (undefined) не затирают текущие значения
-  const changes = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined))
-  return executors.map((e) => (e.entry === true ? { ...e, ...changes } : e))
 }
 
 /** Просьба о перезапуске: кнопка ждёт переподключения; отказ снова открывает её. */
@@ -83,13 +79,25 @@ export function createActions(deps: ActionDeps): CoreActions {
     return outcome.data
   }
 
-  async function setDispatcher(patch: DispatcherPatch) {
-    const executors = patchedExecutors(getConfig(), patch)
-    if (!executors) {
+  /** Шлёт весь список executors после правки; настроек ещё нет — уведомление. */
+  async function changeExecutors(change: (list: Executor[]) => Executor[], description: string) {
+    const list = executorsOf(getConfig()?.effective)
+    if (!list) {
       dispatch({ type: 'notice', notice: { text: 'Настройки ещё не загружены', tone: 'error' } })
       return
     }
-    await patchConfig({ executors }, 'Диспетчер')
+    await patchConfig({ executors: change(list) }, description)
+  }
+
+  const updateExecutor = (id: string, patch: ExecutorPatch) =>
+    changeExecutors((list) => withUpdated(list, id, patch), 'Исполнитель')
+
+  function setDispatcher(patch: DispatcherPatch) {
+    const entry = executorsOf(getConfig()?.effective)?.find((e) => e.entry === true)
+    return changeExecutors(
+      (list) => withUpdated(list, String(entry?.id), { model: patch.model, systemPrompt: patch.system_prompt }),
+      'Диспетчер',
+    )
   }
 
   async function loadAccess(): Promise<string[]> {
@@ -101,6 +109,11 @@ export function createActions(deps: ActionDeps): CoreActions {
     patchConfig,
     previewVoice,
     setDispatcher,
+    updateExecutor,
+    addExecutor: () => changeExecutors(withAdded, 'Новый исполнитель'),
+    removeExecutor: (id) => changeExecutors((list) => withRemoved(list, id), 'Исполнитель удалён'),
+    setLink: (from, to, enabled, when) =>
+      changeExecutors((list) => withLink(list, from, to, enabled, when), 'Связь исполнителей'),
     loadAccess,
     async downloadVoice(kind, voice) {
       dispatch({ type: 'downloadRequested', kind, voice })

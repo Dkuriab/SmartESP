@@ -12,6 +12,7 @@ const config = (stages: unknown[]): Config => ({
   overridden: [],
   restart_sections: [],
   dispatcher_prompt: '',
+  executor_prompts: {},
 })
 
 const node = (g: ReturnType<typeof buildGraph>, id: string) => g.nodes.find((n) => n.id === id)

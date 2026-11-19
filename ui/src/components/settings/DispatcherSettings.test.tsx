@@ -5,8 +5,8 @@ import { makeActions, makeConfig, makeState, makeStatus } from '../fixtures'
 import SettingsPanel from './SettingsPanel'
 
 const models = [
-  { name: 'qwen3', size_bytes: 5_200_000_000 },
-  { name: 'gemma3', size_bytes: 3_300_000_000 },
+  { name: 'qwen3', size_bytes: 5_200_000_000, supports_tools: true },
+  { name: 'gemma3', size_bytes: 3_300_000_000, supports_tools: true },
 ]
 
 function setup(over: Partial<CoreState> = {}) {

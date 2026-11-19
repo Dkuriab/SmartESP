@@ -15,6 +15,8 @@ export function makeTurn(id: number, over: Partial<Turn> = {}): Turn {
     answer: `ответ ${id}`,
     status: 'ok',
     at: 1700000000,
+    path: [],
+    delegations: [],
     ...over,
   }
 }
@@ -54,6 +56,7 @@ export function makeConfig(effective: Record<string, unknown> = {}): Config {
     overridden: [],
     restart_sections: [],
     dispatcher_prompt: 'Отвечай коротко\nПравило шёпота',
+    executor_prompts: {},
   }
 }
 
