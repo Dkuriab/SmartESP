@@ -1,0 +1,248 @@
+"""Тесты проигрывания файла на колонке: подделки колонок, разбора и событий."""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import AsyncGenerator, AsyncIterator
+from pathlib import Path
+
+import pytest
+
+from fakes.fake_device_port import FakeDevicePort
+from fakes.fake_events import RecordingSink
+from smartesp.contracts import AskUnavailable, AudioUndecodable, Delivery, DeviceInfo, PlaybackRefused
+from smartesp.fileplay import FilePlayer
+
+FILE = b"ID3-fake-mp3"
+
+
+def info(device_id: str, *, connected: bool = True, protocol: int = 3) -> DeviceInfo:
+    return DeviceInfo(device_id, device_id, connected, "10.0.0.5:1", "1.0", 1.0, protocol)
+
+
+class HeldPort(FakeDevicePort):
+    """Колонка, которая держит звук: после каждого куска ждёт gate; before — итог без звука."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.proactive = {"d1", "d2"}
+        self.gate = asyncio.Event()
+        self.gate.set()
+        self.pulled = asyncio.Event()
+        self.received: list[bytes] = []
+        self.before: Delivery | None = None
+        self.result: Delivery = "delivered"
+
+    async def announce(self, device_id: str, audio: AsyncIterator[bytes]) -> Delivery:
+        try:
+            if self.before is not None:
+                return self.before
+            async for chunk in audio:
+                self.received.append(chunk)
+                self.pulled.set()
+                await self.gate.wait()
+            return self.result
+        finally:
+            if isinstance(audio, AsyncGenerator):
+                await audio.aclose()
+
+
+class Decoder:
+    """Подделка разбора: отдаёт содержимое файла кусками PCM или бросает ошибку."""
+
+    def __init__(self) -> None:
+        self.seen: list[bytes] = []
+        self.paths: list[Path] = []
+        self.error: Exception | None = None
+        self.closed = 0
+
+    async def __call__(self, path: Path) -> AsyncGenerator[bytes]:
+        self.paths.append(path)
+        self.seen.append(path.read_bytes())
+        try:
+            if self.error is not None:
+                raise self.error
+            yield b"pcm1"
+            yield b"pcm2"
+        finally:
+            self.closed += 1
+
+
+async def upload(data: bytes = FILE) -> AsyncIterator[bytes]:
+    for start in range(0, len(data), 4):
+        yield data[start : start + 4]
+
+
+@pytest.fixture
+def port() -> HeldPort:
+    return HeldPort()
+
+
+@pytest.fixture
+def decoder() -> Decoder:
+    return Decoder()
+
+
+@pytest.fixture
+def events() -> RecordingSink:
+    return RecordingSink()
+
+
+@pytest.fixture
+def devices() -> list[DeviceInfo]:
+    return [info("d1"), info("d2"), info("off", connected=False), info("v2", protocol=2)]
+
+
+@pytest.fixture
+def player(
+    port: HeldPort, decoder: Decoder, events: RecordingSink, devices: list[DeviceInfo], tmp_path: Path
+) -> FilePlayer:
+    return FilePlayer(port, lambda: devices, decoder, events=events, tmp_dir=tmp_path)
+
+
+async def finished(events: RecordingSink, count: int = 1) -> None:
+    async with asyncio.timeout(2):
+        while sum(kind == "playback_finished" for kind, _ in events.events) < count:
+            await asyncio.sleep(0.01)
+
+
+async def test_plays_decoded_file_and_reports(
+    player: FilePlayer, port: HeldPort, decoder: Decoder, events: RecordingSink, tmp_path: Path
+) -> None:
+    await player.play_file("d1", upload())
+    await finished(events)
+    assert decoder.seen == [FILE]
+    assert port.received == [b"pcm1", b"pcm2"]
+    assert events.events == [
+        ("playback_started", {"device_id": "d1"}),
+        ("playback_finished", {"device_id": "d1", "delivery": "delivered"}),
+    ]
+    assert list(tmp_path.iterdir()) == []  # временный файл убран
+    assert decoder.closed == 1
+
+
+@pytest.mark.parametrize(
+    ("device_id", "reason"),
+    [("nope", "unknown_device"), ("off", "offline"), ("v2", "unsupported")],
+)
+async def test_refuses_devices(
+    player: FilePlayer, port: HeldPort, decoder: Decoder, device_id: str, reason: str
+) -> None:
+    with pytest.raises(PlaybackRefused) as refused:
+        await player.play_file(device_id, upload())
+    assert refused.value.reason == reason
+    assert decoder.seen == [] and port.received == []
+
+
+async def test_v2_message_is_clear(player: FilePlayer) -> None:
+    with pytest.raises(PlaybackRefused, match="прошивк"):
+        await player.play_file("v2", upload())
+
+
+async def test_one_file_per_speaker(player: FilePlayer, port: HeldPort, events: RecordingSink) -> None:
+    port.gate.clear()
+    await player.play_file("d1", upload())
+    with pytest.raises(PlaybackRefused) as refused:
+        await player.play_file("d1", upload())
+    assert refused.value.reason == "busy"
+    await player.play_file("d2", upload())  # другая колонка свободна
+    port.gate.set()
+    await finished(events, 2)
+    await player.play_file("d1", upload())  # доиграл — снова можно
+
+
+async def test_concurrent_requests_reserve_speaker(player: FilePlayer, decoder: Decoder) -> None:
+    async def slow() -> AsyncIterator[bytes]:
+        await asyncio.sleep(0.05)
+        yield FILE
+
+    first = asyncio.create_task(player.play_file("d1", slow()))
+    await asyncio.sleep(0)
+    with pytest.raises(PlaybackRefused, match="уже играет"):
+        await player.play_file("d1", upload())
+    await first
+    assert len(decoder.seen) == 1
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [(AudioUndecodable("не разобрать"), "undecodable"), (AskUnavailable("нет ffmpeg"), "unavailable")],
+)
+async def test_decode_errors_refuse(
+    player: FilePlayer,
+    port: HeldPort,
+    decoder: Decoder,
+    events: RecordingSink,
+    tmp_path: Path,
+    error: Exception,
+    reason: str,
+) -> None:
+    decoder.error = error
+    with pytest.raises(PlaybackRefused) as refused:
+        await player.play_file("d1", upload())
+    assert refused.value.reason == reason
+    assert str(refused.value) == str(error)
+    assert port.received == [] and events.events == []
+    assert list(tmp_path.iterdir()) == []
+    decoder.error = None
+    await player.play_file("d1", upload())  # колонка снова свободна
+
+
+@pytest.mark.parametrize(("delivery", "reason"), [("busy", "busy"), ("lost", "offline")])
+async def test_speaker_refusal_before_sound(
+    player: FilePlayer,
+    port: HeldPort,
+    decoder: Decoder,
+    events: RecordingSink,
+    tmp_path: Path,
+    delivery: Delivery,
+    reason: str,
+) -> None:
+    port.before = delivery
+    with pytest.raises(PlaybackRefused) as refused:
+        await player.play_file("d1", upload())
+    assert refused.value.reason == reason
+    assert events.events == []  # не начинался — событий нет
+    assert list(tmp_path.iterdir()) == []
+    assert decoder.closed == 1
+
+
+async def test_interrupted_by_wake_is_reported(
+    player: FilePlayer, port: HeldPort, events: RecordingSink
+) -> None:
+    port.result = "interrupted"
+    await player.play_file("d1", upload())
+    await finished(events)
+    assert events.events[-1] == ("playback_finished", {"device_id": "d1", "delivery": "interrupted"})
+
+
+async def test_stop_cancels_playback(
+    player: FilePlayer, port: HeldPort, decoder: Decoder, events: RecordingSink, tmp_path: Path
+) -> None:
+    port.gate.clear()
+    await player.play_file("d1", upload())
+    assert await player.stop_file("d1") is True
+    assert events.events[-1] == ("playback_finished", {"device_id": "d1", "delivery": "interrupted"})
+    assert list(tmp_path.iterdir()) == []
+    assert decoder.closed == 1
+    assert await player.stop_file("d1") is False  # уже не играет
+    with pytest.raises(PlaybackRefused) as refused:
+        await player.stop_file("nope")
+    assert refused.value.reason == "unknown_device"
+
+
+async def test_aclose_stops_all_and_refuses_new(
+    player: FilePlayer, port: HeldPort, events: RecordingSink, tmp_path: Path
+) -> None:
+    port.gate.clear()
+    await player.play_file("d1", upload())
+    await player.play_file("d2", upload())
+    await player.aclose()
+    assert [data["delivery"] for kind, data in events.events if kind == "playback_finished"] == [
+        "interrupted",
+        "interrupted",
+    ]
+    assert list(tmp_path.iterdir()) == []
+    with pytest.raises(PlaybackRefused) as refused:
+        await player.play_file("d1", upload())
+    assert refused.value.reason == "unavailable"

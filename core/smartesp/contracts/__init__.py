@@ -20,6 +20,7 @@ from .executor import (
     WarmsUp,
 )
 from .notify import Announcer
+from .playback import FilePlayback, PlaybackRefusal, PlaybackRefused
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
 from .tools import ConnectorState, ConnectorStateName, ToolBox, ToolObserver, ToolPhase, ToolResult, ToolUse
@@ -48,8 +49,11 @@ __all__ = [
     "EventSink",
     "Executor",
     "ExecutorError",
+    "FilePlayback",
     "Handoff",
     "Identified",
+    "PlaybackRefusal",
+    "PlaybackRefused",
     "Question",
     "ReplyPart",
     "Section",
