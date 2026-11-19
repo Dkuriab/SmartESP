@@ -149,7 +149,7 @@ private let documentsRepo = "Documents/SmartEsp"
     }
 
     @Test func waitingForAccessMenu() {
-        let model = menuModel(state: .waitingForAccess(folder: "Документы"), loginEnabled: false)
+        let model = menuModel(state: .waitingForAccess(folder: "Документы"))
         #expect(model.statusText == "Нужно разрешение на папку «Документы»")
         #expect(model.symbolName == "exclamationmark.triangle.fill")
         #expect(model.hint == accessHint(folder: "Документы"))
@@ -159,7 +159,7 @@ private let documentsRepo = "Documents/SmartEsp"
     }
 
     @Test func accessDeniedMenu() {
-        let model = menuModel(state: .accessDenied(folder: "Документы"), loginEnabled: false)
+        let model = menuModel(state: .accessDenied(folder: "Документы"))
         #expect(model.statusText == "Ошибка: нет доступа к папке «Документы»")
         #expect(model.symbolName == "exclamationmark.triangle.fill")
         #expect(model.hint == accessHint(folder: "Документы"))
@@ -167,8 +167,8 @@ private let documentsRepo = "Documents/SmartEsp"
     }
 
     @Test func otherStatesHideAccessSettings() {
-        #expect(!menuModel(state: .starting, loginEnabled: false).showsAccessSettings)
-        #expect(!menuModel(state: .failed("x"), loginEnabled: false).showsAccessSettings)
+        #expect(!menuModel(state: .starting).showsAccessSettings)
+        #expect(!menuModel(state: .failed("x")).showsAccessSettings)
     }
 
     @Test func placeholderCarriesHint() {

@@ -126,7 +126,7 @@ import SmartEspKit
         guard !quitting else { return }
         let current = state
         statusMenu?.show(
-            menuModel(state: current, loginEnabled: loginItem.isEnabled), canRestart: supervisor != nil,
+            menuModel(state: current), canRestart: supervisor != nil,
             login: loginItem.menuState)
         window?.show(windowContent(state: current, token: supervisor?.token))
     }

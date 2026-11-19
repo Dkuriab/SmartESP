@@ -91,10 +91,12 @@ public let loginItemsSettingsURL = URL(string: "x-apple.systempreferences:com.ap
 /// - Returns: заголовок, отметка и действие по нажатию.
 public func loginMenuState(status: LoginStatus, agentExists: Bool, inApplications: Bool) -> LoginMenuState {
     let on = status == .enabled || agentExists
-    guard inApplications else {
-        return LoginMenuState(title: "Запускать при входе (только из «Программ»)", mark: on ? .on : .off, click: .none)
-    }
     let title = "Запускать при входе"
+    guard inApplications else {
+        // Устаревшая запись от проверочной сборки: даём выключить, включить — нельзя
+        if on { return LoginMenuState(title: title, mark: .on, click: .disable) }
+        return LoginMenuState(title: "Запускать при входе (только из «Программ»)", mark: .off, click: .none)
+    }
     if on { return LoginMenuState(title: title, mark: .on, click: .disable) }
     if status == .requiresApproval {
         return LoginMenuState(

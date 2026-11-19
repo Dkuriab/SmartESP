@@ -23,8 +23,6 @@ public struct MenuModel: Equatable, Sendable {
     public let canOpen: Bool
     /// Доступен ли «Перезапустить ядро».
     public let canRestart: Bool
-    /// Галочка у «Запускать при входе».
-    public let loginChecked: Bool
 }
 
 private enum Symbol {
@@ -36,9 +34,8 @@ private enum Symbol {
 /// Строит модель меню по состоянию ядра.
 /// - Parameters:
 ///   - state: состояние ядра.
-///   - loginEnabled: включён ли запуск при входе.
 /// - Returns: строка состояния, символ значка, подсказка и доступность пунктов.
-public func menuModel(state: CoreState, loginEnabled: Bool) -> MenuModel {
+public func menuModel(state: CoreState) -> MenuModel {
     let (text, symbol) = describe(state)
     var hint: String?
     var showsAccessSettings = false
@@ -55,7 +52,7 @@ public func menuModel(state: CoreState, loginEnabled: Bool) -> MenuModel {
     if case .stopping = state { canRestart = false }
     return MenuModel(
         statusText: text, symbolName: symbol, hint: hint, showsAccessSettings: showsAccessSettings,
-        canOpen: true, canRestart: canRestart, loginChecked: loginEnabled)
+        canOpen: true, canRestart: canRestart)
 }
 
 /// Строка состояния и символ значка.
@@ -118,7 +115,7 @@ public func windowContent(state: CoreState, token: String?) -> WindowContent {
     case .starting:
         return .placeholder("Ядро запускается…")
     default:
-        let model = menuModel(state: state, loginEnabled: false)
+        let model = menuModel(state: state)
         return .placeholder(model.statusText + (model.hint.map { "\n\n" + $0 } ?? ""))
     }
 }

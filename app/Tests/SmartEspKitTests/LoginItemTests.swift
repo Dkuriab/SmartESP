@@ -45,5 +45,9 @@ import Testing
         #expect(pending.title.contains("Объекты входа"))
         let outside = loginMenuState(status: .notRegistered, agentExists: false, inApplications: false)
         #expect(outside.click == .none && outside.title == "Запускать при входе (только из «Программ»)")
+        let stale = loginMenuState(status: .enabled, agentExists: false, inApplications: false)
+        #expect(stale.mark == .on && stale.click == .disable && stale.title == "Запускать при входе")
+        let staleAgent = loginMenuState(status: .notFound, agentExists: true, inApplications: false)
+        #expect(staleAgent.mark == .on && staleAgent.click == .disable)
     }
 }
