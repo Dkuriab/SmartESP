@@ -2,14 +2,14 @@
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import aclosing
 from typing import Any
 
 import httpx
 import ollama
 
-from smartesp.contracts import ChatMessage, ExecutorError, ReplyPart
+from smartesp.contracts import ChatMessage, ExecutorError, ReplyPart, ToolSpec
 
 _log = logging.getLogger(__name__)
 
@@ -62,10 +62,12 @@ class OllamaExecutor:
             "Проверьте, что сервер Ollama запущен."
         )
 
-    async def run(self, messages: list[ChatMessage]) -> AsyncIterator[ReplyPart]:
+    async def run(
+        self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
+    ) -> AsyncIterator[ReplyPart]:
         """Отправляет системный промпт и диалог в модель, отдаёт непустые куски ответа.
 
-        Кидает ExecutorError, если Ollama недоступна или модели нет.
+        tools пока игнорируется. Кидает ExecutorError, если Ollama недоступна или модели нет.
         """
         payload = [{"role": "system", "content": self._system_prompt}]
         payload += [{"role": m.role, "content": m.content} for m in messages]
@@ -89,7 +91,7 @@ class OllamaExecutor:
     async def warm_up(self) -> None:
         """Загружает модель в память пустым запросом (без генерации текста).
 
-        Кидает ExecutorError, если Ollama недоступна или модели нет.
+        tools пока игнорируется. Кидает ExecutorError, если Ollama недоступна или модели нет.
         """
         try:
             await self._client.generate(model=self._model, prompt="", keep_alive=self._keep_alive)

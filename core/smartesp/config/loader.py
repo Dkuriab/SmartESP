@@ -95,7 +95,9 @@ def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
 
 def _is_legacy_executors(value: object) -> bool:
     """Список исполнителей совпадает с умолчанием прежних версий (с любым прежним промптом)."""
-    defaults = Config().model_dump()["executors"]
+    # прежнее умолчание — один диспетчер без связей (сеть из двух исполнителей появилась позже)
+    legacy = Config().executors[0].model_dump(exclude={"delegates", "description"})
+    defaults = [legacy]
     if not isinstance(value, list) or len(value) != len(defaults):
         return False
     for item, default in zip(value, defaults, strict=True):

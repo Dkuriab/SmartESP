@@ -17,3 +17,11 @@ async def test_fakes_satisfy_contracts() -> None:
     chunks = [c async for c in tts.synthesize("Один. Два.", "normal")]
     assert len(chunks) == 2
     assert all(len(c) % 2 == 0 for c in chunks)
+
+
+def test_reply_part_new_fields_default_empty() -> None:
+    from smartesp.contracts import ReplyPart
+
+    part = ReplyPart("x")
+    assert part.text == "x"
+    assert part.tool_call is None and part.handoff is None and part.failure is False

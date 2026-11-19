@@ -58,7 +58,7 @@ async def test_executors_and_stages_together_build_one_executor(tmp_path: Path) 
     start(core)
     await eventually(lambda: core.core.state == "ready")
     applied = core.bus.subscribe()
-    entry = core.config.entry_executor().model_dump()
+    entry = core.config.entry_executor().model_dump(exclude={"delegates"})  # без связи на big
     await core.core.patch_config({"stages": [], "executors": [{**entry, "model": "other"}]})
     async with asyncio.timeout(2):
         change = await anext(e.data async for e in applied if e.kind == "change_applied")

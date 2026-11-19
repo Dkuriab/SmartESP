@@ -128,7 +128,7 @@ async def test_prompt_change_keeps_model_and_model_change_unloads_old(tmp_path: 
     assert "[style:quiet]" in made[0].prompt and "[style:quiet]" not in made[1].prompt
     assert made[0].unloaded == []  # та же модель: выгружать нельзя
 
-    entry = core.config.entry_executor().model_dump()
+    entry = core.config.entry_executor().model_dump(exclude={"delegates"})  # без связи на big
     await core.core.patch_config({"executors": [{**entry, "model": "other"}]})
     change = await next_change(applied)
     assert change["ok"], change
@@ -149,7 +149,7 @@ async def test_stop_mid_release_unloads_old_and_new_models(tmp_path: Path) -> No
     speaking, _ = await connect(core, "kitchen")
     ask(speaking, 1)
     await eventually(lambda: "reply_start" in sent_types(speaking))
-    entry = core.config.entry_executor().model_dump()
+    entry = core.config.entry_executor().model_dump(exclude={"delegates"})  # без связи на big
     await core.core.patch_config({"executors": [{**entry, "model": "other"}]})
     await eventually(lambda: core.live.executor is not made[0])  # подменили, старая ждёт конца хода
     assert made[0].unloaded == []
@@ -171,7 +171,7 @@ async def test_stop_mid_build_unloads_model_being_warmed(tmp_path: Path) -> None
     core = make_core(tmp_path, fake_kinds(factory))
     start(core)
     await eventually(lambda: core.core.state == "ready")
-    entry = core.config.entry_executor().model_dump()
+    entry = core.config.entry_executor().model_dump(exclude={"delegates"})  # без связи на big
     await core.core.patch_config({"executors": [{**entry, "model": "big"}]})
     await eventually(lambda: len(made) == 2)  # новая модель греется
     await stop(core)

@@ -5,13 +5,13 @@
 """
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
 from conversation_helpers import Setup, make_utterance, running, wait_for
 
 from fakes.fake_device_port import FakeDevicePort
 from fakes.fake_executor import FakeExecutor
-from smartesp.contracts import ChatMessage, ReplyPart
+from smartesp.contracts import ChatMessage, ReplyPart, ToolSpec
 
 THINKING = ("kitchen", "thinking")
 ERROR = ("kitchen", "error")
@@ -47,7 +47,9 @@ class InterruptedSlowExecutor:
     def __init__(self) -> None:
         self.port: FakeDevicePort | None = None
 
-    async def run(self, messages: list[ChatMessage]) -> AsyncIterator[ReplyPart]:
+    async def run(
+        self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
+    ) -> AsyncIterator[ReplyPart]:
         assert self.port is not None
         self.port.deactivate("kitchen", 1)
         await asyncio.sleep(10)
@@ -70,7 +72,9 @@ class StallingExecutor:
     def __init__(self) -> None:
         self.closed = False
 
-    async def run(self, messages: list[ChatMessage]) -> AsyncIterator[ReplyPart]:
+    async def run(
+        self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
+    ) -> AsyncIterator[ReplyPart]:
         try:
             yield ReplyPart("Первое предложение ответа. ")
             await asyncio.sleep(10)

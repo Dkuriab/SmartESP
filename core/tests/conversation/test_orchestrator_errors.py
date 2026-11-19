@@ -1,7 +1,7 @@
 """Тесты оркестратора хода: ошибки исполнителя, STT, обработчиков и TTS — колонка не молчит."""
 
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
 import pytest
 from conversation_helpers import (
@@ -16,7 +16,7 @@ from conversation_helpers import (
 from fakes.fake_device_port import FakeDevicePort
 from fakes.fake_executor import FakeExecutor
 from fakes.fake_stt import FakeSTT
-from smartesp.contracts import Annotation, ChatMessage, ExecutorError, ReplyPart, Utterance
+from smartesp.contracts import Annotation, ChatMessage, ExecutorError, ReplyPart, ToolSpec, Utterance
 from smartesp.conversation import Orchestrator
 
 
@@ -36,7 +36,9 @@ async def test_executor_error_plays_error_tone() -> None:
 class MidStreamFailingExecutor:
     """Отдаёт одно предложение и падает с ExecutorError."""
 
-    async def run(self, messages: list[ChatMessage]) -> AsyncIterator[ReplyPart]:
+    async def run(
+        self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
+    ) -> AsyncIterator[ReplyPart]:
         yield ReplyPart("Первое предложение ответа. ")
         raise ExecutorError("связь с ollama пропала")
 
@@ -156,7 +158,9 @@ class InterruptedFailingExecutor:
     def __init__(self, port: FakeDevicePort) -> None:
         self._port = port
 
-    async def run(self, messages: list[ChatMessage]) -> AsyncIterator[ReplyPart]:
+    async def run(
+        self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
+    ) -> AsyncIterator[ReplyPart]:
         self._port.deactivate("kitchen", 1)
         raise ExecutorError("нет ollama")
         yield ReplyPart("")

@@ -8,6 +8,10 @@ DEFAULT_SYSTEM_PROMPT = (
 )
 CONFIG_VERSION = 3  # 2 — в config.yaml только изменения владельца; 3 — умолчание tts стало silero
 DEFAULT_MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
+BIG_WHEN = "сложные вопросы: рассуждения, расчёты, подробные объяснения, знания, которых может не быть у тебя"
+BIG_SYSTEM_PROMPT = (
+    "Ты отвечаешь голосом через колонку: по-русски, без разметки и списков, связно, до 6–8 предложений."
+)
 
 
 class ServerConfig(BaseModel):
@@ -45,6 +49,13 @@ class TtsConfig(BaseModel):
     voice: str = "xenia"
 
 
+class DelegateLink(BaseModel):
+    """Связь: исполнитель может передать задачу исполнителю to, когда подходит условие when."""
+
+    to: str
+    when: str = ""
+
+
 class ExecutorConfig(BaseModel):
     """Исполнитель (языковая модель); ровно один является входным."""
 
@@ -55,6 +66,8 @@ class ExecutorConfig(BaseModel):
     entry: bool = False
     system_prompt: str = ""
     keep_alive: str = "24h"
+    description: str = ""
+    delegates: list[DelegateLink] = Field(default_factory=list)
 
 
 class StageConfig(BaseModel):
@@ -79,7 +92,15 @@ def _default_executors() -> list[ExecutorConfig]:
             model=DEFAULT_MODEL,
             entry=True,
             system_prompt=DEFAULT_SYSTEM_PROMPT,
-        )
+            delegates=[DelegateLink(to="big", when=BIG_WHEN)],
+        ),
+        ExecutorConfig(
+            id="big",
+            name="Большая модель",
+            model="deepseek-r1:8b",
+            description="большая модель: рассуждения, расчёты, подробные объяснения, знания",
+            system_prompt=BIG_SYSTEM_PROMPT,
+        ),
     ]
 
 
@@ -101,6 +122,23 @@ class Config(BaseModel):
         entries = [e for e in self.executors if e.entry]
         if len(entries) != 1:
             raise ValueError(f"нужен ровно один исполнитель с entry=true, найдено: {len(entries)}")
+        return self
+
+    @model_validator(mode="after")
+    def _check_links(self) -> "Config":
+        ids = [e.id for e in self.executors]
+        for id_ in ids:
+            if ids.count(id_) > 1:
+                raise ValueError(f"id исполнителя повторяется: {id_}")
+        for executor in self.executors:
+            targets = [d.to for d in executor.delegates]
+            for to in targets:
+                if to == executor.id:
+                    raise ValueError(f"исполнитель {executor.id} ссылается сам на себя")
+                if to not in ids:
+                    raise ValueError(f"исполнитель {executor.id} ссылается на несуществующего: {to}")
+                if targets.count(to) > 1:
+                    raise ValueError(f"исполнитель {executor.id} ссылается на {to} повторно")
         return self
 
     def entry_executor(self) -> ExecutorConfig:

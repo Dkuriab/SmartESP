@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
 import pytest
 from conversation_helpers import (
@@ -17,7 +17,7 @@ from conversation_helpers import (
 from fakes.fake_device_port import FakeDevicePort
 from fakes.fake_executor import FakeExecutor
 from fakes.fake_stt import FakeSTT
-from smartesp.contracts import Annotation, ChatMessage, ReplyPart
+from smartesp.contracts import Annotation, ChatMessage, ReplyPart, ToolSpec
 from smartesp.conversation import Orchestrator
 
 
@@ -78,7 +78,9 @@ class StoppingExecutor:
         self.read = 0
         self.closed = False
 
-    async def run(self, messages: list[ChatMessage]) -> AsyncIterator[ReplyPart]:
+    async def run(
+        self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
+    ) -> AsyncIterator[ReplyPart]:
         try:
             for i in range(10):
                 await asyncio.sleep(0.001)

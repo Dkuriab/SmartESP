@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
 from conversation_helpers import (
     CountingSTT,
@@ -17,7 +17,7 @@ from conversation_helpers import (
 
 from fakes.fake_events import RecordingSink
 from fakes.fake_executor import FakeExecutor
-from smartesp.contracts import ChatMessage, ReplyPart
+from smartesp.contracts import ChatMessage, ReplyPart, ToolSpec
 
 ANSWER = "Первое предложение. Второе предложение."
 
@@ -29,7 +29,9 @@ class GatedExecutor:
         self.started = asyncio.Event()
         self.gate = asyncio.Event()
 
-    async def run(self, messages: list[ChatMessage]) -> AsyncIterator[ReplyPart]:
+    async def run(
+        self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
+    ) -> AsyncIterator[ReplyPart]:
         yield ReplyPart("Первое предложение. ")
         self.started.set()
         await self.gate.wait()
@@ -56,7 +58,9 @@ class HangingExecutor:
         self.called = False
         self.cancelled = False
 
-    async def run(self, messages: list[ChatMessage]) -> AsyncIterator[ReplyPart]:
+    async def run(
+        self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
+    ) -> AsyncIterator[ReplyPart]:
         self.called = True
         try:
             await asyncio.Event().wait()

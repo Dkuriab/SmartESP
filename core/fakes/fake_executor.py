@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 
-from smartesp.contracts.executor import ChatMessage, ReplyPart
+from smartesp.contracts.executor import ChatMessage, ReplyPart, ToolSpec
 
 
 class FakeExecutor:
@@ -15,7 +15,9 @@ class FakeExecutor:
         self._delay = delay
         self.calls: list[list[ChatMessage]] = []  # сообщения каждого вызова run
 
-    async def run(self, messages: list[ChatMessage]) -> AsyncIterator[ReplyPart]:
+    async def run(
+        self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()
+    ) -> AsyncIterator[ReplyPart]:
         self.calls.append(messages)
         if self._error is not None:
             raise self._error
