@@ -10,7 +10,10 @@ STATUSES: tuple[Status, ...] = ("running", "done", "failed", "cancelled")
 
 @dataclass
 class TaskRecord:
-    """Задача: имя для речи, текст, папка, состояние, время, короткий итог или причина ошибки."""
+    """Задача: имя для речи, текст, папка, состояние, время, короткий итог или причина ошибки.
+
+    `denials` — сколько действий Claude Code отклонил: «готово с отказами».
+    """
 
     id: str
     name: str
@@ -22,6 +25,7 @@ class TaskRecord:
     finished: datetime | None = None
     summary: str = ""
     error: str = ""
+    denials: int = 0
 
     def to_json(self) -> dict[str, Any]:
         """Словарь для JSON-файла журнала."""
@@ -36,6 +40,7 @@ class TaskRecord:
             "finished": self.finished.isoformat() if self.finished else None,
             "summary": self.summary,
             "error": self.error,
+            "denials": self.denials,
         }
 
     @classmethod
@@ -57,4 +62,5 @@ class TaskRecord:
             finished=datetime.fromisoformat(finished) if isinstance(finished, str) else None,
             summary=str(raw.get("summary", "")),
             error=str(raw.get("error", "")),
+            denials=int(raw.get("denials", 0)),
         )

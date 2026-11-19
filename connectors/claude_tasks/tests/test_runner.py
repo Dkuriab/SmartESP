@@ -43,11 +43,11 @@ def test_exact_argv() -> None:
 
 def test_argv_protections() -> None:
     """Папка, настройки и хуки защищены флагами; опасного нет ни при каком наборе инструментов."""
-    args = build_args("/bin/claude", ("Read", "Bash(git log *)"))
+    args = build_args("/bin/claude", ("Read", "Bash"))
     assert {"--restricted", "--no-session-persistence", "--strict-mcp-config"} <= set(args)
     assert args[args.index("--permission-prompts") + 1] == "none"
     assert args[args.index("--permission-mode") + 1] == "acceptEdits"
-    assert args[-2:] == ["--tools", "Read,Bash(git log *)"]
+    assert args[-2:] == ["--tools", "Read,Bash"]
     for banned in ("--allowedTools", "--allowed-tools", "--add-dir", "bypass", "dangerously"):
         assert not any(banned in a for a in args)
 
@@ -94,6 +94,16 @@ def test_child_env_allowlist() -> None:
 def test_parse_success() -> None:
     out = json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": "Готово."})
     assert parse_output(out.encode(), 0, b"") == RunResult(True, "Готово.")
+
+
+def test_parse_permission_denials() -> None:
+    denials = [{"tool_name": "Read", "tool_use_id": "1", "tool_input": {"file_path": "/etc/hosts"}}] * 2
+    out = json.dumps(
+        {"subtype": "success", "is_error": False, "result": "Ок.", "permission_denials": denials}
+    )
+    assert parse_output(out.encode(), 0, b"") == RunResult(True, "Ок.", 2)
+    empty = json.dumps({"subtype": "success", "is_error": False, "result": "Ок.", "permission_denials": []})
+    assert parse_output(empty.encode(), 0, b"").denials == 0
 
 
 def test_parse_error_result() -> None:

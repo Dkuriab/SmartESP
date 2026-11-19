@@ -1,8 +1,8 @@
 """Настройки коннектора из переменных окружения.
 
 - `CLAUDE_TASK_FOLDERS` — разрешённые папки: `имя=путь;имя=путь` (первая — по умолчанию);
-- `CLAUDE_TASK_TOOLS` — инструменты Claude Code через запятую (по умолчанию без Bash и сети);
-  инструменты, которые запускают код или ходят в сеть, допускаются, но с предупреждением;
+- `CLAUDE_TASK_TOOLS` — имена инструментов Claude Code через запятую (по умолчанию только
+  файловые, без Bash и сети); любой инструмент сверх файловых допускается с предупреждением;
 - `CLAUDE_TASK_TIMEOUT_MIN` — предел времени задачи в минутах (по умолчанию 30);
 - `CLAUDE_BIN` — путь к программе `claude` (по умолчанию ищется в PATH);
 - `CLAUDE_TASK_ENV` — имена переменных окружения через запятую, которые владелец явно
@@ -17,8 +17,6 @@ from pathlib import Path
 
 DEFAULT_TOOLS = ("Read", "Edit", "Write", "Glob", "Grep")
 DEFAULT_TIMEOUT_S = 30 * 60.0
-# Инструменты, которые запускают код или ходят в сеть: по умолчанию их нет.
-RISKY_TOOLS = ("Bash", "PowerShell", "WebFetch", "WebSearch")
 
 logger = logging.getLogger(__name__)
 
@@ -53,16 +51,22 @@ def _parse_folders(raw: str) -> tuple[tuple[str, Path], ...]:
 
 
 def _names(raw: str) -> tuple[str, ...]:
-    """Список через запятую (пробелы внутри элемента сохраняются: `Bash(git log *)`)."""
+    """Список имён через запятую."""
     return tuple(item.strip() for item in raw.split(",") if item.strip())
 
 
 def _parse_tools(raw: str) -> tuple[str, ...]:
-    """Инструменты через запятую; пусто — по умолчанию; опасные — с предупреждением в журнал."""
+    """Инструменты через запятую; пусто — по умолчанию.
+
+    Всё сверх файловых по умолчанию (Bash, WebFetch, Monitor, REPL, CronCreate…) может дать
+    задаче запуск кода или сеть — допускается, но с предупреждением в журнал.
+    """
     tools = _names(raw) or DEFAULT_TOOLS
-    risky = [t for t in tools if t.split("(", 1)[0].strip() in RISKY_TOOLS]
-    if risky:
-        logger.warning("CLAUDE_TASK_TOOLS: задачи получат код или сеть: %s", ", ".join(risky))
+    extra = [t for t in tools if t not in DEFAULT_TOOLS]
+    if extra:
+        logger.warning(
+            "CLAUDE_TASK_TOOLS: сверх файловых инструментов (возможен код или сеть): %s", ", ".join(extra)
+        )
     return tools
 
 

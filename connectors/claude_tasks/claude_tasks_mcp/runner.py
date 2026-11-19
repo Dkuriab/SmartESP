@@ -43,10 +43,14 @@ _SUBTYPES = {
 
 @dataclass(frozen=True)
 class RunResult:
-    """Итог запуска: `ok` — ответ Claude в `text`; иначе в `text` — причина для речи."""
+    """Итог запуска: `ok` — ответ Claude в `text`; иначе в `text` — причина для речи.
+
+    `denials` — сколько действий Claude Code отклонил (`permission_denials` в ответе JSON).
+    """
 
     ok: bool
     text: str
+    denials: int = 0
 
 
 class Runner(Protocol):
@@ -118,7 +122,8 @@ def _from_json(data: dict[str, Any], code: int | None) -> RunResult:
     if data.get("is_error") or subtype.startswith("error"):
         reason = _first_line(text) or _SUBTYPES.get(subtype) or f"программа claude завершилась с кодом {code}"
         return RunResult(False, reason)
-    return RunResult(True, text)
+    denials = data.get("permission_denials")
+    return RunResult(True, text, len(denials) if isinstance(denials, list) else 0)  # pyright: ignore[reportUnknownArgumentType]
 
 
 def parse_output(stdout: bytes, code: int | None, stderr: bytes) -> RunResult:

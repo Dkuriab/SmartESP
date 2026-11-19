@@ -10,6 +10,7 @@ DEFAULT_NAME = "задача"
 NAME_WORDS = 4
 NAME_CHARS = 40
 NO_TASKS = "Задач для Клода ещё не было."
+DENIED = "Часть действий Клоду не разрешили."
 
 _WORD = re.compile(r"[\w-]+")
 _TASK = ("задача", "задачи", "задач")
@@ -61,7 +62,8 @@ def status_text(record: TaskRecord, now: datetime) -> str:
     if record.status == "running":
         return f"{title} идёт {duration(_elapsed(record, now))}."
     if record.status == "done":
-        return f"{title} готова за {duration(_elapsed(record, now), accusative=True)}."
+        how = "готова с отказами" if record.denials else "готова"
+        return f"{title} {how} за {duration(_elapsed(record, now), accusative=True)}."
     if record.status == "failed":
         return f"{title}: ошибка — {sentence_end(record.error)}"
     return f"{title} отменена."
@@ -70,6 +72,8 @@ def status_text(record: TaskRecord, now: datetime) -> str:
 def _short_state(record: TaskRecord, now: datetime) -> str:
     if record.status == "running":
         return f"идёт {duration(_elapsed(record, now))}"
+    if record.status == "done" and record.denials:
+        return "готово с отказами"
     return {"done": "готово", "failed": "ошибка", "cancelled": "отменена"}[record.status]
 
 
@@ -104,12 +108,19 @@ def cancel_text(record: TaskRecord, was_running: bool) -> str:
     return f"Задача «{record.name}» уже не идёт."
 
 
+def with_denials(text: str, record: TaskRecord) -> str:
+    """Текст с пометкой «Часть действий Клоду не разрешили.», если были отказы."""
+    if not record.denials:
+        return text
+    return f"{sentence_end(text)} {DENIED}".strip()
+
+
 def done_announce(record: TaskRecord, answer: str) -> str:
-    """Объявление о готовой задаче: одна фраза итога."""
+    """Объявление о готовой задаче: одна фраза итога (и пометка об отказах)."""
     phrase = summarize(answer, 1, max_chars=200)
     if not phrase:
-        return f"Клод закончил «{record.name}»."
-    return sentence_end(f"Клод закончил «{record.name}»: {phrase.rstrip('.')}")
+        return with_denials(f"Клод закончил «{record.name}».", record)
+    return with_denials(sentence_end(f"Клод закончил «{record.name}»: {phrase.rstrip('.')}"), record)
 
 
 def ambiguous_text(names: list[str]) -> str:

@@ -112,6 +112,27 @@ async def test_done_announces_and_gives_result(make: Make, runner: FakeRunner, c
         )
 
 
+async def test_done_with_denials(make: Make, runner: FakeRunner, clock: FakeClock, data_dir: Path) -> None:
+    async with connect(make()) as s:
+        await s.call("task_start", task="прочитай hosts")
+        await runner.started(1)
+        clock.advance(60)
+        runner.finish(0, True, "Готово, но файл прочитать не вышло. Он вне папки.", denials=1)
+        assert (await s.announce())["text"] == (
+            "Клод закончил «прочитай hosts»: Готово, но файл прочитать не вышло. "
+            "Часть действий Клоду не разрешили."
+        )
+        assert await s.call("task_status") == "Задача «прочитай hosts» готова с отказами за 1 минуту."
+        assert await s.call("tasks") == "Задачи Клода: прочитай hosts — готово с отказами."
+        assert await s.call("task_result") == (
+            "Готово, но файл прочитать не вышло. Он вне папки. Часть действий Клоду не разрешили."
+        )
+    saved = json.loads((data_dir / "home" / "tasks.json").read_text(encoding="utf-8"))["tasks"][0]
+    assert saved["status"] == "done"
+    assert saved["denials"] == 1
+    assert saved["summary"].endswith("Часть действий Клоду не разрешили.")
+
+
 async def test_failure_announces_reason(make: Make, runner: FakeRunner) -> None:
     async with connect(make()) as s:
         await s.call("task_start", task="обнови зависимости", person="гость")

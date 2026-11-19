@@ -149,7 +149,8 @@ class Manager:
             return  # уже отменена или прервана
         if result.ok:
             self._close(record, "done")
-            record.summary = summarize(result.text, RESULT_SENTENCES)
+            record.denials = result.denials
+            record.summary = phrases.with_denials(summarize(result.text, RESULT_SENTENCES), record)
             text = phrases.done_announce(record, result.text)
         else:
             self._close(record, "failed", error=result.text)

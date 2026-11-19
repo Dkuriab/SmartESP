@@ -69,9 +69,9 @@ class FakeRunner:
                 await anyio.sleep(0.001)
         return self.calls
 
-    def finish(self, index: int, ok: bool, text: str) -> None:
-        """Завершает запуск номер `index` с итогом."""
-        self.calls[index].done.set_result(RunResult(ok, text))
+    def finish(self, index: int, ok: bool, text: str, denials: int = 0) -> None:
+        """Завершает запуск номер `index` с итогом (`denials` — отклонённые действия)."""
+        self.calls[index].done.set_result(RunResult(ok, text, denials))
 
 
 class Session:

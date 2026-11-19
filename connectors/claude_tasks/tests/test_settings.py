@@ -46,7 +46,13 @@ def test_bad_timeout_falls_back_to_default() -> None:
         assert load_settings({"CLAUDE_TASK_TIMEOUT_MIN": raw}).timeout_s == DEFAULT_TIMEOUT_S
 
 
-def test_risky_tools_kept_with_warning(caplog: pytest.LogCaptureFixture) -> None:
-    settings = load_settings({"CLAUDE_TASK_TOOLS": "Read, Bash(git log *), WebFetch"})
-    assert settings.tools == ("Read", "Bash(git log *)", "WebFetch")
-    assert "Bash(git log *), WebFetch" in caplog.text
+def test_any_tool_beyond_file_tools_warns(caplog: pytest.LogCaptureFixture) -> None:
+    settings = load_settings({"CLAUDE_TASK_TOOLS": "Read, Bash, Monitor, CronCreate"})
+    assert settings.tools == ("Read", "Bash", "Monitor", "CronCreate")
+    assert "Bash, Monitor, CronCreate" in caplog.text
+
+
+def test_default_file_tools_do_not_warn(caplog: pytest.LogCaptureFixture) -> None:
+    load_settings({"CLAUDE_TASK_TOOLS": "Read,Edit,Write,Glob,Grep"})
+    load_settings({})
+    assert "CLAUDE_TASK_TOOLS" not in caplog.text
