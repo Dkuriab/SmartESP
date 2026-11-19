@@ -176,3 +176,17 @@ def test_unknown_keys_in_file_are_warned_and_not_listed(
     assert sorted(store.overridden()) == ["devices.A.name", "tts.voice"]
     store.save(store.merge({}))
     assert "histroy" not in (tmp_path / "config.yaml").read_text(encoding="utf-8")
+
+
+def test_speech_defaults() -> None:
+    assert Config().speech.proactive is True
+    assert Config().speech.listen_after_question is True
+
+
+def test_speech_patch_is_merged_and_unknown_key_rejected(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    config = store.merge({"speech": {"proactive": False}})
+    assert config.speech.proactive is False
+    assert config.speech.listen_after_question is True
+    with pytest.raises(ValueError, match="speech.volume"):
+        store.merge({"speech": {"volume": 3}})

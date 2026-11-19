@@ -84,6 +84,13 @@ class HistoryConfig(BaseModel):
     max_age_s: int = 300
 
 
+class SpeechConfig(BaseModel):
+    """Речь по инициативе ядра: объявления и слушание после вопроса."""
+
+    proactive: bool = True
+    listen_after_question: bool = True
+
+
 def _default_executors() -> list[ExecutorConfig]:
     return [
         ExecutorConfig(
@@ -116,6 +123,7 @@ class Config(BaseModel):
     executors: list[ExecutorConfig] = Field(default_factory=_default_executors)
     stages: list[StageConfig] = Field(default_factory=lambda: [StageConfig(kind="whisper_detect")])
     history: HistoryConfig = Field(default_factory=HistoryConfig)
+    speech: SpeechConfig = Field(default_factory=SpeechConfig)
 
     @model_validator(mode="after")
     def _check_single_entry(self) -> "Config":

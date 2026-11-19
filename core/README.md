@@ -103,7 +103,7 @@ uv run python -m smartesp
 Настройки, изменённые через `PATCH /api/v1/config`, ядро применяет без перезапуска
 и сразу записывает в `config.yaml`:
 
-- **на лету:** `devices`, `tts`, `executors`, `stages`, `history`;
+- **на лету:** `devices`, `tts`, `executors`, `stages`, `history`, `speech`;
 - **требуют перезапуска:** `server`, `stt`, `arbitration` — такая правка
   записывается, ответ получает `status: restart_required`, а `GET /status`
   показывает `restart_required: true`, пока ядро не перезапустят.

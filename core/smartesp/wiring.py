@@ -7,19 +7,17 @@
 from __future__ import annotations
 
 import asyncio
-import functools
 import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import cast
 
 from fastapi import FastAPI, WebSocket
 
 from smartesp.api import create_api, mount_ui
 from smartesp.config import Config, ConfigFile
-from smartesp.contracts import Analyzer, Executor, Section, TextToSpeech
+from smartesp.contracts import Analyzer, Executor, TextToSpeech
 from smartesp.control import Core
 from smartesp.conversation import History, Orchestrator
 from smartesp.devices import DeviceHub, WebSocketConnection
@@ -41,6 +39,7 @@ from smartesp.lifecycle import (
     timed,
 )
 from smartesp.network import NetworkPrompts
+from smartesp.sections import live_sections
 from smartesp.tts import VoiceManager
 
 WARM_UP_PCM = bytes(16000)  # 0,5 с тишины (16 кГц, s16le)
@@ -65,28 +64,6 @@ async def _build_answering(
     kinds: Kinds, live: LiveAnswering, capabilities: CapabilityCache, config: Config
 ) -> Answering:
     return await live.build(await build_answering(config, kinds, capabilities.get), WARM_UP_TIMEOUT_S)
-
-
-async def _device_names(config: Config) -> dict[str, str]:
-    return {device_id: device.name for device_id, device in config.devices.items()}
-
-
-async def _history_limits(config: Config) -> tuple[int, int]:
-    return config.history.max_turns, config.history.max_age_s
-
-
-def _sections(
-    hub: DeviceHub, history: History, live: LiveAnswering, kinds: Kinds, capabilities: CapabilityCache
-) -> dict[str, Section]:
-    """Разделы, применяемые на лету (tts пульт открывает через менеджер голосов)."""
-    build = functools.partial(_build_answering, kinds, live, capabilities)
-    answering = Section(build, live.use, live.release)
-    return {
-        "devices": Section(_device_names, lambda names: hub.set_names(cast(dict[str, str], names))),
-        "history": Section(_history_limits, lambda new: history.set_limits(*cast(tuple[int, int], new))),
-        "executors": answering,
-        "stages": answering,  # правила обработчиков в промптах: пересобираем и сеть
-    }
 
 
 @dataclass
@@ -164,7 +141,7 @@ def assemble(
     voices = VoiceManager(home, kinds.tts, on_voice, events=bus)
     core = Core(
         store,
-        _sections(hub, history, live, kinds, capabilities),
+        live_sections(hub, history, live, lambda config: _build_answering(kinds, live, capabilities, config)),
         events=bus,
         feed=bus,
         voices=voices,
