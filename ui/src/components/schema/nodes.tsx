@@ -14,6 +14,8 @@ type Data = {
   model?: string
   /** Модель исполнителя не умеет вызывать инструменты. */
   noTools?: boolean
+  /** Модель исполнителя не прогрелась: недоступна. */
+  unavailable?: boolean
 }
 type SchemaNode = Node<Data>
 
@@ -73,6 +75,7 @@ function Executor({ data, selected }: NodeProps<SchemaNode>) {
       </div>
       <div className="node-sub">{data.model || '—'}</div>
       {data.noTools && <div className="node-sub">не умеет передавать</div>}
+      {data.unavailable && <div className="node-sub node-warn">модель недоступна</div>}
       <Handle id="out-right" type="source" position={Position.Right} isConnectable={false} />
       <Handle id="loop-out" type="source" position={Position.Right} style={{ top: '30%' }} isConnectable={false} />
       <Handle id="loop-in" type="target" position={Position.Right} style={{ top: '70%' }} isConnectable={false} />

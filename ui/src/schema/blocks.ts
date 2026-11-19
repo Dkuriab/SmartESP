@@ -103,3 +103,13 @@ export function listExecutors(state: CoreState): ExecutorItem[] {
   }))
   return [...items.filter((e) => e.entry), ...items.filter((e) => !e.entry)]
 }
+
+/** Модель известна Ollama и не умеет инструменты: исполнитель с ней не передаёт задачи. */
+export function modelWithoutTools(state: CoreState, model: string): boolean {
+  return state.models?.find((m) => m.name === model)?.supports_tools === false
+}
+
+/** Фоновый прогрев исполнителя закончился ошибкой: «модель недоступна». */
+export function executorUnavailable(state: CoreState, id: string): boolean {
+  return state.status?.executors?.some((x) => x.id === id && !x.ready) ?? false
+}

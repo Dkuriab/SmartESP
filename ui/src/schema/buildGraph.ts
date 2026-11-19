@@ -2,7 +2,7 @@
 import type { Edge, Node } from '@xyflow/react'
 import type { CoreState, Turn } from '../state/model'
 import type { ExecutorItem } from './blocks'
-import { KNOWN_STAGES, asList, listDevices, listExecutors, voiceLabel } from './blocks'
+import { KNOWN_STAGES, asList, executorUnavailable, listDevices, listExecutors, modelWithoutTools, voiceLabel } from './blocks'
 
 export type Graph = { nodes: Node[]; edges: Edge[] }
 
@@ -72,13 +72,17 @@ function route(from: number, to: number, loops: number): Partial<Edge> {
   return { type: 'smoothstep', sourceHandle: 'loop-out', targetHandle: 'loop-in', pathOptions: { offset } } as Partial<Edge>
 }
 
-/** Стрелки исполнитель → исполнитель по связям и от каждого исполнителя к голосу. */
-function executorEdges(executors: ExecutorItem[], path: string[]): Edge[] {
+/**
+ * Стрелки исполнитель → исполнитель по связям и от каждого исполнителя к голосу.
+ * Связи исполнителя, чья модель не умеет инструменты (noTools), неактивны: пунктир и «неактивна» в title.
+ */
+function executorEdges(executors: ExecutorItem[], path: string[], noTools: Set<string>): Edge[] {
   const edges: Edge[] = []
   const last = path[path.length - 1]
   let loops = 0
   executors.forEach((e, from) => {
     const seen = new Set<string>()
+    const cannot = noTools.has(e.id)
     for (const l of e.links) {
       const to = executors.findIndex((x) => x.id === l.to)
       if (to < 0 || l.to === e.id || seen.has(l.to)) continue
@@ -93,7 +97,7 @@ function executorEdges(executors: ExecutorItem[], path: string[]): Edge[] {
         target: execId(l.to),
         ...r,
         label: text ? shortWhen(text) : undefined,
-        data: { lit, strong: false, inactive: !l.active, title: text },
+        data: { lit, strong: false, inactive: !l.active || cannot, title: cannot ? (text ? `${text} · неактивна` : 'неактивна') : text },
         animated: lit,
       } as Edge)
     }
@@ -121,17 +125,18 @@ function buildEdges(state: CoreState, configured: string[], executors: ExecutorI
     for (const k of configured) link(`device:${id}`, `stage:${k}`, mine, sources.has(k))
   }
   if (head) for (const k of configured) link(`stage:${k}`, head, !!turn, sources.has(k), 'in-left')
-  return [...edges, ...executorEdges(executors, path)]
+  const noTools = new Set(executors.filter((e) => modelWithoutTools(state, e.model)).map((e) => e.id))
+  return [...edges, ...executorEdges(executors, path, noTools)]
 }
 
-/** Узлы исполнителей: имя, модель, «не умеет передавать» без supports_tools. */
+/** Узлы исполнителей: имя, модель, «не умеет передавать» без supports_tools, «модель недоступна» после прогрева. */
 function executorNodes(state: CoreState, executors: ExecutorItem[], path: string[]): Node[] {
   return executors.map((e, i) => {
-    const model = state.models?.find((m) => m.name === e.model)
     const data = {
       label: e.name || e.id,
       model: e.model,
-      noTools: model !== undefined && !model.supports_tools,
+      noTools: modelWithoutTools(state, e.model),
+      unavailable: executorUnavailable(state, e.id),
       lit: path.includes(e.id),
       kind: 'executor',
       id: e.id,

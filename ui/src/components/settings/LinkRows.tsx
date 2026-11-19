@@ -6,13 +6,14 @@ import type { ExecutorItem, LinkItem } from '../../schema/blocks'
 /** enabled — связь есть; when — условие передачи. */
 type OnLink = (to: string, enabled: boolean, when: string) => void
 
-type RowProps = { target: ExecutorItem; link: LinkItem | undefined; disabled: boolean; onLink: OnLink }
+/** noTools — модель не умеет передавать: связь можно только убрать, не добавить и не править. */
+type RowProps = { target: ExecutorItem; link: LinkItem | undefined; disabled: boolean; noTools: boolean; onLink: OnLink }
 
 /**
  * Строка связи. Условие, введённое у выключенной связи, включает её:
  * иначе пришлось бы сначала ставить флажок, ждать применения и только потом писать.
  */
-function LinkRow({ target, link, disabled, onLink }: RowProps) {
+function LinkRow({ target, link, disabled, noTools, onLink }: RowProps) {
   const name = target.name || target.id
   const saved = link?.when ?? ''
   const [draft, setDraft] = useState(saved)
@@ -24,7 +25,7 @@ function LinkRow({ target, link, disabled, onLink }: RowProps) {
   return (
     <div role="group" aria-label={name} className="link-row">
       <label className="link-head">
-        <input type="checkbox" className="switch" checked={!!link} disabled={disabled} onChange={(e) => onLink(target.id, e.target.checked, draft.trim())} />
+        <input type="checkbox" className="switch" checked={!!link} disabled={disabled || (noTools && !link)} onChange={(e) => onLink(target.id, e.target.checked, draft.trim())} />
         <span className="link-name">{name}</span>
       </label>
       <input
@@ -32,13 +33,13 @@ function LinkRow({ target, link, disabled, onLink }: RowProps) {
         aria-label="Когда вызывать"
         value={draft}
         placeholder={target.description || 'Когда вызывать'}
-        disabled={disabled}
+        disabled={disabled || noTools}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
         onBlur={save}
       />
       {link && !link.active && <div className="set-note warn">неактивна — укажите, когда вызывать</div>}
-      {!link && !disabled && <div className="set-fine link-hint">ввод условия включит связь</div>}
+      {!link && !disabled && !noTools && <div className="set-fine link-hint">ввод условия включит связь</div>}
     </div>
   )
 }
@@ -63,7 +64,7 @@ export default function LinkRows({ executor, others, disabled, noTools, onLink }
         const link = executor.links.find((l) => l.to === t.id)
         // key: черновик условия сбрасывается, когда связь изменилась в настройках
         const key = `${t.id}:${link ? 'on' : 'off'}:${link?.when ?? ''}`
-        return <LinkRow key={key} target={t} link={link} disabled={disabled || noTools} onLink={onLink} />
+        return <LinkRow key={key} target={t} link={link} disabled={disabled} noTools={noTools} onLink={onLink} />
       })}
     </div>
   )

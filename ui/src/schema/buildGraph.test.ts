@@ -128,6 +128,19 @@ describe('buildGraph', () => {
       expect(node(g, 'executor:dispatcher')?.data.noTools).toBe(false)
     })
 
+    it('links from a model without tools are inactive', () => {
+      const models = [{ name: 'qwen3', size_bytes: 1, supports_tools: false }]
+      const g = buildGraph(makeState({ config: withExecs(base), models }))
+      expect(edge(g, 'executor:dispatcher', 'executor:big')?.data).toMatchObject({ inactive: true, title: 'сложное · неактивна' })
+    })
+
+    it('marks an executor whose model did not warm up', () => {
+      const status = makeStatus({ executors: [{ id: 'big', ready: false, error: 'нет модели' }] })
+      const g = buildGraph(makeState({ config: withExecs(base), status }))
+      expect(node(g, 'executor:big')?.data.unavailable).toBe(true)
+      expect(node(g, 'executor:dispatcher')?.data.unavailable).toBe(false)
+    })
+
     it('draws a labelled link', () => {
       const e = edge(graph(), 'executor:dispatcher', 'executor:big')
       expect(e?.label).toBe('сложное')

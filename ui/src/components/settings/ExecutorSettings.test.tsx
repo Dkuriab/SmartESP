@@ -174,11 +174,32 @@ describe('ExecutorSettings: «Может передавать»', () => {
     expect(within(linkRow('Большая модель')).queryByText('ввод условия включит связь')).not.toBeInTheDocument()
   })
 
-  it('модель без инструментов — пометка и неактивные связи', () => {
+  it('модель без инструментов — пометка, новые связи не добавить, условия не править', () => {
     setup('dispatcher', { config: config([{ ...dispatcher, model: 'tiny' }, big, small]) })
     expect(screen.getByText('эта модель не умеет передавать задачи')).toBeInTheDocument()
     expect(within(linkRow('Малая')).getByRole('checkbox')).toBeDisabled()
     expect(within(linkRow('Малая')).getByLabelText('Когда вызывать')).toBeDisabled()
+    expect(within(linkRow('Малая')).queryByText('ввод условия включит связь')).not.toBeInTheDocument()
+    expect(within(linkRow('Большая модель')).getByLabelText('Когда вызывать')).toBeDisabled()
+  })
+
+  it('модель без инструментов — существующую связь можно убрать', async () => {
+    const { actions } = setup('dispatcher', { config: config([{ ...dispatcher, model: 'tiny' }, big, small]) })
+    const box = within(linkRow('Большая модель')).getByRole('checkbox')
+    expect(box).toBeEnabled()
+    await userEvent.click(box)
+    expect(actions.setLink).toHaveBeenCalledWith('dispatcher', 'big', false, 'сложное')
+  })
+
+  it('модель не прогрелась — «модель недоступна»', () => {
+    const status = makeStatus({ executors: [{ id: 'big', ready: false, error: 'нет модели' }] })
+    setup('big', { status })
+    expect(screen.getByText('модель недоступна')).toBeInTheDocument()
+  })
+
+  it('модель прогрелась — без пометки', () => {
+    setup('big', { status: makeStatus({ executors: [{ id: 'big', ready: true, error: null }] }) })
+    expect(screen.queryByText('модель недоступна')).not.toBeInTheDocument()
   })
 })
 

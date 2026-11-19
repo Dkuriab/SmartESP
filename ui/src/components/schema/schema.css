@@ -26,6 +26,9 @@
   font-size: 11px;
   color: var(--muted);
 }
+.node-sub.node-warn {
+  color: var(--orange);
+}
 .node.lit {
   border-color: var(--accent);
   background: var(--accent-bg);
