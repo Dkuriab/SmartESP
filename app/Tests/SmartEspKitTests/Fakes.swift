@@ -43,6 +43,7 @@ import Foundation
 @MainActor final class FakeHandle: CoreHandle {
     let pid: Int32
     var isRunning = true
+    var exitCode: Int32?
     var exitsOnTerminate = true
     var terminateCount = 0
     var killCount = 0
@@ -53,6 +54,7 @@ import Foundation
     /// Процесс выходит сам и сообщает подписчикам, как настоящий.
     func exit(code: Int32 = 1) {
         isRunning = false
+        exitCode = code
         exitCallbacks.forEach { $0(code) }
     }
 
@@ -131,6 +133,12 @@ import Foundation
     /// Время (по поддельным часам), когда pid перестаёт быть живым.
     var diesAt: [Int32: TimeInterval] = [:]
     var uvExists = true
+    /// Командные строки процессов по pid (для «Взять управление»).
+    var commandLines: [Int32: [String]] = [:]
+    /// Посланные сигналы.
+    private(set) var signals: [(pid: Int32, signal: Int32)] = []
+    /// pid, которые сразу выходят по SIGTERM.
+    var exitsOnTerm: Set<Int32> = []
     private(set) var changes: [CoreState] = []
     private(set) lazy var supervisor: CoreSupervisor = makeSupervisor()
 
@@ -149,7 +157,13 @@ import Foundation
             sleep: { [unowned self] in await clock.sleep($0) },
             fileExists: { [unowned self] _ in uvExists },
             pidAlive: { [unowned self] in alive.contains($0) && clock.now < diesAt[$0, default: .infinity] },
-            env: ["PATH": "/bin"], home: dir, autoPoll: false)
+            env: ["PATH": "/bin"], home: dir, autoPoll: false,
+            commandLine: { [unowned self] in commandLines[$0] },
+            sendSignal: { [unowned self] pid, signal in
+                signals.append((pid, signal))
+                if signal == SIGTERM, exitsOnTerm.contains(pid) { alive.remove(pid) }
+                return alive.contains(pid) || exitsOnTerm.contains(pid)
+            })
         sup.onChange = { [unowned self] in changes.append($0) }
         return sup
     }

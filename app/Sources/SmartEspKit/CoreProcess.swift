@@ -7,6 +7,8 @@ import Foundation
     var pid: Int32 { get }
     /// Процесс ещё работает.
     var isRunning: Bool { get }
+    /// Код выхода, если процесс уже вышел (при выходе по сигналу — не 0); `nil` — ещё работает.
+    var exitCode: Int32? { get }
     /// Просит остановиться (SIGTERM; `uv` передаёт его ядру).
     func terminate()
     /// Убивает сразу (SIGKILL) вместе с дочерним Python и закрывает stdin.
@@ -87,6 +89,7 @@ public func isProcessAlive(_ pid: Int32) -> Bool {
 
     var pid: Int32 { process.processIdentifier }
     var isRunning: Bool { process.isRunning }
+    var exitCode: Int32? { process.isRunning ? nil : process.terminationStatus }
 
     func terminate() {
         // Только сам uv: Process.terminate() достаёт и потомков в группе процессов,
