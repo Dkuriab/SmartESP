@@ -3,8 +3,8 @@ import { useState } from 'react'
 
 type Props = {
   online: boolean
-  /** Перезапуск уже попросили: ждём переподключения. */
-  restarting: boolean
+  /** Ядро перезапускается или останавливается: новые просьбы не шлём. */
+  busy: boolean
   onRestart: () => void
   /** true — ядро приняло просьбу остановиться. */
   onStop: () => Promise<boolean>
@@ -14,8 +14,14 @@ type Props = {
 
 type Phase = 'idle' | 'confirm' | 'sending' | 'stopped'
 
-export default function CoreControls({ online, restarting, onRestart, onStop, inApp }: Props) {
+export default function CoreControls({ online, busy, onRestart, onStop, inApp }: Props) {
   const [phase, setPhase] = useState<Phase>('idle')
+  const [wasOnline, setWasOnline] = useState(online)
+  if (online !== wasOnline) {
+    // связь вернулась — ядро снова запущено: кнопки снова нужны
+    setWasOnline(online)
+    if (online) setPhase('idle')
+  }
   const stop = async () => {
     setPhase('sending')
     setPhase((await onStop()) ? 'stopped' : 'idle')
@@ -28,7 +34,7 @@ export default function CoreControls({ online, restarting, onRestart, onStop, in
     return (
       <div className="remove-ask">
         <p className="core-note">Остановить ядро? Кузя перестанет отвечать, само ядро не перезапустится.</p>
-        <button type="button" className="btn btn-danger" disabled={phase === 'sending'} onClick={() => void stop()}>
+        <button type="button" className="btn btn-danger" disabled={phase === 'sending' || busy} onClick={() => void stop()}>
           Да, остановить
         </button>
         <button type="button" className="btn btn-plain" onClick={() => setPhase('idle')}>
@@ -39,10 +45,10 @@ export default function CoreControls({ online, restarting, onRestart, onStop, in
   }
   return (
     <div className="core-buttons">
-      <button type="button" className="btn" disabled={!online || restarting} onClick={onRestart}>
-        {restarting ? 'Перезапускается…' : 'Перезапустить'}
+      <button type="button" className="btn" disabled={!online || busy} onClick={onRestart}>
+        Перезапустить
       </button>
-      <button type="button" className="btn btn-danger" disabled={!online} onClick={() => setPhase('confirm')}>
+      <button type="button" className="btn btn-danger" disabled={!online || busy} onClick={() => setPhase('confirm')}>
         Остановить
       </button>
     </div>

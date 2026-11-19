@@ -37,6 +37,7 @@ function setup(current: Config | null = null) {
     dispatch: (a) => dispatched.push(a),
     getConfig: () => current,
     onToken,
+    token: 't',
     now: () => 42,
   })
   return { client, dispatched, actions, onToken }

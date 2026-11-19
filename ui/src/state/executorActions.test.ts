@@ -29,6 +29,7 @@ function setup(clock = { t: 100 }) {
     dispatch: vi.fn(),
     getConfig: () => config,
     onToken: vi.fn(),
+    token: 't',
     sentExecutors: sent,
   })
   return { ...held, actions, sent, clock }

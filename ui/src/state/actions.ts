@@ -50,9 +50,11 @@ export type ActionDeps = {
   getConfig: () => Config | null
   /** Новый токен: сохранить и переподключиться. */
   onToken: (token: string) => void
+  /** Токен клиента: им подключается журнал (WebSocket). */
+  token: string
   /**
-   * Действия вкладки «Ядро» (с токеном для журнала). Живут дольше самих действий, чтобы
-   * подписка на журнал не переподключалась с каждыми настройками; по умолчанию — свои, без токена.
+   * Действия вкладки «Ядро». Живут дольше самих действий, чтобы подписка на журнал не
+   * переподключалась с каждыми настройками; по умолчанию — свои, с token.
    */
   coreTab?: CoreTabActions
   /** Часы, мс (в тестах — поддельные). */
@@ -103,7 +105,7 @@ export function createActions(deps: ActionDeps): CoreActions {
   return {
     ...createExecutorActions({ dispatch, getConfig, sent }, sendPatch),
     ...createFileActions(client, dispatch),
-    ...(deps.coreTab ?? createCoreActions(client, dispatch, '')),
+    ...(deps.coreTab ?? createCoreActions(client, dispatch, deps.token)),
     patchConfig: patch,
     previewVoice,
     loadAccess,

@@ -61,6 +61,26 @@ describe('вкладка «Ядро»', () => {
     expect(screen.getByRole('button', { name: 'Остановить' })).toBeDisabled()
   })
 
+  it('пока ядро перезапускается или останавливается, обе кнопки неактивны', () => {
+    const actions = makeActions()
+    const { rerender } = render(<CoreTab state={makeState({ restarting: true })} actions={actions} />)
+    expect(screen.getByRole('button', { name: 'Перезапустить' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Остановить' })).toBeDisabled()
+    rerender(<CoreTab state={makeState({ status: makeStatus({ state: 'stopping' }) })} actions={actions} />)
+    expect(screen.getByRole('button', { name: 'Остановить' })).toBeDisabled()
+  })
+
+  it('после остановки связь вернулась (ядро снова запустили) — кнопки снова видны', async () => {
+    const actions = makeActions()
+    const { rerender } = render(<CoreTab state={makeState()} actions={actions} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Остановить' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Да, остановить' }))
+    expect(await screen.findByText(/Ядро останавливается\./)).toBeInTheDocument()
+    rerender(<CoreTab state={makeState({ connection: 'offline' })} actions={actions} />)
+    rerender(<CoreTab state={makeState()} actions={actions} />)
+    expect(screen.getByRole('button', { name: 'Остановить' })).toBeEnabled()
+  })
+
   it('модели в памяти: «Выгрузить» зовёт unloadModel с именем', async () => {
     const actions = makeActions()
     const status = makeStatus({ ollama: { reachable: true, loaded: ['qwen3:8b', 'gemma3'] } })

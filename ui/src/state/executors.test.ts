@@ -21,6 +21,7 @@ function setup(current: Config) {
     dispatch: (a) => dispatched.push(a),
     getConfig: () => current,
     onToken: vi.fn(),
+    token: 't',
   })
   const sent = () => (client.PATCH.mock.calls.at(-1)?.[1] as { body: { executors: Record<string, unknown>[] } }).body.executors
   return { client, actions, sent }

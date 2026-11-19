@@ -146,9 +146,10 @@ export function useCore(): [CoreState, CoreActions] {
         getConfig: () => config,
         onToken,
         sentExecutors: sent,
+        token: token.value ?? '',
         coreTab,
       }),
-    [client, gate, config, onToken, sent, coreTab],
+    [client, gate, config, onToken, sent, token, coreTab],
   )
   useEffect(() => {
     if (!token.value) return

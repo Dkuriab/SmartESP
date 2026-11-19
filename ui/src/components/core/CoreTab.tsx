@@ -50,7 +50,13 @@ export default function CoreTab({ state, actions }: Props) {
       <div className="core-side">
         <div className="cap">Ядро</div>
         <Facts state={state} info={info} />
-        <CoreControls online={online} restarting={state.restarting} onRestart={() => void actions.restart()} onStop={actions.stopCore} inApp={inApp} />
+        <CoreControls
+          online={online}
+          busy={state.restarting || state.status?.state === 'stopping'}
+          onRestart={() => void actions.restart()}
+          onStop={actions.stopCore}
+          inApp={inApp}
+        />
         <div className="cap">Модели в памяти</div>
         <LoadedModels loaded={ollama && ollama.reachable ? ollama.loaded : null} onUnload={actions.unloadModel} />
         {inApp && <div className="cap">Файлы</div>}
