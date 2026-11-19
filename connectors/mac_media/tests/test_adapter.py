@@ -4,7 +4,9 @@
 приложение (эхо аргумента), — громкость, клавиши и плееры не затрагиваются.
 """
 
+import asyncio
 import shutil
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
@@ -12,8 +14,8 @@ import pytest
 
 from mac_media_mcp import keys, scripts
 from mac_media_mcp.mac import MacSystem
-from mac_media_mcp.osascript import run_script, script_error
-from mac_media_mcp.system import PermissionDenied, Player, SystemFailure, Track
+from mac_media_mcp.osascript import AppNotRunning, run_script, script_error
+from mac_media_mcp.system import PermissionDenied, Player, SystemFailure, SystemTimeout, Track
 
 needs_osascript = pytest.mark.skipif(shutil.which("osascript") is None, reason="нужен macOS")
 
@@ -51,6 +53,7 @@ def test_scripts_have_no_placeholders() -> None:
     for script in (scripts.VOLUME_SET, scripts.MUSIC_SEARCH_PLAY, scripts.SPOTIFY_SEARCH_PLAY):
         assert "argv" in script
         assert "{app}" not in script
+    assert "without output muted" in scripts.VOLUME_SET
     assert 'tell application "Music"' in scripts.MUSIC_NOW_PLAYING
     assert 'tell application "Spotify"' in scripts.SPOTIFY_NOW_PLAYING
 
@@ -67,7 +70,6 @@ def test_permission_error_detected() -> None:
 def test_other_script_errors() -> None:
     error = script_error("execution error: Music got an error: (-600)", "Music")
     assert isinstance(error, SystemFailure)
-    assert "не запущено" in str(error)
     error = script_error("syntax error", "Spotify")
     assert str(error) == "Не получилось управлять приложением Spotify."
     assert isinstance(script_error("anything", None), SystemFailure)
@@ -86,10 +88,42 @@ async def test_run_script_error() -> None:
         await run_script('error "boom" number -1')
 
 
+def test_consent_error_is_permission() -> None:
+    error = script_error("execution error: … (-1744)", "Spotify")
+    assert isinstance(error, PermissionDenied)
+    assert error.target == "Spotify"
+
+
+def test_not_running_error_type() -> None:
+    assert isinstance(script_error("Music got an error: (-600)", "Music"), AppNotRunning)
+
+
 @needs_osascript
 async def test_run_script_timeout() -> None:
-    with pytest.raises(SystemFailure, match="не отвечает"):
+    started = time.monotonic()
+    with pytest.raises(SystemTimeout) as caught:
         await run_script("delay 5", app="Music", timeout_s=0.2)
+    assert caught.value.app == "Music"
+    assert time.monotonic() - started < 2
+
+
+@needs_osascript
+async def test_run_script_cancelled_kills_process() -> None:
+    """Бюджет инструмента отменяет ожидание — osascript не остаётся висеть."""
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        async with asyncio.timeout(0.2):
+            await run_script("delay 5")
+    assert time.monotonic() - started < 2
+
+
+async def test_mac_now_playing_quit_player_is_nothing() -> None:
+    """Плеер закрылся между проверкой и вопросом (-600) — просто ничего не играет."""
+
+    async def quit_runner(script: str, args: Sequence[str] = (), *, app: Player | None = None) -> str:
+        raise script_error("(-600)", app)
+
+    assert await MacSystem(quit_runner).now_playing("Music") is None
 
 
 # --- MacSystem с подделанным запуском ---

@@ -38,6 +38,14 @@ class SystemFailure(Exception):
     """Системный вызов не удался; текст — короткий, по-русски, для ответа."""
 
 
+class SystemTimeout(SystemFailure):
+    """Системный вызов не ответил вовремя: app — какой плеер молчит (None — сама система)."""
+
+    def __init__(self, app: Player | None) -> None:
+        super().__init__(app or "system")
+        self.app: Player | None = app
+
+
 class MediaSystem(Protocol):
     """Тонкий слой над macOS. Ошибки — PermissionDenied или SystemFailure."""
 

@@ -9,9 +9,11 @@ from mac_media_mcp.system import Track
 # Громкость выхода; у устройства без регулировки — «missing value».
 VOLUME_GET = "output volume of (get volume settings)"
 
-# Громкость из argv: целое, проверенное заранее (0–100).
+# Громкость из argv: целое, проверенное заранее (0–100); ненулевая ещё и снимает «без звука».
 VOLUME_SET = """on run argv
-	set volume output volume ((item 1 of argv) as integer)
+	set n to (item 1 of argv) as integer
+	set volume output volume n
+	if n > 0 then set volume without output muted
 end run"""
 
 _NOW_PLAYING = """tell application "{app}"

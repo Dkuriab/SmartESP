@@ -9,7 +9,7 @@ from typing import Any, Protocol
 from urllib.parse import quote
 
 from mac_media_mcp import coreaudio, keys, scripts
-from mac_media_mcp.osascript import run_script
+from mac_media_mcp.osascript import AppNotRunning, run_script
 from mac_media_mcp.system import MediaKey, Player, SystemFailure, Track
 
 _BUNDLES: dict[Player, str] = {"Music": "com.apple.Music", "Spotify": "com.spotify.client"}
@@ -79,7 +79,11 @@ class MacSystem:
         return [player for player, bundle in _BUNDLES.items() if bundle in running]
 
     async def now_playing(self, player: Player) -> Track | None:
-        return scripts.parse_track(await self._run(_NOW_PLAYING[player], app=player))
+        try:
+            output = await self._run(_NOW_PLAYING[player], app=player)
+        except AppNotRunning:
+            return None  # плеер закрылся между проверкой и вопросом
+        return scripts.parse_track(output)
 
     async def spotify_installed(self) -> bool:
         return await asyncio.to_thread(lambda: _is_installed(_BUNDLES["Spotify"]))

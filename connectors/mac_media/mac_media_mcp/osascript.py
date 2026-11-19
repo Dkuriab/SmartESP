@@ -8,14 +8,21 @@
 import asyncio
 from collections.abc import Sequence
 
-from mac_media_mcp.system import PermissionDenied, Player, SystemFailure
+from mac_media_mcp.system import PermissionDenied, Player, SystemFailure, SystemTimeout
 
 OSASCRIPT = "/usr/bin/osascript"
-TIMEOUT_S = 15.0
+# Один скрипт — не дольше 5 с: весь инструмент укладывается в свой бюджет (10 с),
+# а тот — в таймаут вызова у хаба ядра (15 с).
+TIMEOUT_S = 5.0
 
-# Ошибки Apple Events: нет разрешения (Автоматизация) и «приложение не запущено».
-_NOT_AUTHORIZED = ("-1743", "Not authorized")
+# Ошибки Apple Events: нет разрешения (Автоматизация; -1744 — нужно согласие) и «приложение не запущено».
+_NOT_AUTHORIZED = ("-1743", "-1744", "Not authorized")
 _NOT_RUNNING = "-600"
+
+
+class AppNotRunning(SystemFailure):
+    """Плеер закрылся раньше, чем ответил (-600)."""
+
 
 _APP_TITLES: dict[Player, str] = {"Music": "«Музыка»", "Spotify": "Spotify"}
 
@@ -28,17 +35,8 @@ def script_error(stderr: str, app: Player | None) -> Exception:
         return PermissionDenied(app)
     title = _APP_TITLES[app]
     if _NOT_RUNNING in stderr:
-        return SystemFailure(f"Приложение {title} не запущено.")
+        return AppNotRunning(f"Приложение {title} не запущено.")
     return SystemFailure(f"Не получилось управлять приложением {title}.")
-
-
-def _timeout_error(app: Player | None) -> SystemFailure:
-    if app is None:
-        return SystemFailure("Системная команда звука не отвечает.")
-    return SystemFailure(
-        f"Приложение {_APP_TITLES[app]} не отвечает. "
-        "Возможно, macOS спрашивает разрешение — посмотри на экран Mac."
-    )
 
 
 async def run_script(
@@ -51,7 +49,8 @@ async def run_script(
     """Выполняет script с аргументами args; возвращает stdout без хвостового перевода строки.
 
     app — каким приложением управляет скрипт (для текста ошибки); None — системная команда.
-    Ошибка — PermissionDenied или SystemFailure.
+    Ошибка — PermissionDenied, SystemTimeout или SystemFailure. Отмена ожидания снаружи
+    (бюджет инструмента) тоже убивает osascript.
     """
     process = await asyncio.create_subprocess_exec(
         OSASCRIPT,
@@ -64,9 +63,10 @@ async def run_script(
     try:
         stdout, stderr = await asyncio.wait_for(process.communicate(script.encode()), timeout_s)
     except TimeoutError:
-        process.kill()
-        await process.wait()
-        raise _timeout_error(app) from None
+        raise SystemTimeout(app) from None
+    finally:
+        if process.returncode is None:
+            process.kill()
     if process.returncode != 0:
         raise script_error(stderr.decode(errors="replace"), app)
     return stdout.decode(errors="replace").rstrip("\n")
