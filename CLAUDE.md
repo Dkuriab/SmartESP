@@ -43,7 +43,8 @@ SmartEsp/
 ## Ядро (`core/`)
 
 Правила ядра, команды и структура — в [`core/CLAUDE.md`](core/CLAUDE.md).
-У `ui/` и `app/` будут свои `CLAUDE.md`.
+У `ui/` и `app/` свои правила: [`ui/CLAUDE.md`](ui/CLAUDE.md),
+[`app/CLAUDE.md`](app/CLAUDE.md).
 
 ## Приложение (`app/`)
 
