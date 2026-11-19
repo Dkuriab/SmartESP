@@ -105,11 +105,11 @@ async def decode_file(
     try:
         assert process.stdout is not None
         chunks = _whole_samples(process.stdout)
-        yield await _first(chunks, process, errors, timeout_s)
+        yield await _first(chunks, process, errors, timeout_s, path)
         async for chunk in chunks:
             yield chunk
         if await process.wait() != 0:
-            _log.warning("ffmpeg оборвал файл: %s", _tail(errors))
+            _log.warning("ffmpeg оборвал файл: %s", _tail(errors, path))
     finally:
         draining.cancel()
         await asyncio.gather(draining, return_exceptions=True)
@@ -117,7 +117,11 @@ async def decode_file(
 
 
 async def _first(
-    chunks: AsyncIterator[bytes], process: asyncio.subprocess.Process, errors: deque[bytes], timeout_s: float
+    chunks: AsyncIterator[bytes],
+    process: asyncio.subprocess.Process,
+    errors: deque[bytes],
+    timeout_s: float,
+    path: Path,
 ) -> bytes:
     """Первый кусок PCM; нет его — AudioUndecodable с причиной."""
     try:
@@ -128,7 +132,7 @@ async def _first(
     except StopAsyncIteration:
         pass
     if await process.wait() != 0:
-        _log.warning("ffmpeg не разобрал файл: %s", _tail(errors))
+        _log.warning("ffmpeg не разобрал файл: %s", _tail(errors, path))
         raise AudioUndecodable(FILE_UNDECODABLE)
     raise AudioUndecodable(FILE_SILENT)
 
@@ -155,8 +159,10 @@ async def _drain(process: asyncio.subprocess.Process, errors: deque[bytes]) -> N
             kept -= len(errors.popleft())
 
 
-def _tail(errors: deque[bytes]) -> str:
-    return b"".join(errors).decode(errors="replace")[-ERRORS_TAIL:]
+def _tail(errors: deque[bytes], path: Path) -> str:
+    """Последние ошибки ffmpeg для журнала; путь временного файла заменён на «<файл>»."""
+    text = b"".join(errors).decode(errors="replace").replace(str(path), "<файл>")
+    return text[-ERRORS_TAIL:]
 
 
 async def _stop(process: asyncio.subprocess.Process) -> None:

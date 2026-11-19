@@ -32,11 +32,14 @@ class HeldPort(FakeDevicePort):
         self.received: list[bytes] = []
         self.before: Delivery | None = None
         self.result: Delivery = "delivered"
+        self.hold = asyncio.Event()  # до первого куска колонка ждёт его (ход не начат)
+        self.hold.set()
 
     async def announce(self, device_id: str, audio: AsyncIterator[bytes]) -> Delivery:
         try:
             if self.before is not None:
                 return self.before
+            await self.hold.wait()
             async for chunk in audio:
                 self.received.append(chunk)
                 self.pulled.set()
@@ -246,3 +249,82 @@ async def test_aclose_stops_all_and_refuses_new(
     with pytest.raises(PlaybackRefused) as refused:
         await player.play_file("d1", upload())
     assert refused.value.reason == "unavailable"
+
+
+async def slow_upload() -> AsyncIterator[bytes]:
+    await asyncio.sleep(0.05)
+    yield FILE
+
+
+async def test_stop_while_uploading_refuses_start(
+    player: FilePlayer, port: HeldPort, events: RecordingSink, tmp_path: Path
+) -> None:
+    playing = asyncio.create_task(player.play_file("d1", slow_upload()))
+    await asyncio.sleep(0.01)
+    assert await player.stop_file("d1") is True
+    with pytest.raises(PlaybackRefused) as refused:
+        await playing
+    assert refused.value.reason == "stopped"
+    assert port.received == [] and events.events == []
+    assert list(tmp_path.iterdir()) == []
+    await player.play_file("d1", upload())  # колонка свободна
+
+
+async def test_close_while_uploading_is_unavailable(
+    player: FilePlayer, port: HeldPort, tmp_path: Path
+) -> None:
+    playing = asyncio.create_task(player.play_file("d1", slow_upload()))
+    await asyncio.sleep(0.01)
+    await player.aclose()
+    with pytest.raises(PlaybackRefused) as refused:
+        await playing
+    assert refused.value.reason == "unavailable"
+    assert port.received == [] and list(tmp_path.iterdir()) == []
+
+
+async def test_stop_before_first_chunk_is_stopped(
+    player: FilePlayer, port: HeldPort, decoder: Decoder, events: RecordingSink, tmp_path: Path
+) -> None:
+    port.hold.clear()
+    playing = asyncio.create_task(player.play_file("d1", upload()))
+    await asyncio.sleep(0.01)
+    assert await player.stop_file("d1") is True
+    with pytest.raises(PlaybackRefused) as refused:
+        await playing
+    assert refused.value.reason == "stopped"
+    assert events.events == [] and list(tmp_path.iterdir()) == []
+    assert decoder.closed == 1
+
+
+async def test_cancel_before_task_starts_cleans_up(
+    player: FilePlayer, decoder: Decoder, tmp_path: Path
+) -> None:
+    loop = asyncio.get_running_loop()
+    original = decoder.__call__
+
+    async def decode(path: Path) -> AsyncGenerator[bytes]:
+        # отмена задачи хода раньше её первого шага: колбэк встаёт в очередь раньше задачи
+        loop.call_soon(lambda: player._tasks["d1"].cancel())  # pyright: ignore[reportPrivateUsage]
+        async for chunk in original(path):
+            yield chunk
+
+    player._decode = decode  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(PlaybackRefused) as refused:
+        await player.play_file("d1", upload())
+    assert refused.value.reason == "stopped"
+    await asyncio.sleep(0.01)
+    assert list(tmp_path.iterdir()) == []
+    assert decoder.closed == 1
+    player._decode = decoder  # pyright: ignore[reportPrivateUsage]
+    await player.play_file("d1", upload())  # колонка не осталась занятой
+
+
+async def test_wall_clock_cap(
+    port: HeldPort, decoder: Decoder, events: RecordingSink, devices: list[DeviceInfo], tmp_path: Path
+) -> None:
+    player = FilePlayer(port, lambda: devices, decoder, events=events, tmp_dir=tmp_path, max_s=0.05)
+    port.gate.clear()
+    await player.play_file("d1", upload())
+    await finished(events)
+    assert events.events[-1] == ("playback_finished", {"device_id": "d1", "delivery": "interrupted"})
+    assert list(tmp_path.iterdir()) == []

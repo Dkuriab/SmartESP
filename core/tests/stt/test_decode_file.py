@@ -155,3 +155,13 @@ async def test_real_other_format_is_refused(tmp_path: Path) -> None:
         pytest.skip("ffmpeg не кодирует AIFF")
     with pytest.raises(AudioUndecodable):
         await anext(decode_file(target))
+
+
+async def test_log_hides_temp_path(tmp_path: Path, song: Path, caplog: pytest.LogCaptureFixture) -> None:
+    program = fake_program(
+        tmp_path, 'echo "Error opening input file" >&2\nfor a; do echo "$a" >&2; done\nexit 1\n'
+    )
+    with pytest.raises(AudioUndecodable):
+        await anext(decode_file(song, ffmpeg=program))
+    assert "Error opening input file" in caplog.text
+    assert str(song) not in caplog.text and "<файл>" in caplog.text

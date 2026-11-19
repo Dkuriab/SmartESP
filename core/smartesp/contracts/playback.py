@@ -6,8 +6,10 @@ from collections.abc import AsyncIterator
 from typing import Literal, Protocol
 
 # Почему файл не заиграл: колонки нет; не в сети; протокол < 3; занята; файл не разобрать;
-# нет ffmpeg или ядро останавливается.
-PlaybackRefusal = Literal["unknown_device", "offline", "unsupported", "busy", "undecodable", "unavailable"]
+# остановлен до начала; нет ffmpeg или ядро останавливается.
+PlaybackRefusal = Literal[
+    "unknown_device", "offline", "unsupported", "busy", "undecodable", "stopped", "unavailable"
+]
 
 
 class PlaybackRefused(Exception):
@@ -36,6 +38,8 @@ class FilePlayback(Protocol):
 
     async def stop_file(self, device_id: str) -> bool:
         """Останавливает файл на колонке (итог — interrupted); False — файл не играл.
+
+        Файл ещё загружается — он не начнётся (play_file — PlaybackRefused("stopped")), ответ True.
 
         Колонки нет — PlaybackRefused("unknown_device").
         """
