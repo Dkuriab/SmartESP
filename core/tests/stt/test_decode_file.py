@@ -1,5 +1,6 @@
 """Тесты разбора звукового файла по ходу (для проигрывания): подделка ffmpeg и настоящий ffmpeg."""
 
+import asyncio
 import io
 import math
 import struct
@@ -104,6 +105,16 @@ async def test_close_stops_program(tmp_path: Path, song: Path) -> None:
     started = time.monotonic()
     await pcm.aclose()
     assert time.monotonic() - started < 5
+
+
+async def test_close_with_unread_output_does_not_hang(tmp_path: Path, song: Path) -> None:
+    # колонка забирает звук медленнее разбора: в трубе остаётся непрочитанное
+    program = fake_program(tmp_path, "head -c 2000000 /dev/zero\nexec sleep 30\n")
+    pcm = decode_file(song, ffmpeg=program)
+    await anext(pcm)
+    await asyncio.sleep(0.3)
+    async with asyncio.timeout(5):
+        await pcm.aclose()
 
 
 def encode(source: Path, target: Path, *codec: str) -> Path | None:

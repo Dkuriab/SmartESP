@@ -111,8 +111,9 @@ async def decode_file(
         if await process.wait() != 0:
             _log.warning("ffmpeg оборвал файл: %s", _tail(errors))
     finally:
-        await _stop(process)
         draining.cancel()
+        await asyncio.gather(draining, return_exceptions=True)
+        await _stop(process)
 
 
 async def _first(
@@ -159,11 +160,15 @@ def _tail(errors: deque[bytes]) -> str:
 
 
 async def _stop(process: asyncio.subprocess.Process) -> None:
-    """Останавливает ffmpeg, если он ещё работает, и ждёт его."""
+    """Останавливает ffmpeg, если он ещё работает, и ждёт его.
+
+    Остаток вывода дочитывается: пока в приостановленной трубе есть данные, asyncio не
+    считает процесс законченным и wait() не вернётся.
+    """
     if process.returncode is None:
         with contextlib.suppress(ProcessLookupError):
             process.kill()
-    await process.wait()
+    await process.communicate()
 
 
 def _arguments(program: str, protocols: str, formats: str, source: str, max_s: int) -> list[str]:
