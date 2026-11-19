@@ -5,6 +5,7 @@
   и проекта (хуки, правила разрешений) не читаются, обход проверок запрещён, запись в
   настройки, git и конфигурацию инструментов — только с согласия человека;
 - `--permission-prompts none` — всё, что спросило бы разрешение, сразу отклоняется;
+- `--no-session-persistence` — разговор задачи не сохраняется на диск (нет в /resume);
 - `--permission-mode acceptEdits` — правки внутри папки без вопросов;
 - `--tools` — только перечисленные встроенные инструменты; `--strict-mcp-config` —
   без MCP-серверов из чужих настроек.
@@ -73,6 +74,7 @@ def build_args(binary: str, tools: tuple[str, ...]) -> list[str]:
         "--output-format",
         "json",
         "--restricted",
+        "--no-session-persistence",
         "--strict-mcp-config",
         "--permission-mode",
         "acceptEdits",

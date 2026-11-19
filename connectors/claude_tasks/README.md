@@ -38,7 +38,7 @@ Mac в разрешённой папке. Статус — голосом; ко�
 `--permission-prompts`).
 
 ```
-claude -p --output-format json --restricted --strict-mcp-config \
+claude -p --output-format json --restricted --no-session-persistence --strict-mcp-config \
   --permission-mode acceptEdits --permission-prompts none --tools <CLAUDE_TASK_TOOLS>
 ```
 
@@ -53,6 +53,8 @@ claude -p --output-format json --restricted --strict-mcp-config \
 - `--permission-prompts none` — спросить некого, поэтому всё, что потребовало бы
   согласия, сразу отклоняется;
 - `--permission-mode acceptEdits` — правки внутри папки без вопросов;
+- `--no-session-persistence` — разговор задачи (с содержимым прочитанных файлов)
+  не сохраняется в `~/.claude/projects` и не появляется в `/resume` владельца;
 - `--tools` — только перечисленные встроенные инструменты (по умолчанию без
   Bash и сети); `--strict-mcp-config` — без MCP-серверов из чужих настроек.
 

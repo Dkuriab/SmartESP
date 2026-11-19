@@ -30,6 +30,7 @@ def test_exact_argv() -> None:
         "--output-format",
         "json",
         "--restricted",
+        "--no-session-persistence",
         "--strict-mcp-config",
         "--permission-mode",
         "acceptEdits",
@@ -43,7 +44,7 @@ def test_exact_argv() -> None:
 def test_argv_protections() -> None:
     """Папка, настройки и хуки защищены флагами; опасного нет ни при каком наборе инструментов."""
     args = build_args("/bin/claude", ("Read", "Bash(git log *)"))
-    assert {"--restricted", "--strict-mcp-config"} <= set(args)
+    assert {"--restricted", "--no-session-persistence", "--strict-mcp-config"} <= set(args)
     assert args[args.index("--permission-prompts") + 1] == "none"
     assert args[args.index("--permission-mode") + 1] == "acceptEdits"
     assert args[-2:] == ["--tools", "Read,Bash(git log *)"]
