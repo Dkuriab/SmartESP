@@ -1,10 +1,8 @@
 // Правая панель: настройки блока, выбранного на схеме или в списке.
-import type { ReactElement } from 'react'
 import { isApplying, listDevices, listExecutors, listStages, stagesLocked, stagesWith } from '../../schema/blocks'
-import { connectorsLocked, connectorsWith, listConnectors } from '../../schema/connectors'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState } from '../../state/model'
-import ConnectorSettings from './ConnectorSettings'
+import { ConnectorPanel } from './ConnectorSettings'
 import DeviceSettings from './DeviceSettings'
 import ExecutorSettings from './ExecutorSettings'
 import StageSettings from './StageSettings'
@@ -39,22 +37,6 @@ export default function SettingsPanel({ state, actions }: Props) {
     return <ExecutorSettings key={executor.id} state={state} actions={actions} executor={executor} />
   }
   if (selected?.kind === 'voice') return <VoiceSettings state={state} actions={actions} />
-  if (selected?.kind === 'connector') return <Connector state={state} actions={actions} id={selected.id} hint={hint} />
+  if (selected?.kind === 'connector') return <ConnectorPanel state={state} actions={actions} id={selected.id} hint={hint} />
   return hint
-}
-
-function Connector({ state, actions, id, hint }: Props & { id: string; hint: ReactElement }) {
-  const connector = listConnectors(state).find((c) => c.id === id)
-  if (!connector) return hint
-  const onToggle = (on: boolean) =>
-    void actions.setConnectors(connectorsWith(state, id, on), `${connector.name}: ${on ? 'включён' : 'выключен'}`)
-  return (
-    <ConnectorSettings
-      connector={connector}
-      applying={isApplying(state)}
-      locked={connectorsLocked(state)}
-      liveTool={state.live.connectors[id]?.tool}
-      onToggle={onToggle}
-    />
-  )
 }

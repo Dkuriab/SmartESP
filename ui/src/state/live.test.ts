@@ -28,6 +28,12 @@ describe('applyLive: исполнители', () => {
     expect(live.executors.big?.state).toBe('thinking')
   })
 
+  it('done другого хода не снимает исполнителя, занятого новым ходом', () => {
+    const second = ev('executor_active', { executor: 'big', state: 'thinking', turn_id: 8 })
+    const oldDone = ev('executor_active', { executor: 'big', state: 'done', turn_id: 7 })
+    expect(run(second, oldDone).executors.big?.turn).toBe('kitchen#8')
+  })
+
   it('без executor событие пропускается', () => {
     expect(run(ev('executor_active', { state: 'thinking' }))).toBe(NO_LIVE)
   })

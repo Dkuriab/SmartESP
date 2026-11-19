@@ -58,7 +58,7 @@ describe('SchemaView: живая подсветка', () => {
 
   it('без работы подписей нет; модель в памяти отмечена', () => {
     draw()
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByText('думает…')).not.toBeInTheDocument()
     expect(screen.getByText('· в памяти', { exact: false })).toBeInTheDocument()
   })
 

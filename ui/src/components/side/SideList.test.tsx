@@ -123,7 +123,7 @@ describe('SideList: коннекторы и живая подсветка', () =
     const list = section('Коннекторы')
     expect(within(list).getByLabelText('ошибка')).toBeInTheDocument()
     await userEvent.click(within(list).getByRole('switch', { name: 'Калькулятор' }))
-    expect(actions.setConnectors).toHaveBeenCalledWith([{ ...connectors[0], enabled: false }, connectors[1]], 'Калькулятор: выключен')
+    expect(actions.setConnectors).toHaveBeenCalledWith([{ id: 'calc', enabled: false }], 'Калькулятор: выключен')
   })
 
   it('работающие исполнитель и коннектор отмечены точкой с подписью', () => {

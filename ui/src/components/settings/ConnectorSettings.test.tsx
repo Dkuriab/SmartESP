@@ -54,10 +54,7 @@ describe('ConnectorSettings', () => {
     const toggle = screen.getByRole('switch')
     expect(toggle).not.toBeChecked()
     await userEvent.click(toggle)
-    expect(actions.setConnectors).toHaveBeenCalledWith(
-      [connectors[0], connectors[1], { ...connectors[2], enabled: true }],
-      'Задачи Клоду: включён',
-    )
+    expect(actions.setConnectors).toHaveBeenCalledWith([{ id: 'claude_tasks', enabled: true }], 'Задачи Клоду: включён')
   })
 
   it('пока правка применяется — переключатель заблокирован', () => {

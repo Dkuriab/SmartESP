@@ -22,8 +22,8 @@ export type CoreActions = ExecutorActions & {
   selectVoice(kind: string, voice: string): Promise<void>
   renameDevice(id: string, name: string): Promise<void>
   setStages(list: StageEntry[]): Promise<void>
-  /** Весь список connectors (форма config.yaml); description — что меняется. */
-  setConnectors(list: Record<string, unknown>[], description: string): Promise<void>
+  /** Записи connectors по id (ядро сливает их с настройками); description — что меняется. */
+  setConnectors(list: Array<Record<string, unknown>>, description: string): Promise<void>
   restart(): Promise<void>
   /** Адреса для входа из сети; ошибка — пустой список. */
   loadAccess(): Promise<string[]>

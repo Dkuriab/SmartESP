@@ -54,14 +54,10 @@ function classes(type: string, data: Data, selected: boolean): string {
   return cls.join(' ')
 }
 
-/** Подпись под работающим блоком; для читалок экрана — живая область. */
+/** Подпись под работающим блоком (для читалок отметка — в левом списке, без живых областей на схеме). */
 function LiveCaption({ text }: { text?: string }) {
   if (!text) return null
-  return (
-    <div className="node-live" role="status">
-      {text}
-    </div>
-  )
+  return <div className="node-live">{text}</div>
 }
 
 function Card({ type, data, selected }: { type: string; data: Data; selected: boolean }) {

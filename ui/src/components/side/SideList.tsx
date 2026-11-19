@@ -2,7 +2,7 @@
 // Работающее сейчас отмечено пульсирующей точкой с подписью (на узком экране схема мелкая).
 import type { ReactNode } from 'react'
 import { isApplying, listDevices, listExecutors, listStages, stagesLocked, stagesWith, voiceLabel } from '../../schema/blocks'
-import { connectorsLocked, connectorsWith, listConnectors } from '../../schema/connectors'
+import { connectorToggle, connectorsLocked, listConnectors } from '../../schema/connectors'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState, Selection } from '../../state/model'
 import AccessInfo from '../common/AccessInfo'
@@ -112,7 +112,7 @@ function Connectors(props: Props) {
             aria-label={c.name}
             checked={c.enabled}
             disabled={locked}
-            onChange={(e) => void actions.setConnectors(connectorsWith(state, c.id, e.target.checked), `${c.name}: ${e.target.checked ? 'включён' : 'выключен'}`)}
+            onChange={(e) => void actions.setConnectors(connectorToggle(c.id, e.target.checked), `${c.name}: ${e.target.checked ? 'включён' : 'выключен'}`)}
           />
         )
         const now = state.live.connectors[c.id]

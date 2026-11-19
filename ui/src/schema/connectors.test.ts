@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeConfig, makeState, makeStatus } from '../components/fixtures'
-import { HIDDEN, connectorsWith, listConnectors, modelInMemory, shownValue } from './connectors'
+import { HIDDEN, connectorToggle, listConnectors, modelInMemory, shownValue } from './connectors'
 
 const configured = [
   { id: 'calc', name: 'Калькулятор', command: 'uv', args: [], env: {}, enabled: true },
@@ -45,10 +45,9 @@ describe('listConnectors', () => {
   })
 })
 
-describe('connectorsWith', () => {
-  it('меняет только enabled нужного коннектора, остальное как в настройках', () => {
-    const list = connectorsWith(state(), 'claude_tasks', true)
-    expect(list).toEqual([configured[0], configured[1], { ...configured[2], enabled: true }])
+describe('connectorToggle', () => {
+  it('шлёт только id и enabled: ядро сливает по id', () => {
+    expect(connectorToggle('claude_tasks', true)).toEqual([{ id: 'claude_tasks', enabled: true }])
   })
 })
 

@@ -1,6 +1,10 @@
 // Настройки коннектора (MCP): включить или выключить, состояние, инструменты, ошибка, окружение.
+import type { ReactElement } from 'react'
+import { isApplying } from '../../schema/blocks'
 import type { ConnectorItem } from '../../schema/connectors'
-import { CONNECTOR_STATES } from '../../schema/connectors'
+import { CONNECTOR_STATES, connectorToggle, connectorsLocked, listConnectors } from '../../schema/connectors'
+import type { CoreActions } from '../../state/actions'
+import type { CoreState } from '../../state/model'
 
 type Props = {
   connector: ConnectorItem
@@ -62,5 +66,24 @@ export default function ConnectorSettings({ connector, applying, locked, liveToo
       )}
       <Env env={connector.env} />
     </div>
+  )
+}
+
+type PanelProps = { state: CoreState; actions: CoreActions; id: string; hint: ReactElement }
+
+/** Панель коннектора id из состояния; неизвестный — подсказка. */
+export function ConnectorPanel({ state, actions, id, hint }: PanelProps) {
+  const connector = listConnectors(state).find((c) => c.id === id)
+  if (!connector) return hint
+  const onToggle = (on: boolean) =>
+    void actions.setConnectors(connectorToggle(id, on), `${connector.name}: ${on ? 'включён' : 'выключен'}`)
+  return (
+    <ConnectorSettings
+      connector={connector}
+      applying={isApplying(state)}
+      locked={connectorsLocked(state)}
+      liveTool={state.live.connectors[id]?.tool}
+      onToggle={onToggle}
+    />
   )
 }

@@ -63,9 +63,12 @@ export function listConnectors(state: CoreState): ConnectorItem[] {
   return items
 }
 
-/** Новый список connectors для PATCH: у коннектора id меняется только enabled. */
-export function connectorsWith(state: CoreState, id: string, on: boolean): Record<string, unknown>[] {
-  return asList(state.config?.effective.connectors).map((c) => (c.id === id ? { ...c, enabled: on } : c))
+/**
+ * Правка connectors для PATCH: ядро сливает записи с настройками по id, поэтому шлём
+ * только {id, enabled} — остальное (окружение, команда) не трогается и не ходит через браузер.
+ */
+export function connectorToggle(id: string, on: boolean): Array<{ id: string; enabled: boolean }> {
+  return [{ id, enabled: on }]
 }
 
 /** Переключать коннекторы нельзя: правка применяется или настройки ещё не загружены. */

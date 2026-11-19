@@ -29,7 +29,7 @@ function without<T>(map: Record<string, T>, key: string): Record<string, T> {
   return rest
 }
 
-/** executor_active: thinking/speaking — в работе, done — снять. */
+/** executor_active: thinking/speaking — в работе, done — снять (только если это done того же хода). */
 function executorActive(live: Live, data: Data): Live {
   const id = str(data.executor)
   if (!id) return live
@@ -37,6 +37,7 @@ function executorActive(live: Live, data: Data): Live {
   if (state === 'thinking' || state === 'speaking') {
     return { ...live, executors: { ...live.executors, [id]: { state, turn: turnKey(data) } } }
   }
+  if (live.executors[id]?.turn !== turnKey(data)) return live // отложенный ответ хода 1 не гасит ход 2
   return { ...live, executors: without(live.executors, id) }
 }
 
