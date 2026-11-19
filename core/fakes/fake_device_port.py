@@ -34,6 +34,7 @@ class FakeDevicePort:
         self.tones: list[tuple[str, str]] = []
         self.inactive: set[tuple[str, int]] = set()  # ходы, ставшие неактуальными
         self.proactive: set[str] = set()  # колонки v3: подключены и умеют речь по инициативе
+        self.busy: set[str] = set()  # колонки, на которых идёт ход (is_busy)
         self.deliveries: list[Delivery] = []  # итоги следующих announce по порядку; кончились — delivered
         self.announces: list[AnnounceCall] = []
         self.listens: list[str] = []  # колонки, которым ушёл listen
@@ -93,6 +94,9 @@ class FakeDevicePort:
 
     def supports_proactive(self, device_id: str) -> bool:
         return device_id in self.proactive
+
+    def is_busy(self, device_id: str) -> bool:
+        return device_id in self.busy
 
     async def announce(self, device_id: str, audio: AsyncIterator[bytes]) -> Delivery:
         # Колонка не v3 — lost без звука, как у хаба; иначе забирает весь звук.

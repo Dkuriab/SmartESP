@@ -19,7 +19,7 @@ from .executor import (
     UsesModels,
     WarmsUp,
 )
-from .notify import Announcer
+from .notify import Announcer, Preempt
 from .playback import FilePlayback, PlaybackRefusal, PlaybackRefused
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
@@ -54,6 +54,7 @@ __all__ = [
     "Identified",
     "PlaybackRefusal",
     "PlaybackRefused",
+    "Preempt",
     "Question",
     "ReplyPart",
     "Section",

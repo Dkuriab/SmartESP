@@ -40,7 +40,6 @@ from smartesp.parts import (
     Assembly,
     control,
     conversation,
-    file_player,
     live_answering,
     voice_manager,
 )
@@ -87,7 +86,7 @@ def assemble(
 ) -> Assembly:
     """Создаёт части без моделей (их греет start) и приложение: /device, /api/v1, интерфейс."""
     bus = EventBus()
-    hub, history, orchestrator, announcer, use_speech = conversation(config, bus)
+    hub, history, orchestrator, announcer, files, use_speech = conversation(config, bus)
     live = live_answering(orchestrator, turn_wait_s=TURN_WAIT_S, unload_s=UNLOAD_S, warm_s=WARM_UP_TIMEOUT_S)
     capabilities = CapabilityCache(ollama.capabilities)
     tools = McpHub(
@@ -120,7 +119,7 @@ def assemble(
     parts.refresh = ToolsRefresh(
         lambda: live.executor is not None, lambda: parts.core.rebuild(ANSWERING_SECTIONS)
     )
-    parts.files = file_player(hub, bus)
+    parts.files = files
     parts.app = _build_app(parts, token, ui_dir, version)
     return parts
 

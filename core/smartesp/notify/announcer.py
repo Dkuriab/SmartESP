@@ -6,6 +6,9 @@
 иначе первая подключённая с речью по инициативе (по имени); иначе ждём, пока
 какая-нибудь подключится. Итог — событие turn_finished вида
 "announcement"; до итога событий нет.
+
+Колонка занята — синтеза нет: сначала вытеснение (preempt: например, файл на колонке
+останавливается и не возобновляется), не освободилась — повтор через retry_s.
 """
 
 import asyncio
@@ -17,7 +20,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from smartesp.contracts import Delivery, DevicePort, EventSink
+from smartesp.contracts import Delivery, DevicePort, EventSink, Preempt
 
 _log = logging.getLogger(__name__)
 
@@ -92,10 +95,12 @@ class Announcer:
         retry_s: float = RETRY_S,
         expire_s: float = EXPIRE_S,
         clock: Callable[[], float] = time.monotonic,
+        preempt: Preempt | None = None,
     ) -> None:
         """devices — колонки; speak — синтез текста в PCM (может кинуть, если синтеза нет);
         events — куда публиковать итог; retry_s — пауза между попытками; expire_s — срок
-        доставки от say (секунды); clock — часы для срока.
+        доставки от say (секунды); clock — часы для срока; preempt(колонка) — освободить
+        занятую колонку перед объявлением (True — освободили; None — не вытеснять).
         """
         self._devices = devices
         self._speak = speak
@@ -103,6 +108,7 @@ class Announcer:
         self._retry_s = retry_s
         self._expire_s = expire_s
         self._clock = clock
+        self._preempt = preempt
         self._numbers = itertools.count(1)
         self._queues: dict[str, deque[_Item]] = {}
         self._workers: dict[str, asyncio.Task[None]] = {}
@@ -198,11 +204,14 @@ class Announcer:
     async def _attempt(self, device_id: str, text: str) -> _Attempt:
         """Одна попытка: первый кусок синтеза, затем announce.
 
+        Колонка занята и вытеснить нечего — "busy" без синтеза.
         Синтез упал (сразу или посреди звука) — UNSYNTHESIZED; до первого куска колонка
         ничего не получает (нет и announce, значит, и сигнала «внимание»). Голоса ещё нет (speak кинул сразу)
         или сбой колонки — "lost".
         """
         async with self._speaking.setdefault(device_id, asyncio.Lock()):
+            if self._devices.is_busy(device_id) and not await self._free(device_id):
+                return "busy"  # синтезировать незачем: повтор через retry_s
             speech: _Speech | None = None
             try:
                 speech = await self._synthesize(text)
@@ -218,6 +227,16 @@ class Announcer:
         if speech is not None and speech.failed and result == "lost":
             return UNSYNTHESIZED
         return result
+
+    async def _free(self, device_id: str) -> bool:
+        """Вытесняет то, что занимает колонку (preempt); True — колонку освободили."""
+        if self._preempt is None:
+            return False
+        try:
+            return await self._preempt(device_id)
+        except Exception:
+            _log.warning("Вытеснение на %s перед объявлением не удалось", device_id, exc_info=True)
+            return False
 
     async def _synthesize(self, text: str) -> _Speech | None:
         """Синтезирует первый кусок звука; синтез упал или звука нет — None (в журнал)."""

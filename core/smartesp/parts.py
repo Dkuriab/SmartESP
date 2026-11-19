@@ -68,23 +68,20 @@ class Assembly:
 
 def conversation(
     config: Config, bus: EventBus
-) -> tuple[DeviceHub, History, Orchestrator, Announcer, Callable[[SpeechConfig], None]]:
-    """Колонки, история, оркестратор и очередь объявлений; последнее — применение раздела speech."""
+) -> tuple[DeviceHub, History, Orchestrator, Announcer, FilePlayer, Callable[[SpeechConfig], None]]:
+    """Колонки, история, оркестратор, очередь объявлений и файлы на колонках; последнее — применение
+    раздела speech. Объявление вытесняет файл: перед ним файл на колонке останавливается."""
     arbitration = config.arbitration
     names = {device_id: device.name for device_id, device in config.devices.items()}
     hub = DeviceHub(arbitration.window_ms / 1000, arbitration.late_ms / 1000, names, events=bus)
     history = History(config.history.max_turns, config.history.max_age_s)
     orchestrator = Orchestrator(hub, None, None, None, None, history, events=bus)
-    announcer = Announcer(hub, orchestrator.speech, events=bus)
+    files = FilePlayer(hub, hub.devices, decode_file, events=bus)  # разбор ffmpeg по ходу, итог — в ленту
+    announcer = Announcer(hub, orchestrator.speech, events=bus, preempt=files.stop_file)
     orchestrator.use_announcer(announcer)
     use_speech = speech_settings(orchestrator, announcer)
     use_speech(config.speech)
-    return hub, history, orchestrator, announcer, use_speech
-
-
-def file_player(hub: DeviceHub, bus: EventBus) -> FilePlayer:
-    """Файлы на колонках: ходом ядра через хаб, разбор ffmpeg по ходу, итог — в ленту событий."""
-    return FilePlayer(hub, hub.devices, decode_file, events=bus)
+    return hub, history, orchestrator, announcer, files, use_speech
 
 
 def live_answering(

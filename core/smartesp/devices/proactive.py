@@ -50,6 +50,11 @@ class CoreTurns:
         session = self._sessions.get(device_id)
         return session is not None and session.protocol >= PROACTIVE_PROTOCOL
 
+    def is_busy(self, device_id: str) -> bool:
+        """True, если колонка подключена и на ней идёт ход или запись хаба."""
+        session = self._sessions.get(device_id)
+        return session is not None and not session.is_idle()
+
     def last_active_device(self) -> str | None:
         """Колонка последнего принятого хода (по слову или прослушиванию), если подключена."""
         return self._last_active if self._last_active in self._sessions else None

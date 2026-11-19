@@ -13,6 +13,7 @@ from fakes.fake_events import RecordingSink
 from smartesp.contracts import PlaybackRefused
 from smartesp.devices import DeviceHub
 from smartesp.fileplay import FilePlayer
+from smartesp.notify import Announcer
 
 T1 = 0x80000001  # первый ход ядра в сессии колонки
 ANNOUNCE_T1 = '{"type":"announce","turn":2147483649}'
@@ -96,3 +97,25 @@ async def test_v2_speaker_refused(hub: DeviceHub, tmp_path: Path) -> None:
         await player.play_file("B", upload())
     assert refused.value.reason == "unsupported"
     assert ANNOUNCE_T1 not in conn.sent
+
+
+async def test_announcement_preempts_file(hub: DeviceHub, tmp_path: Path) -> None:
+    conn = await speaker(hub, "A", 3)
+    events, decode = RecordingSink(), Endless()
+    player = FilePlayer(hub, hub.devices, decode, events=events, tmp_dir=tmp_path)
+    spoken: list[str] = []
+
+    async def speak(text: str) -> AsyncGenerator[bytes]:
+        spoken.append(text)
+        yield b"\x05" * 100
+
+    announcer = Announcer(hub, speak, events=events, retry_s=0.01, preempt=player.stop_file)
+    await player.play_file("A", upload())
+    announcer.say("A", "Таймер.", "timer")
+    await eventually(lambda: b"\x05" * 100 in conn.sent)
+    assert finished(events) == ["interrupted"]  # файл прерван объявлением и не возобновится
+    assert CANCEL_T1 in conn.sent
+    assert conn.sent.index(CANCEL_T1) < conn.sent.index('{"type":"announce","turn":2147483650}')
+    assert spoken == ["Таймер."]
+    assert decode.closed.is_set() and list(tmp_path.iterdir()) == []
+    await announcer.aclose()

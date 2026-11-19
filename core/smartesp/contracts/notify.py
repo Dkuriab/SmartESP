@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from typing import Protocol
+
+# Вытеснение: перед объявлением на занятой колонке — остановить то, что можно прервать (файл);
+# True — колонку освободили. Связка передаёт его очереди объявлений (FilePlayback.stop_file).
+Preempt = Callable[[str], Awaitable[bool]]
 
 
 class Announcer(Protocol):
