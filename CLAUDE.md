@@ -22,6 +22,7 @@ SmartEsp/
       secrets.h         ← настоящие секреты (НЕ в git)
   core/                 ← ядро: Python-сервер на Mac (uv-проект), см. core/CLAUDE.md
   connectors/           ← наши MCP-коннекторы, каждый — свой uv-проект
+  clients/              ← отдельные клиенты ядра (Telegram-бот), каждый — свой uv-проект
   ui/                   ← веб-интерфейс (TypeScript), свой CLAUDE.md
   app/                  ← Mac-обёртка (Swift), свой CLAUDE.md
   docs/                 ← дизайн-документы и планы
