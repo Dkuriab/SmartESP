@@ -7,30 +7,19 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 
 from smartesp.api import create_api, mount_ui
 from smartesp.config import Config, ConfigFile
-from smartesp.contracts import Analyzer, Executor, TextToSpeech
-from smartesp.control import Core
-from smartesp.conversation import History, Orchestrator
-from smartesp.devices import DeviceHub, WebSocketConnection
+from smartesp.devices import WebSocketConnection
 from smartesp.events import EventBus
-from smartesp.kinds import (
-    Kinds,
-    Ollama,
-    build_answering,
-    connector_specs,
-    kinds_validator,
-    member_specs,
-    prompt_stages,
-)
+from smartesp.kinds import Kinds, Ollama, build_answering, connector_specs
 from smartesp.lifecycle import (
     Answering,
     CapabilityCache,
@@ -43,18 +32,25 @@ from smartesp.lifecycle import (
     log_crash,
     timed,
 )
-from smartesp.network import NetworkPrompts
-from smartesp.notify import Announcer
-from smartesp.sections import live_sections, speech_settings
+from smartesp.parts import (
+    ANSWERING_SECTIONS,
+    Assembly,
+    control,
+    conversation,
+    live_answering,
+    voice_manager,
+)
 from smartesp.tools import McpHub
-from smartesp.tts import VoiceManager
+
+__all__ = ["Assembly", "Ollama", "assemble", "finish", "start", "stop"]
 
 WARM_UP_PCM = bytes(16000)  # 0,5 с тишины (16 кГц, s16le)
 WARM_UP_TIMEOUT_S = 120.0  # дольше прогрева исполнителя не ждём
 DRAIN_S = 10.0  # звучащим ответам при остановке
 UNLOAD_S = 1.0  # выгрузка модели из Ollama
 TURN_WAIT_S = 150.0  # сколько старые модели ждут конца идущих ходов перед выгрузкой (передача — до 90 с)
-LAST_ACTIVE = ""  # колонки с таким id нет: объявление коннектора звучит на последней активной
+NO_DEVICE = ""  # колонки нет: объявление коннектора — на последней активной или первой подключённой
+TOOLS_CLOSE_S = 2.0  # коннекторам на закрытие при остановке (затем SIGKILL, ещё ≤1 с)
 
 logger = logging.getLogger("smartesp")
 
@@ -64,33 +60,6 @@ async def _build_answering(
 ) -> Answering:
     part = await build_answering(config, kinds, capabilities.get, tools)
     return await live.build(part, WARM_UP_TIMEOUT_S)
-
-
-@dataclass
-class Assembly:
-    """Собранное ядро: части, пульт, приложение и фоновые задачи."""
-
-    config: Config
-    kinds: Kinds
-    bus: EventBus
-    hub: DeviceHub
-    history: History
-    orchestrator: Orchestrator
-    announcer: Announcer  # речь по инициативе: очередь объявлений
-    live: LiveAnswering
-    capabilities: CapabilityCache  # возможности моделей: умеют ли инструменты
-    retry: CapabilityRetry  # пересборка сети, когда станут известны возможности моделей
-    tools: McpHub  # MCP-коннекторы: инструменты сети и объявления
-    refresh: ToolsRefresh  # пересборка сети, когда меняется список инструментов коннекторов
-    voices: VoiceManager
-    voice_ready: asyncio.Event
-    core: Core
-    run_file: RunFile
-    app: FastAPI = field(init=False)
-    running: asyncio.Task[None] | None = None  # оркестратор
-    warming: asyncio.Task[None] | None = None  # прогрев частей
-    retrying: asyncio.Task[None] | None = None  # повтор запроса возможностей моделей
-    refreshing: asyncio.Task[None] | None = None  # пересборка сети под инструменты коннекторов
 
 
 def assemble(
@@ -106,77 +75,15 @@ def assemble(
 ) -> Assembly:
     """Создаёт части без моделей (их греет start) и приложение: /device, /api/v1, интерфейс."""
     bus = EventBus()
-    arbitration = config.arbitration
-    names = {device_id: device.name for device_id, device in config.devices.items()}
-    hub = DeviceHub(arbitration.window_ms / 1000, arbitration.late_ms / 1000, names, events=bus)
-    history = History(config.history.max_turns, config.history.max_age_s)
-    orchestrator = Orchestrator(hub, None, None, None, None, history, events=bus)
-    announcer = Announcer(hub, orchestrator.speech, events=bus)
-    orchestrator.use_announcer(announcer)
-    use_speech = speech_settings(orchestrator, announcer)
-    use_speech(config.speech)
-
-    def install(analyze: Analyzer, executor: Executor) -> None:
-        orchestrator.use_analyzer(analyze)
-        orchestrator.use_executor(executor)
-
-    live = LiveAnswering(
-        install,
-        orchestrator.wait_turns,
-        turn_wait_s=TURN_WAIT_S,
-        unload_s=UNLOAD_S,
-        member_warm_s=WARM_UP_TIMEOUT_S,
-    )
+    hub, history, orchestrator, announcer, use_speech = conversation(config, bus)
+    live = live_answering(orchestrator, turn_wait_s=TURN_WAIT_S, unload_s=UNLOAD_S, warm_s=WARM_UP_TIMEOUT_S)
     capabilities = CapabilityCache(ollama.capabilities)
     tools = McpHub(
         home,
-        on_announce=lambda text, person, connector: announcer.say(LAST_ACTIVE, text, connector),
-        on_tools=lambda: refresh.changed(),
+        on_announce=lambda text, person, connector: announcer.say(NO_DEVICE, text, connector),
+        on_tools=lambda: parts.refresh.changed(),
     )
-    refresh = ToolsRefresh(live, lambda: _build_answering(kinds, live, capabilities, tools, store.config))
-    retry = CapabilityRetry(  # Ollama поднялась позже ядра — пересборка, как правка executors
-        live,
-        capabilities.probe,
-        lambda: _build_answering(kinds, live, capabilities, tools, store.config),
-    )
-    prompts = NetworkPrompts(  # настройки = живые части
-        lambda: store.config.entry_executor().id,
-        lambda: member_specs(store.config),
-        lambda: prompt_stages(store.config, kinds),
-        capabilities.known,
-        lambda: live.executor,
-    )
-    voice_ready = asyncio.Event()
-
-    def on_voice(tts: TextToSpeech, kind: str, voice: str) -> None:
-        orchestrator.use_tts(tts)
-        voice_ready.set()
-
-    voices = VoiceManager(home, kinds.tts, on_voice, events=bus)
-    core = Core(
-        store,
-        live_sections(
-            hub,
-            history,
-            live,
-            lambda config: _build_answering(kinds, live, capabilities, tools, config),
-            use_speech,
-            tools,
-        ),
-        events=bus,
-        feed=bus,
-        voices=voices,
-        models=ollama.models,
-        loaded=ollama.loaded,
-        devices=hub.devices,
-        version=version,
-        validate=kinds_validator(kinds),  # иначе после перезапуска ядро не стартует
-        dispatcher_prompt=prompts.entry,
-        executor_prompts=prompts.all,
-        supports_tools=capabilities.supports_tools,
-        executor_states=lambda: live.members_warmth,
-        connectors=tools.states,
-    )
+    voices, voice_ready = voice_manager(home, kinds, orchestrator, bus)
     run_file = RunFile(home / "run" / "core.json")
     parts = Assembly(
         config,
@@ -188,13 +95,18 @@ def assemble(
         announcer,
         live,
         capabilities,
-        retry,
         tools,
-        refresh,
         voices,
         voice_ready,
-        core,
         run_file,
+    )
+    build = functools.partial(_build_answering, kinds, live, capabilities, tools)  # (настройки) → пара
+    # Ollama поднялась позже ядра — пересборка, как правка executors
+    parts.retry = CapabilityRetry(live, capabilities.probe, lambda: build(store.config))
+    parts.core = control(parts, store, ollama, version, build, use_speech)
+    # инструменты сменились — пересборка в очереди правок: не гоняется с ними
+    parts.refresh = ToolsRefresh(
+        lambda: live.executor is not None, lambda: parts.core.rebuild(ANSWERING_SECTIONS)
     )
     parts.app = _build_app(parts, token, ui_dir, version)
     return parts
@@ -265,18 +177,20 @@ async def _warm_stt(parts: Assembly) -> None:
 
 
 async def stop(parts: Assembly) -> None:
-    """Честная остановка: договорить, остановить коннекторы, бросить очередь речи, отключить колонки,
-    выгрузить модель, убрать файл запуска."""
+    """Честная остановка: договорить (одновременно закрыть коннекторы), бросить очередь речи,
+    отключить колонки, выгрузить модель, убрать файл запуска."""
     logger.info("Остановка: новые ходы и правки не принимаются")
     parts.core.set_state("stopping")
     parts.hub.stop_accepting()
     parts.orchestrator.stop_accepting()
     parts.live.close()  # освобождения старых моделей больше не ждут ходов: их выгрузит unload_all
     await cancel_tasks(parts.warming, parts.retrying, parts.refreshing)  # оркестратор — в finish
+    # коннекторы закрываются, пока договариваются ходы (их вызовы инструментов уже не пройдут)
+    closing = asyncio.create_task(parts.tools.aclose(TOOLS_CLOSE_S), name="tools-close")
     await parts.core.aclose()  # правка в работе отменяется: живой исполнитель больше не меняется
     await parts.orchestrator.drain(DRAIN_S)
     logger.info("Остановка: идущие ходы закончены")
-    await parts.tools.aclose()
+    await closing
     logger.info("Остановка: коннекторы остановлены")
     await parts.announcer.aclose()  # очередь речи бросается до отключения колонок
     await parts.hub.close_all()

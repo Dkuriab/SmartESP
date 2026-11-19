@@ -5,9 +5,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
+import time
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 
@@ -26,7 +28,7 @@ from core_harness import (
 from fakes.fake_executor import FakeOllama
 from smartesp.config import ExecutorConfig
 from smartesp.contracts import ChatMessage, Executor, ReplyPart, Subscription, ToolCall, ToolSpec
-from smartesp.lifecycle import TOOLS_DEBOUNCE_S
+from smartesp.lifecycle import STOP_LIMIT_S, TOOLS_DEBOUNCE_S
 from smartesp.network import ExecutorNetwork
 from smartesp.wiring import Assembly, finish, start, stop
 
@@ -50,6 +52,11 @@ def entry_tools(core: Assembly) -> list[str]:
     if not isinstance(network, ExecutorNetwork):
         return []  # стартовая сеть ещё не поставлена
     return [t.name for t in network.members["dispatcher"].tools]
+
+
+def entry_executor(core: Assembly) -> object:
+    network = core.live.executor
+    return network.members["dispatcher"].executor if isinstance(network, ExecutorNetwork) else None
 
 
 def alive(pid: int) -> bool:
@@ -160,3 +167,78 @@ async def test_stop_leaves_no_connector_processes(tmp_path: Path) -> None:
     await finish(core)
     assert not any(alive(pid) for pid in pids)
     assert core.tools.states() == []
+
+
+async def test_timer_announcement_reaches_connected_speaker_without_turns(tmp_path: Path) -> None:
+    # после старта ядра никто не говорил: объявление — на первую подключённую колонку v3
+    kinds = fake_kinds(lambda c: FakeOllama(["Да."], c.model))
+    core = make_core(tmp_path, kinds, config_yaml(connector("t")))
+    start(core)
+    await eventually(lambda: core.tools.specs() != [], timeout=WAIT_S)
+    speaking, _ = await connect(core, "kitchen", protocol=3)
+    events = core.bus.subscribe()
+    await core.tools.call("announce", {"text": "Таймер «чай»: время вышло.", "person": None}, None)
+    await eventually(lambda: "reply_end" in sent_types(speaking))
+    turn = next(m["turn"] for m in speaking.sent_json() if m["type"] == "announce")
+    speaking.feed_json("playback_done", turn=turn)
+    async with asyncio.timeout(2):
+        async for event in events:
+            if event.kind == "turn_finished" and event.data["kind"] == "announcement":
+                assert (event.data["device_id"], event.data["status"]) == ("kitchen", "ok")
+                assert event.data["path"] == ["t"]
+                break
+    await events.aclose()
+    await stop(core)
+    await finish(core)
+
+
+async def test_stop_with_stubborn_connector_and_running_turn_fits_budget(tmp_path: Path) -> None:
+    # ход договаривается ~9 с; упрямый коннектор (не выходит ни по EOF, ни по SIGTERM)
+    # закрывается одновременно и не дольше ~3 с: вся остановка — в пределах 12 с
+    slow = ["Это долгий ответ. "] * 6
+    kinds = fake_kinds(lambda c: FakeOllama(slow, c.model, delay=1.5))
+    core = make_core(tmp_path, kinds, config_yaml(connector("s", "stubborn")))
+    start(core)
+    await eventually(lambda: core.core.state == "ready", timeout=5)
+    await eventually(lambda: [s.state for s in core.tools.states()] == ["ready"], timeout=WAIT_S)
+    pid = int((tmp_path / "connectors" / "s" / "pid").read_text())
+    speaking, _ = await connect(core, "kitchen")
+    ask(speaking, 1)
+    await eventually(lambda: "reply_start" in sent_types(speaking), timeout=5)
+    began = time.monotonic()
+    await stop(core)
+    assert time.monotonic() - began < STOP_LIMIT_S
+    assert speaking.closed
+    assert not alive(pid)
+    await finish(core)
+
+
+async def test_tools_change_during_executors_edit_keeps_the_edit(tmp_path: Path) -> None:
+    # правка сменила модель и ждёт конца хода (release); тем временем сменились инструменты —
+    # пересборка идёт после правки и не возвращает прежнюю модель
+    made: list[FakeOllama] = []
+
+    def factory(config: ExecutorConfig) -> Executor:
+        made.append(FakeOllama(["Раз. "] * 6, config.model, delay=0.6))  # ход ~3,6 с
+        return made[-1]
+
+    core = make_core(tmp_path, fake_kinds(factory), config_yaml(), ollama=TOOLS_OLLAMA)
+    start(core)
+    await eventually(lambda: core.core.state == "ready", timeout=5)
+    speaking, _ = await connect(core, "kitchen")
+    ask(speaking, 1)
+    await eventually(lambda: "reply_start" in sent_types(speaking), timeout=5)
+    applied = core.bus.subscribe()
+    entry = core.config.entry_executor().model_dump(exclude={"delegates"})
+    before = len(made)
+    await core.core.patch_config({"executors": [{**entry, "model": "other"}]})
+    core.refresh.changed()
+    assert (await next_change(applied))["ok"]
+    # пересборка под инструменты встала в очередь, пока release правки ждал конца хода
+    await eventually(lambda: bool(core.core.turns(1)), timeout=8)
+    await eventually(lambda: len(made) >= before + 2, timeout=5)  # исполнитель правки и пересборки
+    await eventually(lambda: entry_executor(core) is made[-1], timeout=5)  # пересборка встала
+    assert made[-1].model == "other"
+    await applied.aclose()
+    await stop(core)
+    await finish(core)

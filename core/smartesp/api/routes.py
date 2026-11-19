@@ -77,7 +77,7 @@ def _add_core_routes(secured: APIRouter, core: CorePort) -> None:
         return _change_response(await core.patch_config(patch), _PATCH_CODES)
 
     @secured.get("/connectors")
-    def get_connectors() -> list[ConnectorOut]:
+    async def get_connectors() -> list[ConnectorOut]:
         return [ConnectorOut.model_validate(item) for item in core.connectors()]
 
     @secured.get("/models", responses={502: {"model": ErrorOut}})

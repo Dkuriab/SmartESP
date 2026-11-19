@@ -1,0 +1,149 @@
+"""Связка: группы частей ядра для wiring.assemble — разговор, живой исполнитель, голос, пульт.
+
+Логики здесь нет, только создание частей и их соединение (как в wiring.py).
+"""
+
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from fastapi import FastAPI
+
+from smartesp.config import Config, ConfigFile, SpeechConfig
+from smartesp.contracts import Analyzer, Executor, TextToSpeech
+from smartesp.control import Core
+from smartesp.conversation import History, Orchestrator
+from smartesp.devices import DeviceHub
+from smartesp.events import EventBus
+from smartesp.kinds import Kinds, Ollama, kinds_validator, member_specs, prompt_stages
+from smartesp.lifecycle import (
+    Answering,
+    CapabilityCache,
+    CapabilityRetry,
+    LiveAnswering,
+    RunFile,
+    ToolsRefresh,
+)
+from smartesp.network import NetworkPrompts
+from smartesp.notify import Announcer
+from smartesp.sections import live_sections, speech_settings
+from smartesp.tools import McpHub
+from smartesp.tts import VoiceManager
+
+ANSWERING_SECTIONS = ("executors",)  # раздел живого исполнителя (stages — тот же Section)
+
+
+@dataclass
+class Assembly:
+    """Собранное ядро: части, пульт, приложение и фоновые задачи."""
+
+    config: Config
+    kinds: Kinds
+    bus: EventBus
+    hub: DeviceHub
+    history: History
+    orchestrator: Orchestrator
+    announcer: Announcer  # речь по инициативе: очередь объявлений
+    live: LiveAnswering
+    capabilities: CapabilityCache  # возможности моделей: умеют ли инструменты
+    tools: McpHub  # MCP-коннекторы: инструменты сети и объявления
+    voices: VoiceManager
+    voice_ready: asyncio.Event
+    run_file: RunFile
+    retry: CapabilityRetry = field(init=False)  # пересборка сети, когда станут известны возможности моделей
+    refresh: ToolsRefresh = field(init=False)  # пересборка сети, когда меняется список инструментов
+    core: Core = field(init=False)
+    app: FastAPI = field(init=False)
+    running: asyncio.Task[None] | None = None  # оркестратор
+    warming: asyncio.Task[None] | None = None  # прогрев частей
+    retrying: asyncio.Task[None] | None = None  # повтор запроса возможностей моделей
+    refreshing: asyncio.Task[None] | None = None  # пересборка сети под инструменты коннекторов
+
+
+def conversation(
+    config: Config, bus: EventBus
+) -> tuple[DeviceHub, History, Orchestrator, Announcer, Callable[[SpeechConfig], None]]:
+    """Колонки, история, оркестратор и очередь объявлений; последнее — применение раздела speech."""
+    arbitration = config.arbitration
+    names = {device_id: device.name for device_id, device in config.devices.items()}
+    hub = DeviceHub(arbitration.window_ms / 1000, arbitration.late_ms / 1000, names, events=bus)
+    history = History(config.history.max_turns, config.history.max_age_s)
+    orchestrator = Orchestrator(hub, None, None, None, None, history, events=bus)
+    announcer = Announcer(hub, orchestrator.speech, events=bus)
+    orchestrator.use_announcer(announcer)
+    use_speech = speech_settings(orchestrator, announcer)
+    use_speech(config.speech)
+    return hub, history, orchestrator, announcer, use_speech
+
+
+def live_answering(
+    orchestrator: Orchestrator, *, turn_wait_s: float, unload_s: float, warm_s: float
+) -> LiveAnswering:
+    """Живые обработчики и исполнитель: подмена ставит их в оркестратор."""
+
+    def install(analyze: Analyzer, executor: Executor) -> None:
+        orchestrator.use_analyzer(analyze)
+        orchestrator.use_executor(executor)
+
+    return LiveAnswering(
+        install, orchestrator.wait_turns, turn_wait_s=turn_wait_s, unload_s=unload_s, member_warm_s=warm_s
+    )
+
+
+def voice_manager(
+    home: Path, kinds: Kinds, orchestrator: Orchestrator, bus: EventBus
+) -> tuple[VoiceManager, asyncio.Event]:
+    """Менеджер голосов: открытый голос уходит в оркестратор и взводит событие «голос есть»."""
+    voice_ready = asyncio.Event()
+
+    def on_voice(tts: TextToSpeech, kind: str, voice: str) -> None:
+        orchestrator.use_tts(tts)
+        voice_ready.set()
+
+    return VoiceManager(home, kinds.tts, on_voice, events=bus), voice_ready
+
+
+def control(
+    parts: Assembly,
+    store: ConfigFile,
+    ollama: Ollama,
+    version: str,
+    build: Callable[[Config], Awaitable[Answering]],
+    use_speech: Callable[[SpeechConfig], None],
+) -> Core:
+    """Пульт: разделы на лету, сведения для status и промпты из текущих настроек."""
+    kinds, bus, hub, live, capabilities, tools = (
+        parts.kinds,
+        parts.bus,
+        parts.hub,
+        parts.live,
+        parts.capabilities,
+        parts.tools,
+    )
+    prompts = NetworkPrompts(  # настройки = живые части
+        lambda: store.config.entry_executor().id,
+        lambda: member_specs(store.config),
+        lambda: prompt_stages(store.config, kinds),
+        capabilities.known,
+        lambda: live.executor,
+    )
+    return Core(
+        store,
+        live_sections(hub, parts.history, live, build, use_speech, tools),
+        events=bus,
+        feed=bus,
+        voices=parts.voices,
+        models=ollama.models,
+        loaded=ollama.loaded,
+        devices=hub.devices,
+        version=version,
+        validate=kinds_validator(kinds),  # иначе после перезапуска ядро не стартует
+        dispatcher_prompt=prompts.entry,
+        executor_prompts=prompts.all,
+        supports_tools=capabilities.supports_tools,
+        executor_states=lambda: live.members_warmth,
+        connectors=tools.states,
+    )
