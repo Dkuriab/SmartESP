@@ -4,6 +4,10 @@ FastAPI читает тело (multipart — в файл на диске без 
 токеном. Поэтому для ходов через API и файла на колонку токен проверяется здесь, по заголовкам, а размер —
 по Content-Length сразу и по счёту байтов для тела без длины (chunked): перебор — 413,
 дальше тело не читается. Остальным запросам — общий предел MAX_BODY_BYTES.
+
+Путь с управляющими символами — сразу 400: иначе `…/play\n` прослойка не узнала бы, а маршрут
+Starlette (`$` совпадает перед последним `\n`) принял бы. Защищённые пути узнаются по
+нормализованному пути (регистр, повторные и хвостовые «/»): лишний токен до тела не вредит.
 """
 
 from __future__ import annotations
@@ -23,6 +27,9 @@ PLAY_BODY_BYTES = 50 * 1024 * 1024 + 64 * 1024  # POST /devices/{id}/play: 50 М
 GUARDED = {"/api/v1/ask": ASK_BODY_BYTES, "/api/v1/ask/voice": VOICE_BODY_BYTES}  # токен — до тела
 GUARDED_PATTERNS = ((re.compile(r"/api/v1/devices/[^/]+/play"), PLAY_BODY_BYTES),)  # путь целиком
 TOO_LARGE = "Тело запроса слишком большое"
+BAD_PATH = "Недопустимые символы в пути"
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+_SLASHES = re.compile(r"/{2,}")
 
 
 class _TooLarge(HTTPException):
@@ -45,6 +52,9 @@ class BodyLimit:
         """Пропускает запрос дальше или сразу отвечает 401/413, не читая тело."""
         if scope["type"] != "http":
             await self._app(scope, receive, send)
+            return
+        if _CONTROL.search(scope["path"]):
+            await _reply(send, 400, BAD_PATH)
             return
         headers = {key.decode("latin-1").lower(): value.decode("latin-1") for key, value in scope["headers"]}
         limit = self._max_body
@@ -87,9 +97,13 @@ class BodyLimit:
 
 
 def guarded_limit(method: str, path: str) -> int | None:
-    """Предел тела запроса с токеном до тела (POST ходов и файла на колонку); другим — None."""
-    if method != "POST":
+    """Предел тела запроса с токеном до тела (POST ходов и файла на колонку); другим — None.
+
+    Путь сравнивается нормализованным: без регистра, повторных и хвостовых «/».
+    """
+    if method.upper() != "POST":
         return None
+    path = _SLASHES.sub("/", path).rstrip("/").lower()
     if path in GUARDED:
         return GUARDED[path]
     return next((limit for pattern, limit in GUARDED_PATTERNS if pattern.fullmatch(path)), None)

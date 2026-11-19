@@ -168,3 +168,45 @@ def test_play_pattern_only_for_post() -> None:
     assert guarded_limit("POST", PLAY) == PLAY_BODY_BYTES
     assert guarded_limit("DELETE", PLAY) is None
     assert guarded_limit("POST", "/api/v1/ask") == ASK_BODY_BYTES
+
+
+GUARDED_PATHS = ["/api/v1/ask", "/api/v1/ask/voice", PLAY]
+
+
+@pytest.mark.parametrize("path", GUARDED_PATHS)
+@pytest.mark.parametrize("tail", ["%0A", "%0D", "%0D%0A", "%00"])
+async def test_control_characters_in_path_are_400_unread(
+    client: httpx.AsyncClient, path: str, tail: str
+) -> None:
+    body = Body(100)
+    response = await client.post(path + tail, content=body.stream(), headers=MULTIPART)
+    assert response.status_code == 400
+    assert body.read == 0
+
+
+async def test_control_characters_in_middle_of_path_are_400(client: httpx.AsyncClient) -> None:
+    body = Body(10)
+    response = await client.post("/api/v1/devices/a%0Ab/play", content=body.stream(), headers=MULTIPART)
+    assert response.status_code == 400
+    assert body.read == 0
+
+
+def variants(path: str) -> list[str]:
+    """Тот же путь с хвостовым «/», двойными «/» и в другом регистре."""
+    return [path + "/", path.replace("/v1/", "//v1//"), path.upper(), path.replace("api", "API") + "//"]
+
+
+@pytest.mark.parametrize("path", [variant for path in GUARDED_PATHS for variant in variants(path)])
+async def test_path_variants_need_token_before_body(client: httpx.AsyncClient, path: str) -> None:
+    body = Body(100)
+    response = await client.post(path, content=body.stream(), headers=MULTIPART)
+    assert response.status_code == 401
+    assert body.read == 0
+
+
+def test_guarded_limit_normalizes_path() -> None:
+    assert guarded_limit("POST", "/api/v1/ask/") == ASK_BODY_BYTES
+    assert guarded_limit("POST", "//api//v1//ask/voice//") == VOICE_BODY_BYTES
+    assert guarded_limit("POST", "/API/V1/DEVICES/AA:BB/PLAY") == PLAY_BODY_BYTES
+    assert guarded_limit("post", PLAY) == PLAY_BODY_BYTES
+    assert guarded_limit("POST", "/api/v1/status/") is None
