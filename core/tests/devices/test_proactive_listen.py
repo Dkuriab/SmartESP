@@ -191,3 +191,13 @@ async def test_core_turn_numbers_per_session() -> None:
     conn2 = await v3(hub)  # новая сессия той же колонки
     assert await hub.listen("A")
     assert listens(conn2) == [T1]
+
+
+async def test_proactive_devices_are_connected_v3_sorted_by_name() -> None:
+    hub = DeviceHub(WINDOW_S, 1.0, {"A": "Кухня", "B": "Гостиная"}, clock=FakeClock())
+    assert hub.proactive_devices() == []
+    await v3(hub, "A")
+    await v3(hub, "B")
+    await connect(hub, "C", protocol=2)  # без речи по инициативе
+    await eventually(lambda: any(d.device_id == "C" and d.connected for d in hub.devices()))
+    assert hub.proactive_devices() == ["B", "A"]  # «Гостиная» раньше «Кухни»

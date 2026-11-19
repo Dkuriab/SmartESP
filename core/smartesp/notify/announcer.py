@@ -3,7 +3,8 @@
 На каждую заданную колонку — своя очередь и своя фоновая задача: объявления
 звучат по порядку, следующее — только после итога предыдущего. Колонка
 доставки: заданная, если умеет речь по инициативе; иначе последняя активная;
-иначе ждём, пока одна из них подключится. Итог — событие turn_finished вида
+иначе первая подключённая с речью по инициативе (по имени); иначе ждём, пока
+какая-нибудь подключится. Итог — событие turn_finished вида
 "announcement"; до итога событий нет.
 """
 
@@ -184,13 +185,15 @@ class Announcer:
             await asyncio.sleep(min(self._retry_s, left))
 
     def _choose(self, target: str) -> str | None:
-        """Колонка доставки: заданная, иначе последняя активная (обе — с речью по инициативе)."""
+        """Колонка доставки (с речью по инициативе): заданная, иначе последняя активная,
+        иначе первая подключённая по имени (после старта ядра могли ещё не говорить)."""
         if self._devices.supports_proactive(target):
             return target
         last = self._devices.last_active_device()
         if last is not None and self._devices.supports_proactive(last):
             return last
-        return None
+        connected = self._devices.proactive_devices()
+        return connected[0] if connected else None
 
     async def _attempt(self, device_id: str, text: str) -> _Attempt:
         """Одна попытка: первый кусок синтеза, затем announce.

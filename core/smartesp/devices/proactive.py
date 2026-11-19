@@ -54,6 +54,15 @@ class CoreTurns:
         """Колонка последнего принятого хода (по слову или прослушиванию), если подключена."""
         return self._last_active if self._last_active in self._sessions else None
 
+    def proactive_devices(self) -> list[str]:
+        """Подключённые колонки с протоколом ≥ 3, по имени (имя — device_name хаба)."""
+        found = [d for d, session in self._sessions.items() if session.protocol >= PROACTIVE_PROTOCOL]
+        return sorted(found, key=lambda device_id: (self.device_name(device_id), device_id))
+
+    def device_name(self, device_id: str) -> str:
+        """Имя колонки; хаб переопределяет его именами из настроек."""
+        return device_id
+
     async def announce(self, device_id: str, audio: AsyncIterator[bytes]) -> Delivery:
         """announce → reply_start → звук → reply_end новым ходом ядра; ждёт итог.
 

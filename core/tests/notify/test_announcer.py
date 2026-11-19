@@ -95,6 +95,25 @@ async def test_fallback_to_last_active() -> None:
     await announcer.aclose()
 
 
+async def test_fallback_to_first_connected_proactive_device() -> None:
+    # после старта ядра никто не говорил: последней активной нет — первая подключённая колонка v3
+    port, sink, announcer = setup("kitchen", "hall")
+    announcer.say("", "Таймер «чай»: время вышло.", "timers")
+    await until(lambda: bool(finished(sink)))
+    assert [call.device_id for call in port.announces] == ["kitchen"]  # по имени: «Кухня» раньше «Прихожей»
+    assert finished(sink)[0]["status"] == "ok"
+    await announcer.aclose()
+
+
+async def test_last_active_wins_over_first_proactive() -> None:
+    port, sink, announcer = setup("kitchen", "hall")
+    port.last_active = "hall"
+    announcer.say("", "Готово.", "timers")
+    await until(lambda: bool(finished(sink)))
+    assert [call.device_id for call in port.announces] == ["hall"]
+    await announcer.aclose()
+
+
 async def test_waits_for_any_device() -> None:
     port, sink, announcer = setup()
     announcer.say("kitchen", "Готово.", "big")

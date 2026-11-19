@@ -127,3 +127,6 @@ class FakeDevicePort:
 
     def last_active_device(self) -> str | None:
         return self.last_active
+
+    def proactive_devices(self) -> list[str]:
+        return sorted(self.proactive, key=lambda device_id: (self.device_name(device_id), device_id))
