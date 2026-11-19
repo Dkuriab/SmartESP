@@ -43,6 +43,16 @@ class ExecutorStateOut(BaseModel):
     error: str | None = None
 
 
+class ConnectorOut(BaseModel):
+    """MCP-коннектор: состояние, инструменты (как их видит модель; только у готового), ошибка."""
+
+    id: str
+    name: str
+    state: Literal["starting", "ready", "failed", "disabled"]
+    tools: list[str]
+    error: str = ""  # текст последней ошибки; пусто — ошибки нет
+
+
 class StatusOut(BaseModel):
     """Сводка ядра."""
 
@@ -56,6 +66,7 @@ class StatusOut(BaseModel):
     restart_required: bool
     # исполнители, чей фоновый прогрев закончился; ещё греется или входной — его здесь нет
     executors: list[ExecutorStateOut] = Field(default_factory=list[ExecutorStateOut])
+    connectors: list[ConnectorOut] = Field(default_factory=list[ConnectorOut])  # в порядке настроек
 
 
 class ConfigOut(BaseModel):

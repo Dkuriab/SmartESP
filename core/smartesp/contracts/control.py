@@ -95,7 +95,12 @@ class CorePort(Protocol):
 
     async def status(self) -> dict[str, Any]:
         """Возвращает сводку: version, uptime_s, state, ollama, devices, voice, applying, restart_required,
-        executors ([{id, ready, error}] — итог фонового прогрева исполнителей)."""
+        executors ([{id, ready, error}] — итог фонового прогрева исполнителей),
+        connectors (как в connectors())."""
+        ...
+
+    def connectors(self) -> list[dict[str, Any]]:
+        """Возвращает MCP-коннекторы: [{id, name, state, tools, error}] в порядке настроек."""
         ...
 
     def config(self) -> dict[str, Any]:

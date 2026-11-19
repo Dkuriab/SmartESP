@@ -39,6 +39,23 @@ export interface paths {
         patch: operations["patch_config_api_v1_config_patch"];
         trace?: never;
     };
+    "/api/v1/connectors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Connectors */
+        get: operations["get_connectors_api_v1_connectors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/models": {
         parameters: {
             query?: never;
@@ -219,6 +236,28 @@ export interface components {
             };
         };
         /**
+         * ConnectorOut
+         * @description MCP-коннектор: состояние, инструменты (как их видит модель; только у готового), ошибка.
+         */
+        ConnectorOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "starting" | "ready" | "failed" | "disabled";
+            /** Tools */
+            tools: string[];
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+        };
+        /**
          * DelegationOut
          * @description Передача задачи в ходе: от кого, кому, какая задача; auto — по фразе без вызова.
          */
@@ -356,6 +395,8 @@ export interface components {
             restart_required: boolean;
             /** Executors */
             executors?: components["schemas"]["ExecutorStateOut"][];
+            /** Connectors */
+            connectors?: components["schemas"]["ConnectorOut"][];
         };
         /**
          * TurnOut
@@ -576,6 +617,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChangeOut"];
+                };
+            };
+        };
+    };
+    get_connectors_api_v1_connectors_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

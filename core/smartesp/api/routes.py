@@ -24,6 +24,7 @@ from .schemas import (
     AccessOut,
     ChangeOut,
     ConfigOut,
+    ConnectorOut,
     DownloadIn,
     ErrorOut,
     ModelOut,
@@ -57,7 +58,7 @@ def create_api(core: CorePort, feed: EventFeed, token: str, *, port: int) -> API
 
 
 def _add_core_routes(secured: APIRouter, core: CorePort) -> None:
-    """Сводка, настройки, модели, ходы, перезапуск."""
+    """Сводка, настройки, коннекторы, модели, ходы, перезапуск."""
 
     @secured.get("/status")
     async def get_status() -> StatusOut:
@@ -74,6 +75,10 @@ def _add_core_routes(secured: APIRouter, core: CorePort) -> None:
     )
     async def patch_config(patch: dict[str, object]) -> JSONResponse:
         return _change_response(await core.patch_config(patch), _PATCH_CODES)
+
+    @secured.get("/connectors")
+    def get_connectors() -> list[ConnectorOut]:
+        return [ConnectorOut.model_validate(item) for item in core.connectors()]
 
     @secured.get("/models", responses={502: {"model": ErrorOut}})
     async def get_models() -> list[ModelOut]:

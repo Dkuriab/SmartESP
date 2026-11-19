@@ -7,7 +7,7 @@ from typing import Any
 
 from fakes.fake_control import FakeConfigStore, FakeVoices
 from fakes.fake_events import RecordingSink
-from smartesp.contracts import DeviceInfo, Section
+from smartesp.contracts import ConnectorState, DeviceInfo, Section
 from smartesp.control import Core
 from smartesp.events import EventBus
 
@@ -94,6 +94,7 @@ class Harness:
         self.prompts = {"dispatcher": "Промпт. Правила.", "big": "Большой."}
         self.tool_models = {"qwen"}
         self.executor_states: dict[str, str | None] = {}  # итог фонового прогрева участников
+        self.connector_states: list[ConnectorState] = []
         self.core = Core(
             self.store,
             {name: s.section() for name, s in self.sections.items()},
@@ -109,6 +110,7 @@ class Harness:
             executor_prompts=lambda: self.prompts,
             supports_tools=self._supports_tools,
             executor_states=lambda: self.executor_states,
+            connectors=lambda: self.connector_states,
         )
 
     async def _supports_tools(self, model: str) -> bool:

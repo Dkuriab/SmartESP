@@ -41,6 +41,10 @@ class FakeCore:
         self.models_error: ExecutorError | None = None
         self.previews: list[tuple[str, str, str, str]] = []
         self.turn_items = [make_turn(i) for i in (3, 2, 1)]
+        self.connector_items: list[dict[str, Any]] = [
+            {"id": "notes", "name": "Заметки", "state": "ready", "tools": ["note_add"], "error": ""},
+            {"id": "weather", "name": "Погода", "state": "failed", "tools": [], "error": "упал"},
+        ]
 
     async def status(self) -> dict[str, Any]:
         return {
@@ -63,7 +67,11 @@ class FakeCore:
             "applying": False,
             "restart_required": False,
             "executors": [{"id": "big", "ready": False, "error": "нет модели"}],
+            "connectors": self.connectors(),
         }
+
+    def connectors(self) -> list[dict[str, Any]]:
+        return list(self.connector_items)
 
     def config(self) -> dict[str, Any]:
         return {

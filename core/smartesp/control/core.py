@@ -7,12 +7,13 @@ import dataclasses
 import itertools
 import logging
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Any
 
 from smartesp.contracts import (
     ChangeResult,
     ConfigStore,
+    ConnectorState,
     DeviceInfo,
     EventFeed,
     EventSink,
@@ -59,13 +60,15 @@ class Core:
         executor_prompts: Callable[[], Mapping[str, str]] = dict,
         supports_tools: Callable[[str], Awaitable[bool]] = _no_tools,
         executor_states: Callable[[], Mapping[str, str | None]] = dict,
+        connectors: Callable[[], Sequence[ConnectorState]] = list,
     ) -> None:
         """validate(настройки) — проверка правки целиком; ValueError — status invalid.
 
         dispatcher_prompt() — итоговый промпт входного исполнителя (с правилами обработчиков);
         executor_prompts() — итоговые промпты всех исполнителей по id;
         supports_tools(модель) — умеет ли модель инструменты (для списка моделей);
-        executor_states() — итог фонового прогрева исполнителей: {id: None — готов, иначе ошибка}.
+        executor_states() — итог фонового прогрева исполнителей: {id: None — готов, иначе ошибка};
+        connectors() — состояния MCP-коннекторов в порядке настроек.
         """
         self._store = store
         self._events = events
@@ -79,6 +82,7 @@ class Core:
         self._executor_prompts = executor_prompts
         self._supports_tools = supports_tools
         self._executor_states = executor_states
+        self._connectors = connectors
         self._clock = clock
         self._started = clock()
         self._state = "warming"
@@ -126,9 +130,11 @@ class Core:
     # ---- CorePort ----
 
     async def status(self) -> dict[str, Any]:
-        """Сводка: version, uptime_s, state, ollama, devices, voice, applying, restart_required, executors.
+        """Сводка: version, uptime_s, state, ollama, devices, voice, applying, restart_required,
+        executors, connectors.
 
-        executors — [{id, ready, error}] исполнителей, чей фоновый прогрев закончился.
+        executors — [{id, ready, error}] исполнителей, чей фоновый прогрев закончился;
+        connectors — как в connectors().
         """
         return {
             "version": self._version,
@@ -143,7 +149,12 @@ class Core:
                 {"id": executor_id, "ready": error is None, "error": error}
                 for executor_id, error in self._executor_states().items()
             ],
+            "connectors": self.connectors(),
         }
+
+    def connectors(self) -> list[dict[str, Any]]:
+        """Коннекторы: [{id, name, state, tools, error}] в порядке настроек."""
+        return [{**dataclasses.asdict(c), "tools": list(c.tools)} for c in self._connectors()]
 
     def config(self) -> dict[str, Any]:
         """Действующие настройки, ключи владельца, разделы с перезапуском и итоговые промпты."""

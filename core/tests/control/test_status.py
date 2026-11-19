@@ -6,7 +6,7 @@ import pytest
 from control_harness import Harness
 
 import smartesp.control.core as core_module
-from smartesp.contracts import ChangeResult, CorePort, DeviceInfo, ExecutorError
+from smartesp.contracts import ChangeResult, ConnectorState, CorePort, DeviceInfo, ExecutorError
 from smartesp.control import RESTART_SECTIONS
 
 
@@ -35,7 +35,29 @@ async def test_status_collects_summary() -> None:
         "applying": False,
         "restart_required": False,
         "executors": [],
+        "connectors": [],
     }
+    await h.core.aclose()
+
+
+async def test_status_and_list_show_connectors() -> None:
+    h = Harness()
+    h.connector_states = [
+        ConnectorState("notes", "Заметки", "ready", ("note_add", "note_show")),
+        ConnectorState("weather", "Погода", "failed", (), "Процесс коннектора завершился."),
+    ]
+    expected = [
+        {"id": "notes", "name": "Заметки", "state": "ready", "tools": ["note_add", "note_show"], "error": ""},
+        {
+            "id": "weather",
+            "name": "Погода",
+            "state": "failed",
+            "tools": [],
+            "error": "Процесс коннектора завершился.",
+        },
+    ]
+    assert (await h.core.status())["connectors"] == expected
+    assert h.core.connectors() == expected
     await h.core.aclose()
 
 

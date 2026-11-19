@@ -119,6 +119,38 @@
         }
       }
     },
+    "/api/v1/connectors": {
+      "get": {
+        "summary": "Get Connectors",
+        "operationId": "get_connectors_api_v1_connectors_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ConnectorOut"
+                  },
+                  "type": "array",
+                  "title": "Response Get Connectors Api V1 Connectors Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/models": {
       "get": {
         "summary": "Get Models",
@@ -553,6 +585,49 @@
         "title": "ConfigOut",
         "description": "Настройки: целиком, изменённые владельцем и разделы, требующие перезапуска."
       },
+      "ConnectorOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "ready",
+              "failed",
+              "disabled"
+            ],
+            "title": "State"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tools"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "state",
+          "tools"
+        ],
+        "title": "ConnectorOut",
+        "description": "MCP-коннектор: состояние, инструменты (как их видит модель; только у готового), ошибка."
+      },
       "DelegationOut": {
         "properties": {
           "from": {
@@ -835,6 +910,13 @@
             },
             "type": "array",
             "title": "Executors"
+          },
+          "connectors": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorOut"
+            },
+            "type": "array",
+            "title": "Connectors"
           }
         },
         "type": "object",
