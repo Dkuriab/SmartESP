@@ -172,7 +172,7 @@ async def test_catalog_marks_current(tmp_path: Path) -> None:
             "current": True,
         }
     ]
-    assert len(rows) == 7
+    assert len(rows) == 13
     await h.manager.aclose()
 
 

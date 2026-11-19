@@ -14,12 +14,18 @@ PIPER_NAME = re.compile(r"^[a-z]{2,3}_[A-Z]{2}-[A-Za-z0-9_]+-[a-z_]+$")
 # (вид, голос, подпись, размер в МБ); файл Silero и папка Vosk общие на несколько голосов
 _BUILTIN: list[tuple[str, str, str, int]] = [
     ("piper", IRINA, "Piper: Ирина", 63),
+    ("piper", "ru_RU-denis-medium", "Piper: Денис", 63),
+    ("piper", "ru_RU-dmitri-medium", "Piper: Дмитрий", 63),
     ("silero", "xenia", "Silero: Ксения", 145),
     ("silero", "baya", "Silero: Бая", 145),
     ("silero", "kseniya", "Silero: Ксения (мягкий)", 145),
+    ("silero", "aidar", "Silero: Айдар", 145),
+    ("silero", "eugene", "Silero: Евгений", 145),
     ("vosk", "female_0", "Vosk: женский 0", 900),
     ("vosk", "female_1", "Vosk: женский 1", 900),
     ("vosk", "female_2", "Vosk: женский 2", 900),
+    ("vosk", "male_0", "Vosk: мужской 0", 900),
+    ("vosk", "male_1", "Vosk: мужской 1", 900),
 ]
 
 

@@ -15,16 +15,20 @@ import yaml
 from pydantic import ValidationError
 
 from ._files import prune, read_yaml, write_overrides
-from .models import CONFIG_VERSION, Config
-from .models import DEFAULT_SYSTEM_PROMPT as _CURRENT_PROMPT
+from .models import CONFIG_VERSION, DEFAULT_SYSTEM_PROMPT, Config
 
 DEFAULTS_HEADER = """# Значения по умолчанию — ТОЛЬКО ДЛЯ СПРАВКИ, ядро перезаписывает этот файл при старте.
 # Чтобы поменять настройку, перенесите ключ в config.yaml.
 """
 # Системные промпты по умолчанию прежних версий: в старом файле они значат «не меняли».
+_OLD_PROMPT = (
+    "Ты голосовой помощник умной колонки. Отвечай по-русски, коротко, 1–3 предложения, "
+    "без разметки, списков и эмодзи — ответ будет озвучен."
+)
 _LEGACY_PROMPTS = (
-    _CURRENT_PROMPT,
-    _CURRENT_PROMPT + " Если в сообщении есть пометка, что человек шепчет, начни ответ точно с [style:quiet]."
+    DEFAULT_SYSTEM_PROMPT,
+    _OLD_PROMPT,
+    _OLD_PROMPT + " Если в сообщении есть пометка, что человек шепчет, начни ответ точно с [style:quiet]."
     " Во всех остальных случаях никаких меток не пиши.",
 )
 

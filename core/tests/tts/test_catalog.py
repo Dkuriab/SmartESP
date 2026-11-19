@@ -12,9 +12,9 @@ def test_catalog_marks_downloaded(tmp_path: Path) -> None:
     (tmp_path / "voices" / "silero" / "v5_ru.pt").write_bytes(b"x")
     (tmp_path / "voices" / "ru_RU-denis-medium.onnx").write_bytes(b"x")
     items = {(v.kind, v.voice): v for v in catalog(tmp_path)}
-    for name in ("xenia", "baya", "kseniya"):
+    for name in ("xenia", "baya", "kseniya", "aidar", "eugene"):
         assert items[("silero", name)].downloaded
-    for name in ("female_0", "female_1", "female_2"):
+    for name in ("female_0", "female_1", "female_2", "male_0", "male_1"):
         assert not items[("vosk", name)].downloaded
     assert not items[("piper", "ru_RU-irina-medium")].downloaded
     assert items[("piper", "ru_RU-denis-medium")].downloaded
@@ -22,7 +22,9 @@ def test_catalog_marks_downloaded(tmp_path: Path) -> None:
 
 def test_catalog_order(tmp_path: Path) -> None:
     kinds = [v.kind for v in catalog(tmp_path)]
-    assert kinds == ["piper"] + ["silero"] * 3 + ["vosk"] * 3
+    assert kinds == ["piper"] * 3 + ["silero"] * 5 + ["vosk"] * 5
+    voices = [v.voice for v in catalog(tmp_path)]
+    assert voices[3:8] == ["xenia", "baya", "kseniya", "aidar", "eugene"]  # сначала женские, затем мужские
 
 
 def test_voice_paths(tmp_path: Path) -> None:
@@ -35,7 +37,7 @@ def test_voice_paths(tmp_path: Path) -> None:
 
 def test_voice_path_unknown_raises(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="xenia"):
-        voice_path("silero", "aidar", tmp_path)
+        voice_path("silero", "nobody", tmp_path)
     with pytest.raises(ValueError):
         voice_path("espeak", "x", tmp_path)
     with pytest.raises(ValueError):

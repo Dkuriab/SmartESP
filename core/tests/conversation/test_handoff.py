@@ -141,12 +141,12 @@ async def test_thinking_tones_while_waiting_for_target() -> None:
 
 
 async def test_target_limit_speaks_phrase_instead_of_error_tone() -> None:
-    # «думаю» в 0,05; 0,10; 0,15 с, в 0,175 с — «Не успела…»; фраза и есть сигнал ошибки
+    # «думаю» в 0,05; 0,10; 0,15 с, в 0,175 с — «Не получилось ответить вовремя…»; фраза и есть сигнал ошибки
     network = FakeNetwork([PHRASE], ["Поздно."], delay=10)
     sink = RecordingSink()
     setup = Setup(network, events=sink, thinking_interval_s=0.05, delegate_limit_s=0.175)
     finished = await run_turn(setup, sink)
-    assert setup.tts.texts == [PHRASE, "Не успела ответить, спроси попозже."]
+    assert setup.tts.texts == [PHRASE, "Не получилось ответить вовремя, спроси попозже."]
     assert setup.port.tones == [THINKING, THINKING, THINKING]
     assert finished["status"] == "error"
     assert network.closed
