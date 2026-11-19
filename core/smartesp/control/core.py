@@ -50,8 +50,12 @@ class Core:
         version: str,
         clock: Callable[[], float] = time.monotonic,
         validate: Callable[[Any], None] | None = None,
+        dispatcher_prompt: Callable[[], str] = str,
     ) -> None:
-        """validate(настройки) — проверка правки целиком; ValueError — status invalid."""
+        """validate(настройки) — проверка правки целиком; ValueError — status invalid.
+
+        dispatcher_prompt() — итоговый промпт входного исполнителя (с правилами обработчиков).
+        """
         self._store = store
         self._events = events
         self._feed = feed
@@ -60,6 +64,7 @@ class Core:
         self._loaded = loaded
         self._devices = devices
         self._version = version
+        self._dispatcher_prompt = dispatcher_prompt
         self._clock = clock
         self._started = clock()
         self._state = "warming"
@@ -120,11 +125,12 @@ class Core:
         }
 
     def config(self) -> dict[str, Any]:
-        """Действующие настройки, ключи владельца и разделы, требующие перезапуска."""
+        """Действующие настройки, ключи владельца, разделы с перезапуском и итоговый промпт."""
         return {
             "effective": self._store.effective(),
             "overridden": self._store.overridden(),
             "restart_sections": list(RESTART_SECTIONS),
+            "dispatcher_prompt": self._dispatcher_prompt(),
         }
 
     async def patch_config(self, patch: dict[str, Any]) -> ChangeResult:

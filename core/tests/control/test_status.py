@@ -92,6 +92,14 @@ async def test_config_lists_effective_overridden_and_restart_sections() -> None:
     assert config["overridden"] == ["history"]
     assert config["restart_sections"] == ["server", "stt", "arbitration"]
     assert RESTART_SECTIONS == ("server", "stt", "arbitration")
+    assert config["dispatcher_prompt"] == "Промпт. Правила."
+    await h.core.aclose()
+
+
+async def test_config_reads_dispatcher_prompt_on_every_call() -> None:
+    h = Harness()
+    h.prompt = "Новый промпт."
+    assert h.core.config()["dispatcher_prompt"] == "Новый промпт."
     await h.core.aclose()
 
 

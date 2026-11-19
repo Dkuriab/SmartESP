@@ -98,7 +98,7 @@ class CorePort(Protocol):
         ...
 
     def config(self) -> dict[str, Any]:
-        """Возвращает {effective, overridden, restart_sections}."""
+        """Возвращает {effective, overridden, restart_sections, dispatcher_prompt}."""
         ...
 
     async def patch_config(self, patch: dict[str, Any]) -> ChangeResult:

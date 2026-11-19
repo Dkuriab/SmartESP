@@ -94,12 +94,17 @@ def with_stage_hints(prompt: str, stages: Sequence[Stage]) -> str:
     return "\n".join([prompt, *hints])
 
 
+def dispatcher_prompt(config: Config, kinds: Kinds) -> str:
+    """Итоговый промпт входного исполнителя для интерфейса (обработчики без моделей)."""
+    stages = [kinds.stages[s.kind](s) for s in config.stages if s.kind in kinds.stages]
+    return with_stage_hints(config.entry_executor().system_prompt, stages)
+
+
 def make_answering(config: Config, kinds: Kinds) -> Answering:
     """Обработчики из настроек и входной исполнитель с их правилами в промпте."""
     stages = [(_pick(kinds.stages, s.kind, "stage")(s), s.timeout_ms / 1000) for s in config.stages]
-    entry = config.entry_executor()
-    prompt = with_stage_hints(entry.system_prompt, [stage for stage, _ in stages])
-    entry = entry.model_copy(update={"system_prompt": prompt})
+    prompt = with_stage_hints(config.entry_executor().system_prompt, [stage for stage, _ in stages])
+    entry = config.entry_executor().model_copy(update={"system_prompt": prompt})
     executor = _pick(kinds.executors, entry.kind, "executor")(entry)
     return functools.partial(run_stages, stages), executor
 
@@ -189,6 +194,7 @@ def assemble(
         devices=hub.devices,
         version=version,
         validate=_kinds_validator(kinds),  # иначе после перезапуска ядро не стартует
+        dispatcher_prompt=lambda: dispatcher_prompt(store.config, kinds),  # настройки = живые части
     )
     run_file = RunFile(home / "run" / "core.json")
     parts = Assembly(

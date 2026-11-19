@@ -53,6 +53,7 @@ export function makeConfig(effective: Record<string, unknown> = {}): Config {
     },
     overridden: [],
     restart_sections: [],
+    dispatcher_prompt: 'Отвечай коротко\nПравило шёпота',
   }
 }
 

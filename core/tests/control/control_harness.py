@@ -90,6 +90,7 @@ class Harness:
         self.loaded_gate: asyncio.Event | None = None
         self.model_list: list[tuple[str, int]] | Exception = [("qwen", 5_000)]
         self.device_list: list[DeviceInfo] = []
+        self.prompt = "Промпт. Правила."
         self.core = Core(
             self.store,
             {name: s.section() for name, s in self.sections.items()},
@@ -101,6 +102,7 @@ class Harness:
             devices=lambda: self.device_list,
             version="1.2.3",
             clock=lambda: self.now,
+            dispatcher_prompt=lambda: self.prompt,
         )
 
     async def _models(self) -> list[tuple[str, int]]:

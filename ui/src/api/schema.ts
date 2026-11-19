@@ -211,6 +211,8 @@ export interface components {
             overridden: string[];
             /** Restart Sections */
             restart_sections: string[];
+            /** Dispatcher Prompt */
+            dispatcher_prompt: string;
         };
         /**
          * DeviceOut

@@ -68,3 +68,21 @@ async def test_executors_and_stages_together_build_one_executor(tmp_path: Path) 
     await applied.aclose()
     await stop(core)
     await finish(core)
+
+
+async def test_config_shows_dispatcher_prompt_with_stage_rules(tmp_path: Path) -> None:
+    core = make_core(tmp_path, fake_kinds(ollama_factory([])))
+    entry = core.config.entry_executor()
+    async with client(core) as http:
+        prompt = (await http.get("/api/v1/config", headers=HEADERS)).json()["dispatcher_prompt"]
+        assert prompt.startswith(entry.system_prompt) and "[style:quiet]" in prompt
+        applied = core.bus.subscribe()
+        await core.core.patch_config({"stages": []})
+        async with asyncio.timeout(2):
+            change = await anext(e.data async for e in applied if e.kind == "change_applied")
+        assert change["ok"], change
+        prompt = (await http.get("/api/v1/config", headers=HEADERS)).json()["dispatcher_prompt"]
+        assert prompt == entry.system_prompt
+    await applied.aclose()
+    await core.core.aclose()
+    await finish(core)

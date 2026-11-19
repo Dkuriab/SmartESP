@@ -145,13 +145,13 @@ curl -X PATCH -H "Authorization: Bearer $(cat ~/SmartEsp/token)" \
 | Запрос | Что делает |
 |---|---|
 | `GET /status` | версия, `uptime_s`, `state` (`warming`, `ready`, `stopping`), Ollama (`reachable`, `loaded`), колонки, голос (`state`: `ready`, `downloading`, `failed`, `missing`), `applying`, `restart_required` |
-| `GET /config` | `effective` — настройки целиком, `overridden` — изменённые ключи через точку (`tts.kind`), `restart_sections` |
+| `GET /config` | `effective` — настройки целиком, `overridden` — изменённые ключи через точку (`tts.kind`), `restart_sections`, `dispatcher_prompt` — итоговый промпт диспетчера (`system_prompt` входного исполнителя + правила включённых обработчиков), только для чтения |
 | `PATCH /config` | частичные настройки в форме `config.yaml`: словари сливаются вглубь, списки заменяются целиком, `null` сбрасывает ключ к умолчанию. Ответ `{change_id, status, error}`: `accepted` или `restart_required` — 200, `invalid` — 422 (неизвестный ключ, неверное значение, неизвестный вид `kind` у `stt`, `tts`, исполнителя или обработчика), `stopping` — 503 |
 | `GET /models` | модели Ollama: `{name, size_bytes}` (Ollama недоступна — 502) |
 | `GET /voices` | голоса: `{kind, voice, title, size_mb, downloaded, current}` |
 | `POST /voices/download` | `{kind, voice}` → 202, `{change_id, status: "accepted"}`; ход скачивания — события `voice_download`, `voice_ready`. Голоса нет в каталоге `GET /voices` — 422 (`status: "invalid"`, текст в `error`), ядро останавливается — 503 (`status: "stopping"`) |
 | `POST /voices/preview` | `{kind, voice, style="normal", text=null}` → `audio/wav` (16 кГц, 16 бит, моно); голос не скачан (или ещё качается) — 409, неизвестный голос — 404, модель не озвучила образец — 500; тело ошибки `{detail}` |
-| `GET /turns?limit=100` | последние ходы (данные `turn_finished`), от новых к старым; ядро хранит 100 последних в памяти |
+| `GET /turns?limit=100` | последние ходы (данные `turn_finished`: `turn_id`, `device_id`, `device_name`, `text`, `annotations`, `style`, `answer`, `status`, `at` — время конца хода в секундах Unix, `stt_ms`, `first_text_ms`, `first_audio_ms`), от новых к старым; ядро хранит 100 последних в памяти |
 | `GET /access` | `{urls}` — адреса `http://<ip>:<порт>/?token=…` для входа с других компьютеров сети (без `127.*`) |
 | `POST /restart` | перезапуск ядра, ответ 202 |
 | `WS /events?token=` | поток событий JSON `{"kind", "data", "at"}`: `core_state`, `device_connected`, `device_disconnected`, `wake`, `arbitration`, `turn_started`, `turn_heard`, `turn_finished`, `change_applied`, `voice_download`, `voice_ready` |

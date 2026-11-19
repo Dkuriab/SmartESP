@@ -529,13 +529,18 @@
             },
             "type": "array",
             "title": "Restart Sections"
+          },
+          "dispatcher_prompt": {
+            "type": "string",
+            "title": "Dispatcher Prompt"
           }
         },
         "type": "object",
         "required": [
           "effective",
           "overridden",
-          "restart_sections"
+          "restart_sections",
+          "dispatcher_prompt"
         ],
         "title": "ConfigOut",
         "description": "Настройки: целиком, изменённые владельцем и разделы, требующие перезапуска."

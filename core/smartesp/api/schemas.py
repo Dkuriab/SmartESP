@@ -53,6 +53,8 @@ class ConfigOut(BaseModel):
     effective: dict[str, Any]
     overridden: list[str]
     restart_sections: list[str]
+    # итоговый промпт диспетчера с правилами включённых обработчиков; только для чтения
+    dispatcher_prompt: str
 
 
 class ErrorOut(BaseModel):

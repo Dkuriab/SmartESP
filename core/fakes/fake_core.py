@@ -68,6 +68,7 @@ class FakeCore:
             "effective": {"tts": {"kind": "piper"}},
             "overridden": ["tts.kind"],
             "restart_sections": ["server", "stt", "arbitration"],
+            "dispatcher_prompt": "Ты помощник.",
         }
 
     async def patch_config(self, patch: dict[str, Any]) -> ChangeResult:
