@@ -20,6 +20,7 @@ from .executor import (
 )
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
+from .tools import ToolBox, ToolResult
 from .tts import TextToSpeech, VoiceInfo, VoiceNotDownloadedError
 
 __all__ = [
@@ -47,7 +48,9 @@ __all__ = [
     "Stage",
     "Subscription",
     "TextToSpeech",
+    "ToolBox",
     "ToolCall",
+    "ToolResult",
     "ToolSpec",
     "Unloads",
     "UsesModels",
