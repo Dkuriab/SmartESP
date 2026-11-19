@@ -1,13 +1,19 @@
-"""Поиск калорийности по порядку: своя база → дневник → Open Food Facts → таблица."""
+"""Поиск калорийности: штрихкод — своя база → (Open Food Facts, если включён) →
+barcode-list.ru (только название) → таблица; по названию — своя база → дневник → таблица.
+"""
 
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 
-from . import diary, products
+from . import barcode_list, barcode_match, diary, products
+from .barcode_list import BarcodeList, NameResult
 from .food import Food
 from .names import tokens
 from .off import OffResult, OpenFoodFacts, valid_barcode
+from .speech import kcal as kcal_text
+from .speech import num
 from .table import table_foods
 
 MAX_OPTIONS = 3
@@ -102,28 +108,101 @@ def by_name(root: Path, name: str) -> Found | Reply:
     return found or Reply(f"Не знаю калорийность «{name}». Скажи, сколько ккал на 100 г.")
 
 
-def _off_reply(result: OffResult, code: str) -> str:
+@dataclass(frozen=True)
+class Lookups:
+    """Сетевые справочники: `off` — Open Food Facts (None — выключен), `names` — barcode-list.ru."""
+
+    names: BarcodeList
+    off: OpenFoodFacts | None = None
+
+
+def _off_reply(result: OffResult | None) -> str | None:
+    """Ответ про Open Food Facts, если он что-то сказал сверх «не нашлось»."""
+    if result is None:
+        return None
     if result.status == "offline":
         return "Нет связи с Open Food Facts — штрихкод не проверить. Скажи название продукта."
     if result.status == "no_kcal":
         return f"Нашла «{result.name}», но калорийности в базе нет. Скажи, сколько ккал на 100 г."
+    return None
+
+
+def _names_reply(result: NameResult, code: str) -> str:
+    if result.status == "offline":
+        return "Нет связи со справочником штрихкодов — штрихкод не проверить. Скажи название продукта."
+    if result.status == "busy":
+        return (
+            "Справочник штрихкодов отвечает не чаще раза в 10 секунд. Повтори чуть позже или скажи название."
+        )
     return f"Не знаю продукт со штрихкодом {code}. Скажи название и сколько ккал на 100 г — запомню."
 
 
-def _off_note(result: OffResult) -> str:
-    if result.status == "offline":
+def _names_note(result: NameResult, off: OffResult | None) -> str:
+    if off is not None and off.status == "offline":
         return "Нет связи с Open Food Facts — считаю по названию."
+    if result.status == "offline":
+        return "Нет связи со справочником штрихкодов — считаю по названию."
+    if result.status == "found":
+        return f"По штрихкоду нашла «{result.name}»."
     return "По штрихкоду калорийность не нашла — считаю по названию."
 
 
-async def resolve(root: Path, name: str, barcode: str, off: OpenFoodFacts) -> Found | Reply:
+def _from_barcode_name(root: Path, code: str, name: str) -> Reply:
+    """Название с barcode-list.ru: предложить похожее (не писать молча) или спросить ккал."""
+    pack = barcode_match.pack_grams(name)
+    pack_text = f", упаковка {num(pack)} г" if pack else ""
+    found = barcode_match.candidates(root, name)
+    if not found:
+        return Reply(
+            f"Нашла: {name}{pack_text}. Калорийности не знаю — скажи, сколько ккал на 100 г, "
+            f"и я запомню по штрихкоду {code}."
+        )
+    options = tuple(c.food.name for c in found)
+    text = ", ".join(f"«{c.food.name}» — {kcal_text(c.food.kcal_100g)} ккал на 100 г" for c in found)
+    return Reply(
+        f"Нашла: {name}{pack_text}. Похоже на {text}. Записать? "
+        "Если да — повтори запись с этим названием и тем же штрихкодом.",
+        options,
+    )
+
+
+def _with_pack(found: Found, pack: float) -> Found:
+    """Продукту без веса штуки и упаковки подставляется упаковка из названия товара."""
+    food = found.food
+    if pack and not food.piece_grams and not food.pack_grams:
+        return replace(found, food=replace(food, pack_grams=pack))
+    return found
+
+
+async def _network_names(
+    root: Path, code: str, lookups: Lookups, now: datetime
+) -> tuple[Found | None, OffResult | None, NameResult]:
+    """Open Food Facts (если включён), затем название с barcode-list.ru (кэш — 30 дней)."""
+    off_result: OffResult | None = None
+    if lookups.off is not None:
+        off_result = await lookups.off.lookup(code)
+        if off_result.food is not None:
+            products.upsert(root, off_result.food, "off")
+            return Found(off_result.food, "off"), off_result, NameResult("missing")
+    cached = barcode_list.cached(root, code, now)
+    names = cached or await lookups.names.lookup(code)
+    if cached is None:
+        barcode_list.remember(root, code, names, now)
+    return None, off_result, names
+
+
+async def resolve(root: Path, name: str, barcode: str, lookups: Lookups, now: datetime) -> Found | Reply:
     """Калорийность продукта по штрихкоду и/или названию (порядок — в описании модуля).
 
     Штрихкод не помог, но есть название — ищется по названию с пояснением в `note`.
+    Название с barcode-list.ru само калорийность не даёт: продукт таблицы предлагается
+    вопросом (запись — только после подтверждения, названием продукта).
     """
     if not barcode.strip():
         return by_name(root, name)
     code = valid_barcode(barcode)
+    off_result: OffResult | None = None
+    names = NameResult("missing")
     if code is None:
         if not tokens(name):
             return Reply(bad_barcode(barcode))
@@ -132,14 +211,16 @@ async def resolve(root: Path, name: str, barcode: str, off: OpenFoodFacts) -> Fo
         own = products.by_barcode(root, code)
         if own is not None:
             return Found(own, "own")
-        result = await off.lookup(code)
-        if result.food is not None:
-            products.upsert(root, result.food, "off")
-            return Found(result.food, "off")
+        online, off_result, names = await _network_names(root, code, lookups, now)
+        if online is not None:
+            return online
         if not tokens(name):
-            return Reply(_off_reply(result, code))
-        note = _off_note(result)
+            if names.status == "found":
+                return _from_barcode_name(root, code, names.name)
+            return Reply(_off_reply(off_result) or _names_reply(names, code))
+        note = _names_note(names, off_result)
     found = by_name(root, name)
     if isinstance(found, Found):
-        return replace(found, note=note)
+        pack = barcode_match.pack_grams(names.name) if names.status == "found" else 0.0
+        return replace(_with_pack(found, pack), note=note)
     return replace(found, text=f"{note} {found.text}")

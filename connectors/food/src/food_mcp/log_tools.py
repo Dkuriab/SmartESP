@@ -12,9 +12,9 @@ from . import choice, diary, products
 from .context import root_of
 from .diary import Entry
 from .food import Food
-from .lookup import NOTHING, Found, bad_barcode, resolve
+from .lookup import NOTHING, Found, Lookups, bad_barcode, resolve
 from .names import parse_amount, tokens
-from .off import OpenFoodFacts, valid_barcode
+from .off import valid_barcode
 from .speech import day_words, kcal, num, plural
 from .when import parse_when
 
@@ -87,7 +87,7 @@ def _product_error(name: str, kcal_100g: float, macros: tuple[float, ...], barco
 
 
 async def log_food(
-    root: Path, off: OpenFoodFacts, now: datetime, what: str, grams: float, barcode: str, when: str
+    root: Path, lookups: Lookups, now: datetime, what: str, grams: float, barcode: str, when: str
 ) -> str:
     """Записывает съеденное и возвращает ответ для озвучки."""
     amount = parse_amount(what)
@@ -100,7 +100,7 @@ async def log_food(
         return f"Не поняла время «{when.strip()}». Скажи, например, «вчера» или «8:30»."
     if not tokens(amount.name) and not barcode.strip():
         return NOTHING
-    found = await resolve(root, amount.name, barcode, off)
+    found = await resolve(root, amount.name, barcode, lookups, now)
     if not isinstance(found, Found):
         if found.options:
             choice.remember(root, amount.name, found.options, now)
@@ -136,7 +136,7 @@ def add_product(
     return f"{verb}: {clean} — {kcal(kcal_100g)} ккал на 100 г{pack_text}."
 
 
-def register(server: MCPServer, data_dir: Path, now: Callable[[], datetime], off: OpenFoodFacts) -> None:
+def register(server: MCPServer, data_dir: Path, now: Callable[[], datetime], lookups: Lookups) -> None:
     """Регистрирует инструменты записи на сервере."""
 
     @server.tool(
@@ -152,7 +152,7 @@ def register(server: MCPServer, data_dir: Path, now: Callable[[], datetime], off
         barcode: Annotated[str, Field(description="Штрихкод с упаковки, если есть")] = "",
         when: Annotated[str, Field(description="Когда: «вчера», «8:30»; пусто — сейчас")] = "",
     ) -> str:
-        return await log_food(root_of(ctx, data_dir), off, now(), what, grams, barcode, when)
+        return await log_food(root_of(ctx, data_dir), lookups, now(), what, grams, barcode, when)
 
     @server.tool(
         description=(
