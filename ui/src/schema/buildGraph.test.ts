@@ -31,6 +31,13 @@ describe('buildGraph', () => {
     expect(node(buildGraph(makeState({ status })), 'device:aa:bb:cc')?.data.label).toBe('aa:bb:cc')
   })
 
+  it('config-only device is offline', () => {
+    const cfg = config([])
+    cfg.effective.devices = { zz: { name: 'Балкон' } }
+    const g = buildGraph(makeState({ config: cfg }))
+    expect(node(g, 'device:zz')?.data).toMatchObject({ label: 'Балкон', offline: true })
+  })
+
   it('no devices gives a hint node', () => {
     const g = buildGraph(makeState({ status: makeStatus({ devices: [] }) }))
     expect(g.nodes.filter((n) => n.id.startsWith('device:'))).toHaveLength(0)

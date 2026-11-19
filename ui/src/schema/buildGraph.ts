@@ -7,7 +7,10 @@ export const KNOWN_STAGES = [{ kind: 'whisper_detect', title: 'Шёпот' }]
 
 export type Graph = { nodes: Node[]; edges: Edge[] }
 
-const [X_0, X_1, X_2, X_3] = [0, 260, 520, 780] as [number, number, number, number]
+const X_0 = 0
+const X_1 = 260
+const X_2 = 520
+const X_3 = 780
 const GAP = 84
 const HINT = 'Колонок пока нет: включите колонку, она появится сама'
 

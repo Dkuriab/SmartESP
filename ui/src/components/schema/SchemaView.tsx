@@ -19,7 +19,10 @@ export default function SchemaView({ state, actions }: Props) {
   const graph = useMemo(() => buildGraph(state), [state])
   const { selected } = state
   const nodes = useMemo(
-    () => graph.nodes.map((n) => ({ ...n, selected: selected?.kind === n.data.kind && selected?.id === n.data.id })),
+    () => graph.nodes.map((n) => ({
+        ...n,
+        selected: n.type !== 'hint' && selected?.kind === n.data.kind && selected?.id === n.data.id,
+      })),
     [graph, selected],
   )
   const edges = useMemo(() => graph.edges.map(styled), [graph])
@@ -36,6 +39,8 @@ export default function SchemaView({ state, actions }: Props) {
       fitView
       nodesDraggable={false}
       nodesConnectable={false}
+      selectNodesOnDrag={false}
+      deleteKeyCode={null}
       edgesFocusable={false}
       elementsSelectable
       proOptions={{ hideAttribution: true }}

@@ -5,8 +5,8 @@ import type { CoreState } from '../../state/model'
 import Notice from '../common/Notice'
 import RestartBanner from '../common/RestartBanner'
 import TokenScreen from '../common/TokenScreen'
-import SchemaView from '../schema/SchemaView'
 import Feed from '../feed/Feed'
+import SchemaView from '../schema/SchemaView'
 import type { Tab } from '../top/TopBar'
 import TopBar from '../top/TopBar'
 import './layout.css'
@@ -19,9 +19,11 @@ export default function Shell({ state, actions }: Props) {
   return (
     <main className="canvas">
       {!full && <aside className="panel left" aria-label="Список" />}
-      {!full && <section className="schema" aria-label="Схема">
+      {!full && (
+        <section className="schema" aria-label="Схема">
           <SchemaView state={state} actions={actions} />
-        </section>}
+        </section>
+      )}
       {!full && <aside className="panel right" aria-label="Настройки" />}
       <Feed turns={state.turns} selectedId={state.selectedTurnId} onSelect={actions.selectTurn} full={full} />
       <TopBar state={state} tab={tab} onTab={setTab} />
