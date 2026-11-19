@@ -20,7 +20,7 @@ from contextvars import ContextVar
 from smartesp.contracts import ReplyPart, ToolObserver, ToolUse
 
 from .streams import closing
-from .turn import Turn
+from .turn import Turn, turn_id
 
 _log = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ class TurnActivity:
             self._publish("executor_active", {**self._ids(), "executor": executor, "state": state})
 
     def _ids(self) -> dict[str, object]:
-        return {"turn_id": self._turn.utterance.turn, "device_id": self._turn.utterance.device_id}
+        return {"turn_id": turn_id(self._turn), "device_id": self._turn.utterance.device_id}
 
 
 def watched(parts: AsyncIterator[ReplyPart]) -> AsyncIterator[ReplyPart]:

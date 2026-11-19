@@ -20,6 +20,7 @@ from .sentences import DEFAULT_STYLE, strip_style_tag
 _log = logging.getLogger(__name__)
 
 _CLOSERS = " \t\n\"'»“”)!.…"  # кавычки, скобки и «!», «.» после «?» («Правда?!», «Что?..»)
+API_ORIGIN = "api"  # origin реплики хода через API (вопрос текстом или голосовым сообщением)
 
 
 @dataclass(frozen=True)
@@ -59,10 +60,18 @@ class Turn:
     last_sentence: str = ""  # последнее озвученное предложение (после clean_for_speech)
     # законченные вызовы инструментов: {executor, connector, tool, ok}
     tools: list[dict[str, object]] = field(default_factory=list[dict[str, object]])
+    source: str = ""  # ход через API: откуда вопрос ("telegram"); у колонки — пусто
+    person: str = ""  # ход через API: кто спрашивает; неизвестно — пусто
 
     def elapsed_ms(self) -> float:
         """Сколько миллисекунд прошло с прихода реплики."""
         return (time.monotonic() - self.received_at) * 1000
+
+
+def turn_id(turn: Turn) -> int | str:
+    """Номер хода для событий и ответа: у колонки — её номер хода, у хода через API — "api<номер>"."""
+    number = turn.utterance.turn
+    return f"{API_ORIGIN}{number}" if turn.utterance.origin == API_ORIGIN else number
 
 
 def format_ms(value: float | None) -> str:

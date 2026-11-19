@@ -44,6 +44,8 @@ async def test_turn_events_sequence() -> None:
         "delegations": [],
         "tools": [],
         "origin": "wake",
+        "source": "",
+        "person": "",
         "kind": "turn",
     }
     assert all(is_delay(finished[k]) for k in ("stt_ms", "first_text_ms", "first_audio_ms"))

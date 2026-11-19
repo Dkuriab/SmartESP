@@ -14,11 +14,12 @@ class TurnTasks:
         """Пустой набор."""
         self._tasks: set[asyncio.Task[None]] = set()
 
-    def start(self, coro: Coroutine[object, object, None], name: str) -> None:
-        """Запускает ход отдельной задачей; её ошибка (кроме отмены) пишется в журнал."""
+    def start(self, coro: Coroutine[object, object, None], name: str) -> asyncio.Task[None]:
+        """Запускает ход отдельной задачей и возвращает её; её ошибка (кроме отмены) пишется в журнал."""
         task = asyncio.create_task(coro, name=name)
         self._tasks.add(task)
         task.add_done_callback(self._on_done)
+        return task
 
     def _on_done(self, task: asyncio.Task[None]) -> None:
         """Забывает задачу хода и пишет в журнал её ошибку, если была."""

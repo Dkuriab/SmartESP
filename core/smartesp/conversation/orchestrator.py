@@ -1,6 +1,8 @@
-"""Оркестратор хода: вопрос с колонки → STT → пометки → исполнитель → TTS → звук на колонку."""
+"""Оркестратор хода: вопрос с колонки → STT → пометки → исполнитель → TTS → звук на колонку.
 
-import dataclasses
+Ходы через API (текст или голос → ответ текстом) ведёт asking.ApiTurns в том же наборе задач.
+"""
+
 import functools
 import logging
 import time
@@ -9,27 +11,28 @@ from collections.abc import AsyncIterator
 from smartesp.contracts import (
     Analyzer,
     Announcer,
+    Answer,
     ChatMessage,
     DevicePort,
     EventSink,
     Executor,
     ExecutorError,
+    Question,
     SpeechToText,
     TextToSpeech,
     Utterance,
 )
 
 from . import handoffs
-from .activity import TurnActivity, watched
+from .activity import watched
+from .asking import ASK_LIMIT_S, ApiTurns, AskParts
 from .history import History
 from .late import LATE_LIMIT_S, LateAnswers
-from .prompt import build_messages
 from .sentences import is_meaningless
 from .speaking import speak_answer, speak_text
+from .steps import begin, end, hear, remember, settle, understand
 from .streams import closing, first_part, no_audio
-from .turn import Parts, Turn, answer_text, asks_question, log_turn
-from .turn_events import finished_data, heard_data, started_data
-from .turn_messages import turn_messages
+from .turn import Parts, Turn, asks_question
 from .turn_tasks import TurnTasks
 
 _log = logging.getLogger(__name__)
@@ -59,6 +62,7 @@ class Orchestrator:
         part_idle_s: float = PART_IDLE_S,
         delegate_limit_s: float = handoffs.DELEGATE_FIRST_PART_LIMIT_S,
         late_limit_s: float = LATE_LIMIT_S,
+        ask_limit_s: float = ASK_LIMIT_S,
     ) -> None:
         """Колонки, распознавание, обработчики, исполнитель, синтез и история.
 
@@ -66,7 +70,7 @@ class Orchestrator:
         ошибки и пустой ответ. events — куда публиковать события хода. В секундах:
         thinking_interval_s — период «думаю», пока ждём первый кусок; first_part_limit_s —
         предел первого куска; part_idle_s — следующего; delegate_limit_s — первого куска цели
-        передачи; late_limit_s — запоздавшего ответа цели от начала хода.
+        передачи; late_limit_s — запоздавшего ответа цели от начала хода; ask_limit_s — хода через API.
         """
         self._devices = devices
         self._stt = stt
@@ -82,6 +86,9 @@ class Orchestrator:
         self._delegate_limit_s = delegate_limit_s
         self._tasks = TurnTasks()
         self._late = LateAnswers(devices, history, self._publish, part_idle_s, late_limit_s)
+        self._asking = ApiTurns(
+            history, self._publish, self._tasks, self._ask_parts, first_part_limit_s, part_idle_s, ask_limit_s
+        )
         self._listen_after_question = True
 
     def use_stt(self, stt: SpeechToText) -> None:
@@ -119,6 +126,10 @@ class Orchestrator:
             raise RuntimeError("синтез речи не готов")
         return speak_text(tts, text)
 
+    async def ask(self, question: Question) -> Answer:
+        """Ход через API без звука — ответ текстом (asking.ApiTurns); не готово — AskUnavailable."""
+        return await self._asking.ask(question)
+
     @property
     def ready(self) -> bool:
         """True, если заданы все четыре части: распознавание, обработчики, исполнитель и синтез."""
@@ -126,8 +137,7 @@ class Orchestrator:
 
     def stop_accepting(self) -> None:
         """Перестаёт принимать ходы (новые получают сигнал ошибки и пустой ответ) и откладывать ответы."""
-        self._accepting = False
-        self._late.accepting = False
+        self._accepting = self._asking.accepting = self._late.accepting = False
 
     async def drain(self, timeout_s: float) -> None:
         """Ждёт идущие ходы не дольше timeout_s секунд, затем отменяет оставшиеся и дожидается их.
@@ -166,6 +176,11 @@ class Orchestrator:
             return None
         return Parts(stt, analyze, executor, tts)
 
+    def _ask_parts(self) -> AskParts | None:
+        """Части для хода через API (синтез не нужен) или None, если обработчиков или исполнителя нет."""
+        analyze, executor = self._analyze, self._executor
+        return None if analyze is None or executor is None else AskParts(self._stt, analyze, executor)
+
     def _publish(self, kind: str, data: dict[str, object]) -> None:
         """Публикует событие хода, если задан приёмник."""
         if self._events is not None:
@@ -183,8 +198,7 @@ class Orchestrator:
         """
         turn = Turn(utterance, self._devices.device_name(utterance.device_id), received_at)
         parts = self._snapshot() if self._accepting else None
-        activity = TurnActivity.bind(turn, self._publish)  # и вызовы инструментов узнают свой ход
-        self._publish("turn_started", started_data(turn))
+        activity = begin(turn, self._publish)
         try:
             if parts is None:
                 _log.warning("Колонка %s: ядро не готово или останавливается", turn.device_name)
@@ -197,29 +211,23 @@ class Orchestrator:
             turn.failed = True
             await self._recover(turn)
         finally:
-            activity.finish()
-            self._publish("turn_finished", finished_data(turn))
-            log_turn(turn)
+            end(turn, activity, self._publish)
         if self._listen_after_question and asks_question(turn):
             await self._devices.listen_after(utterance.device_id, utterance.turn)
 
     async def _converse(self, turn: Turn, parts: Parts) -> None:
         """Распознаёт, понимает, отвечает и записывает завершённый ход в историю."""
-        turn.text = await parts.stt.transcribe(turn.utterance.pcm)
-        turn.stt_ms = turn.elapsed_ms()
-        self._publish("turn_heard", heard_data(turn))
+        await hear(turn, parts.stt, self._publish)
         if is_meaningless(turn.text):
             turn.meaningless = True
             await self._play(turn, no_audio())
             return
         if not self._is_live(turn):
             return
-        turn.annotations = await parts.analyze(dataclasses.replace(turn.utterance, text=turn.text))
-        messages = build_messages(turn.annotations, self._history.messages(), turn.text, turn.device_name)
+        messages = await understand(turn, parts.analyze, self._history, turn.device_name)
         await self._reply(turn, parts, messages)
-        answer = answer_text(turn)
-        if turn.completed and answer and self._is_live(turn):
-            self._history.add_messages(turn_messages(turn))
+        if self._is_live(turn):
+            remember(turn, self._history)
 
     async def _recover(self, turn: Turn) -> None:
         """После ошибки: сигнал ошибки и, если ответ ещё не начат, пустой ответ (reply_end)."""
@@ -268,18 +276,7 @@ class Orchestrator:
                 await self._play(
                     turn, speak_answer(turn, parts.tts, sentences, functools.partial(self._is_live, turn))
                 )
-        await self._finish_reply(turn)
-
-    async def _finish_reply(self, turn: Turn) -> None:
-        """Итог проигранного ответа.
-
-        Пустой ответ модели — сбой. Сигнал ошибки — только если звука не было:
-        оборванного на полуслове ответа или фразы об ошибке колонке достаточно.
-        """
-        if turn.completed and not answer_text(turn):
-            _log.warning("Колонка %s: модель вернула пустой ответ", turn.device_name)
-            turn.completed = False
-            turn.failed = True
+        settle(turn)  # сигнал ошибки — только если звука не было: оборванного ответа колонке достаточно
         if turn.failed and turn.first_audio_ms is None:
             await self._error_tone(turn)
 

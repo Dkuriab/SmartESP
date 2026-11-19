@@ -5,7 +5,7 @@ import time
 from smartesp.contracts import Handoff
 
 from .sentences import DEFAULT_STYLE
-from .turn import Turn, answer_text
+from .turn import Turn, answer_text, turn_id
 
 
 def _ms(value: float | None) -> int | None:
@@ -30,7 +30,7 @@ def delegation_data(handoff: Handoff) -> dict[str, object]:
 def started_data(turn: Turn) -> dict[str, object]:
     """Данные turn_started: какой ход и с какой колонки."""
     return {
-        "turn_id": turn.utterance.turn,
+        "turn_id": turn_id(turn),
         "device_id": turn.utterance.device_id,
         "device_name": turn.device_name,
     }
@@ -38,11 +38,14 @@ def started_data(turn: Turn) -> dict[str, object]:
 
 def heard_data(turn: Turn) -> dict[str, object]:
     """Данные turn_heard: распознанный текст и время распознавания."""
-    return {"turn_id": turn.utterance.turn, "text": turn.text, "stt_ms": _ms(turn.stt_ms)}
+    return {"turn_id": turn_id(turn), "text": turn.text, "stt_ms": _ms(turn.stt_ms)}
 
 
 def finished_data(turn: Turn) -> dict[str, object]:
-    """Данные turn_finished: время, вопрос, пометки, ответ, путь, передачи и инструменты, итог, задержки."""
+    """Данные turn_finished: время, вопрос, пометки, ответ, путь, передачи и инструменты, итог, задержки.
+
+    origin — откуда ход (wake, listen, api); у хода через API ещё source и person, у колонки они пусты.
+    """
     return {
         **started_data(turn),
         "at": time.time(),
@@ -58,6 +61,8 @@ def finished_data(turn: Turn) -> dict[str, object]:
         "first_text_ms": _ms(turn.first_text_ms),
         "first_audio_ms": _ms(turn.first_audio_ms),
         "origin": turn.utterance.origin,
+        "source": turn.source,
+        "person": turn.person,
         "kind": "turn",
     }
 

@@ -1,5 +1,6 @@
 """Договоры ядра: только типы и протоколы, без логики."""
 
+from .ask import Answer, AskUnavailable, AudioUndecodable, Question
 from .audio import SAMPLE_RATE, Utterance
 from .control import ChangeResult, ConfigStore, CorePort, Section, VoicePort
 from .device import Delivery, DeviceInfo, DevicePort
@@ -30,6 +31,9 @@ __all__ = [
     "Analyzer",
     "Announcer",
     "Annotation",
+    "Answer",
+    "AskUnavailable",
+    "AudioUndecodable",
     "ChangeResult",
     "ChatMessage",
     "ConfigStore",
@@ -46,6 +50,7 @@ __all__ = [
     "ExecutorError",
     "Handoff",
     "Identified",
+    "Question",
     "ReplyPart",
     "Section",
     "SpeechToText",
