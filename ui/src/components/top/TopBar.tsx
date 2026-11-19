@@ -1,10 +1,44 @@
-// Верхние панели: вкладки «Схема» и «Лента» по центру, состояние справа.
+// Верхние панели: вкладки «Схема» и «Лента» по центру, состояние справа;
+// на узком экране — ещё кнопки «Список» и «Настройки».
 import type { CoreState } from '../../state/model'
 import StatusPill from './StatusPill'
 import './top.css'
 
 export type Tab = 'schema' | 'feed'
-type Props = { state: CoreState; tab: Tab; onTab: (tab: Tab) => void }
+/** Боковая панель, открытая поверх схемы на узком экране. */
+export type Overlay = 'list' | 'settings'
+type Props = {
+  state: CoreState
+  tab: Tab
+  onTab: (tab: Tab) => void
+  /** Открытая панель (null — никакой); не передан — кнопок панелей нет. */
+  overlay?: Overlay | null
+  onOverlay?: (overlay: Overlay | null) => void
+}
+
+const OVERLAYS: Array<[Overlay, string]> = [
+  ['list', 'Список'],
+  ['settings', 'Настройки'],
+]
+
+/** Кнопки панелей: видны только на узком экране (см. top.css); повторное нажатие закрывает. */
+function OverlayToggles({ overlay, onOverlay }: { overlay: Overlay | null; onOverlay: (o: Overlay | null) => void }) {
+  return (
+    <div className="panel top-toggles">
+      {OVERLAYS.map(([id, label]) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={overlay === id}
+          className={`seg${overlay === id ? ' on' : ''}`}
+          onClick={() => onOverlay(overlay === id ? null : id)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 const CORE_TEXT = { warming: 'прогревается', ready: 'работает', stopping: 'останавливается' }
 const TABS: Array<[Tab, string]> = [
@@ -26,7 +60,7 @@ function Status({ state }: { state: CoreState }) {
   )
 }
 
-export default function TopBar({ state, tab, onTab }: Props) {
+export default function TopBar({ state, tab, onTab, overlay, onOverlay }: Props) {
   return (
     <>
       <div className="panel top-tabs" role="tablist">
@@ -43,6 +77,7 @@ export default function TopBar({ state, tab, onTab }: Props) {
           </button>
         ))}
       </div>
+      {overlay !== undefined && onOverlay && <OverlayToggles overlay={overlay} onOverlay={onOverlay} />}
       <div className="panel top-status">
         <Status state={state} />
       </div>

@@ -82,3 +82,14 @@
   padding: 8px 10px;
   font: inherit;
 }
+
+/* Узкий экран: плашка под строкой состояния, уведомление над лентой. */
+@media (max-width: 900px) {
+  .banner {
+    top: 100px;
+  }
+
+  .notice {
+    bottom: 216px;
+  }
+}

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { makeActions, makeState, makeStatus, makeTurn } from '../fixtures'
 import Shell from './Shell'
@@ -50,5 +50,36 @@ describe('Shell', () => {
     render(<Shell state={makeState({ notice: { text: 'Ошибка', tone: 'error' } })} actions={actions} />)
     await userEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
     expect(actions.dismissNotice).toHaveBeenCalled()
+  })
+
+  it('узкий экран: «Список» и «Настройки» открывают панели поверх схемы', async () => {
+    render(<Shell state={makeState()} actions={makeActions()} />)
+    const list = screen.getByRole('button', { name: 'Список' })
+    expect(list).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByLabelText('Список')).not.toHaveClass('open')
+    await userEvent.click(list)
+    expect(list).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('complementary', { name: 'Список' })).toHaveClass('open')
+    await userEvent.click(screen.getByRole('button', { name: 'Настройки' }))
+    expect(screen.getByRole('complementary', { name: 'Список' })).not.toHaveClass('open')
+    expect(screen.getByRole('complementary', { name: 'Настройки' })).toHaveClass('open')
+    await userEvent.click(screen.getByRole('button', { name: 'Настройки' }))
+    expect(screen.getByRole('complementary', { name: 'Настройки' })).not.toHaveClass('open')
+  })
+
+  it('выбор блока в открытом списке открывает его настройки', async () => {
+    const actions = makeActions()
+    render(<Shell state={makeState()} actions={actions} />)
+    await userEvent.click(screen.getByRole('button', { name: 'Список' }))
+    const list = screen.getByRole('complementary', { name: 'Список' })
+    await userEvent.click(within(list).getByRole('button', { name: /Кухня/ }))
+    expect(actions.select).toHaveBeenCalledWith({ kind: 'device', id: 'a' })
+    expect(screen.getByRole('complementary', { name: 'Настройки' })).toHaveClass('open')
+  })
+
+  it('во вкладке «Лента» переключателей панелей нет', async () => {
+    render(<Shell state={makeState()} actions={makeActions()} />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Лента' }))
+    expect(screen.queryByRole('button', { name: 'Список' })).not.toBeInTheDocument()
   })
 })

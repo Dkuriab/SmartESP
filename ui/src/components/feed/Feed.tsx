@@ -25,7 +25,7 @@ export default function Feed({ turns, selectedId, onSelect, full = false }: Prop
           ))}
         </div>
       </div>
-      {selected && <TurnCard turn={selected} onClose={() => onSelect(null)} />}
+      {selected && <TurnCard turn={selected} full={full} onClose={() => onSelect(null)} />}
     </>
   )
 }

@@ -135,6 +135,13 @@
   z-index: 10;
 }
 
+/* Полная лента: карточка внутри неё, в правом нижнем углу. */
+.turn-card-full {
+  right: 32px;
+  bottom: 32px;
+  max-width: calc(100% - 64px);
+}
+
 .card-head {
   display: flex;
   justify-content: space-between;
@@ -149,4 +156,29 @@
 .card-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* Узкий экран: лента во всю ширину, карточка хода — внутри ленты. */
+@media (max-width: 900px) {
+  .feed {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    height: 200px;
+  }
+
+  .feed-full {
+    top: 100px;
+    height: auto;
+  }
+
+  .turn-card,
+  .turn-card-full {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: auto;
+    max-width: calc(100% - 32px);
+    max-height: calc(100% - 132px);
+  }
 }

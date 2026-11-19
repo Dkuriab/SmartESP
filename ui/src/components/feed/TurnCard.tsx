@@ -3,11 +3,16 @@ import type { Turn } from '../../state/model'
 import './feed.css'
 import { formatTime } from './time'
 
-type Props = { turn: Turn; onClose: () => void }
+type Props = {
+  turn: Turn
+  /** Лента на весь экран: карточка — в её правом нижнем углу. */
+  full?: boolean
+  onClose: () => void
+}
 
-export default function TurnCard({ turn, onClose }: Props) {
+export default function TurnCard({ turn, full = false, onClose }: Props) {
   return (
-    <div className="panel turn-card" role="dialog" aria-label="Ход">
+    <div className={`panel turn-card${full ? ' turn-card-full' : ''}`} role="dialog" aria-label="Ход">
       <div className="card-head">
         <span className="cap">
           {formatTime(turn.at)} · {turn.device_name || turn.device_id}

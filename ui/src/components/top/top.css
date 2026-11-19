@@ -62,3 +62,38 @@
 .dot-off {
   background: var(--faint);
 }
+
+.top-toggles {
+  display: none;
+}
+
+/* Узкий экран: вкладки и кнопки панелей в первой строке, состояние — во второй. */
+@media (max-width: 900px) {
+  .top-tabs {
+    left: 8px;
+    top: 8px;
+    transform: none;
+  }
+
+  .top-toggles {
+    right: 8px;
+    top: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px;
+  }
+
+  .top-status {
+    left: 8px;
+    right: 8px;
+    top: 54px;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 12px;
+  }
+
+  .seg {
+    padding: 6px 10px;
+  }
+}

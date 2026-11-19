@@ -74,4 +74,13 @@ describe('Feed', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Закрыть' }))
     expect(onSelect).toHaveBeenCalledWith(null)
   })
+
+  it('карточка хода — внутри ленты, в полной ленте тоже', () => {
+    const turns = [makeTurn(1)]
+    const view = render(<Feed turns={turns} selectedId={1} onSelect={vi.fn()} />)
+    expect(screen.getByRole('dialog', { name: 'Ход' })).toHaveClass('turn-card')
+    expect(screen.getByRole('dialog', { name: 'Ход' })).not.toHaveClass('turn-card-full')
+    view.rerender(<Feed turns={turns} selectedId={1} onSelect={vi.fn()} full />)
+    expect(screen.getByRole('dialog', { name: 'Ход' })).toHaveClass('turn-card', 'turn-card-full')
+  })
 })

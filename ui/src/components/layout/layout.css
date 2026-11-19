@@ -51,3 +51,30 @@
   top: 70px;
   bottom: 220px;
 }
+
+/* Узкий экран: схема и лента во всю ширину, боковые панели — поверх схемы по кнопкам. */
+@media (max-width: 900px) {
+  .left,
+  .right {
+    display: none;
+  }
+
+  .left.open,
+  .right.open {
+    display: block;
+    left: 8px;
+    right: 8px;
+    top: 100px;
+    bottom: 8px;
+    width: auto;
+    max-height: none;
+    z-index: 15;
+  }
+
+  .schema {
+    left: 8px;
+    right: 8px;
+    top: 100px;
+    bottom: 216px;
+  }
+}
