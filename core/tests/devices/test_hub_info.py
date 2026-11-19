@@ -63,13 +63,21 @@ async def test_connection_and_wake_events() -> None:
     conn, task = await accepted_turn(hub, clock, "A")
     assert sink.events[0] == (
         "device_connected",
-        {"device_id": "A", "name": "Кухня", "remote": "10.0.0.7:5000", "fw": "2.0"},
+        {"device_id": "A", "name": "Кухня", "remote": "10.0.0.7:5000", "fw": "2.0", "protocol": 2},
     )
     assert ("wake", {"device_id": "A", "level": -30.0}) in sink.events
     assert ("arbitration", {"device_id": "A", "decision": "accept"}) in sink.events
     conn.fail()
     await task
     assert sink.events[-1] == ("device_disconnected", {"device_id": "A"})
+
+
+async def test_connected_event_carries_protocol() -> None:
+    """Интерфейс узнаёт протокол из события, не дожидаясь перезагрузки /status."""
+    hub, _, _, sink = make()
+    await connect(hub, "A", protocol=3)
+    await eventually(lambda: bool(sink.events))
+    assert sink.events[0][0] == "device_connected" and sink.events[0][1]["protocol"] == 3
 
 
 async def test_arbitration_cancel_event() -> None:

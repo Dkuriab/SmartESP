@@ -88,7 +88,7 @@ describe('reduce: turn_finished', () => {
 })
 
 describe('reduce: колонки', () => {
-  it('device_connected обновляет известную колонку', () => {
+  it('device_connected обновляет известную колонку (нет протокола — остаётся прежний)', () => {
     const data = { device_id: 'aa:bb', name: 'Кухня', remote: '10.0.0.5', fw: '1.1' }
     const s = apply(withStatus(), ev('device_connected', data, 200))
     expect(s.status?.devices).toEqual([
@@ -104,12 +104,12 @@ describe('reduce: колонки', () => {
     ])
   })
 
-  it('device_connected добавляет неизвестную колонку', () => {
-    const data = { device_id: 'cc:dd', name: 'cc:dd', remote: '10.0.0.6', fw: '1.0' }
+  it('device_connected добавляет неизвестную колонку с протоколом из события', () => {
+    const data = { device_id: 'cc:dd', name: 'cc:dd', remote: '10.0.0.6', fw: '1.0', protocol: 3 }
     const s = apply(withStatus(), ev('device_connected', data))
-    expect(s.status?.devices.map((d) => [d.device_id, d.connected])).toEqual([
-      ['aa:bb', false],
-      ['cc:dd', true],
+    expect(s.status?.devices.map((d) => [d.device_id, d.connected, d.protocol])).toEqual([
+      ['aa:bb', false, 2],
+      ['cc:dd', true, 3],
     ])
   })
 

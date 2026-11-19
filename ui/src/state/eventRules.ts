@@ -38,6 +38,8 @@ function deviceEvent(state: CoreState, e: CoreEvent): CoreState {
           fw: str(e.data.fw),
           connected: true,
           last_seen: e.at,
+          // старое ядро протокол не шлёт: тогда оставляем известный
+          ...(typeof e.data.protocol === 'number' ? { protocol: e.data.protocol } : {}),
         }
       : { connected: false, last_seen: e.at }
   return { ...state, status: upsertDevice(state.status, id, patch) }

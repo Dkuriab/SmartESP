@@ -169,7 +169,7 @@ class DeviceHub(CoreTurns):
         self._registry.hello(session.device_id, remote, fw, session.protocol, self._wall_clock())
         logger.info("device %s connected from %s", session.device_id, remote)
         info = {"device_id": session.device_id, "name": self.device_name(session.device_id)}
-        self._publish("device_connected", {**info, "remote": remote, "fw": fw})
+        self._publish("device_connected", {**info, "remote": remote, "fw": fw, "protocol": session.protocol})
         if old is not None:
             self._end_session(old)
             self._spawn(close_quietly(old.conn), f"closing old session of {old.device_id}")
