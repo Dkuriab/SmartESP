@@ -29,13 +29,15 @@ _HALLUCINATIONS = (
 
 
 def _cut(buffer: str) -> tuple[str, str] | None:
-    """Ищет первую границу, до которой набралось не меньше MIN_SENTENCE_CHARS.
+    """Ищет первую границу: перевод строки или знак, до которого набралось MIN_SENTENCE_CHARS.
 
-    Возвращает (предложение, остаток) или None, если резать пока рано.
+    Перевод строки режет всегда, даже короткую фразу: так фраза перед вызовом
+    инструмента («Записываю.») звучит сразу. Возвращает (предложение, остаток;
+    предложение может быть пустым) или None, если резать пока рано.
     """
     for match in _BOUNDARY.finditer(buffer):
         sentence = buffer[: match.end()].strip()
-        if len(sentence) >= MIN_SENTENCE_CHARS:
+        if match.group() == "\n" or len(sentence) >= MIN_SENTENCE_CHARS:
             return sentence, buffer[match.end() :]
     return None
 
@@ -44,16 +46,18 @@ async def split_sentences(parts: AsyncIterator[ReplyPart]) -> AsyncIterator[str]
     """Режет поток кусков ответа на предложения.
 
     parts — куски ответа исполнителя. Предложение отдаётся, как только в
-    накопленном тексте есть «.», «!», «?», «…» с пробелом после или перевод
-    строки и набралось не меньше MIN_SENTENCE_CHARS символов; остаток — в конце.
-    Возвращает предложения без пробелов по краям, пустые пропускает.
+    накопленном тексте есть «.», «!», «?», «…» с пробелом после и набралось не
+    меньше MIN_SENTENCE_CHARS символов, или есть перевод строки (при любой
+    длине); остаток — в конце. Возвращает предложения без пробелов по краям,
+    пустые пропускает.
     """
     buffer = ""
     async for part in parts:
         buffer += part.text
         while (cut := _cut(buffer)) is not None:
             sentence, buffer = cut
-            yield sentence
+            if sentence:
+                yield sentence
     rest = buffer.strip()
     if rest:
         yield rest

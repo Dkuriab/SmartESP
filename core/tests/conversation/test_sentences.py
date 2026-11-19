@@ -27,6 +27,17 @@ async def test_newline_ends_sentence() -> None:
     assert out == ["Первая строка списка покупок", "Вторая строка"]
 
 
+async def test_newline_ends_short_sentence_too() -> None:
+    # короткая фраза перед вызовом инструмента звучит сразу, а не ждёт следующей
+    sentences = split_sentences(_parts("Записываю.\n", "Готово, хлеб в списке покупок."))
+    assert await anext(sentences) == "Записываю."
+    assert [s async for s in sentences] == ["Готово, хлеб в списке покупок."]
+
+
+async def test_empty_lines_give_no_sentences() -> None:
+    assert await _split("Да.\n\n\nНет") == ["Да.", "Нет"]
+
+
 async def test_dot_without_space_is_not_a_boundary() -> None:
     # «3.5» не режется, а точка в конце куска ждёт следующего куска
     out = await _split("Температура сейчас 3.", "5 градусов. Ветер слабый, без осадков.")
