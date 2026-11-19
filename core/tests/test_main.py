@@ -23,7 +23,7 @@ from fakes.fake_executor import FakeOllama
 from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
 from smartesp.config import Config, TtsConfig
-from smartesp.main import EXECUTOR_KINDS, KINDS, STAGE_KINDS, STT_KINDS, TTS_KINDS, main
+from smartesp.main import EXECUTOR_KINDS, KINDS, STAGE_KINDS, STT_KINDS, TTS_KINDS, _setup_logging, main
 from smartesp.wiring import StartupError, check_kinds
 
 
@@ -205,7 +205,9 @@ def test_sigterm_with_parent_alive_exits_zero(tmp_path: Path) -> None:
         log.close()
     output = (tmp_path / "out.log").read_text(encoding="utf-8", errors="replace")
     assert "Fatal Python error" not in output
-    assert "Остановка: готово" in output
+    # с --parent-watch в консоль идут только предупреждения; полный журнал — в core.log
+    assert "Остановка: готово" not in output
+    assert "Остановка: готово" in (home / "logs" / "core.log").read_text(encoding="utf-8")
     assert not (home / "run" / "core.json").exists()
 
 
@@ -246,3 +248,17 @@ def test_error_escaping_loop_still_ends_process(
     main([], exit_process=codes.append)
     assert codes == [code]
     assert ("Ядро упало" in (home / "logs" / "core.log").read_text(encoding="utf-8")) is logged
+
+
+@pytest.mark.parametrize(("quiet", "console_level"), [(False, logging.NOTSET), (True, logging.WARNING)])
+def test_quiet_console_keeps_full_file_log(home: Path, quiet: bool, console_level: int) -> None:
+    """Под приложением (--parent-watch) в консоль только WARNING+, в core.log — всё с INFO."""
+    root = logging.getLogger()
+    before = list(root.handlers)
+    _setup_logging(home / "logs", quiet_console=quiet)
+    added = [h for h in root.handlers if h not in before]
+    files = [h for h in added if isinstance(h, logging.FileHandler)]
+    consoles = [h for h in added if not isinstance(h, logging.FileHandler)]
+    assert len(files) == 1 and len(consoles) == 1
+    assert files[0].level == logging.NOTSET and root.level == logging.INFO
+    assert consoles[0].level == console_level

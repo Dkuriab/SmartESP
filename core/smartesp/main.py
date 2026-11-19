@@ -66,11 +66,17 @@ KINDS = Kinds(STT_KINDS, TTS_KINDS, EXECUTOR_KINDS, STAGE_KINDS)
 OLLAMA = Ollama(list_models, loaded_models)
 
 
-def _setup_logging(logs: Path) -> None:
-    """Журнал в консоль и в logs/core.log (5 файлов по 1 МБ); токен из адресов спрятан."""
+def _setup_logging(logs: Path, *, quiet_console: bool = False) -> None:
+    """Журнал в консоль и в logs/core.log (5 файлов по 1 МБ); токен из адресов спрятан.
+
+    quiet_console — в консоль только WARNING и выше: под приложением stderr идёт в
+    core-stderr.log, и полный журнал там дублировал бы core.log.
+    """
     logs.mkdir(parents=True, exist_ok=True)
     formatter = logging.Formatter(LOG_FORMAT)
     console = logging.StreamHandler()
+    if quiet_console:
+        console.setLevel(logging.WARNING)
     file = RotatingFileHandler(
         logs / "core.log", maxBytes=LOG_MAX_BYTES, backupCount=LOG_BACKUPS, encoding="utf-8"
     )
@@ -165,7 +171,7 @@ def main(
         _write_openapi(args.openapi)
         return
     home = data_dir()
-    _setup_logging(home / "logs")
+    _setup_logging(home / "logs", quiet_console=args.parent_watch)
     store = ConfigFile(home / "config.yaml")
     try:
         config = store.load()
