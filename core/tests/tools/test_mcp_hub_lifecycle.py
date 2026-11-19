@@ -164,3 +164,15 @@ async def test_aclose_cancels_pending_apply_and_ignores_later(tmp_path: Path):
     await asyncio.sleep(0.2)
     assert hub.states() == []
     assert not (tmp_path / "connectors" / "a" / "pid").exists()
+
+
+async def test_bounded_aclose_kills_stubborn_connector(tmp_path: Path):
+    hub = McpHub(tmp_path)
+    await hub.start([spec("s", "stubborn"), spec("a")])
+    pids = [file_pid(tmp_path, "s"), file_pid(tmp_path, "a")]
+    assert state(hub, "s").state == "ready"
+    began = time.monotonic()
+    await hub.aclose(timeout_s=1.0)
+    assert time.monotonic() - began < 2.5
+    await wait_until(lambda: not any(alive(pid) for pid in pids), timeout=2.0)
+    assert not (tmp_path / "run" / "connectors" / "s.pid").exists()

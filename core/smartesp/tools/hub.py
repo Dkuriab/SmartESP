@@ -73,6 +73,8 @@ class McpHub:
             old = self._connectors
             stale = [c for cid, c in old.items() if wanted.get(cid) != c.spec]
             await asyncio.gather(*(c.stop() for c in stale))
+            if self._closed:
+                return  # пока останавливали старые, хаб закрыли: новые не запускаем
             fresh: list[Connector] = []
             connectors: dict[str, Connector] = {}
             for cid, spec in wanted.items():
@@ -120,14 +122,21 @@ class McpHub:
             for c in self._connectors.values()
         ]
 
-    async def aclose(self) -> None:
-        """Останавливает все коннекторы и их процессы; фоновые правки отменяются. Повтор безопасен."""
+    async def aclose(self, timeout_s: float | None = None) -> None:
+        """Останавливает все коннекторы и их процессы; фоновые правки отменяются. Повтор безопасен.
+
+        timeout_s — сколько ждать мирного закрытия каждого (все — одновременно); не закрылся —
+        SIGKILL его группе процессов. None — обычный запасной предел. Замок правок не ждёт:
+        идущая правка, увидев закрытие, ничего не запускает.
+        """
         self._closed = True
-        async with self._lock:
-            connectors = list(self._connectors.values())
-            self._connectors = {}
-            self._rebuild()
+        connectors = list(self._connectors.values())
+        self._connectors = {}
+        self._rebuild()
+        if timeout_s is None:
             await asyncio.gather(*(c.stop() for c in connectors))
+        else:
+            await asyncio.gather(*(c.stop(timeout_s) for c in connectors))
         applying = list(self._applying)
         for task in applying:
             task.cancel()

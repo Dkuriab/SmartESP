@@ -4,14 +4,17 @@
 - без режима — обычный сервер;
 - `garbage` — перед запуском печатает мусор в stdout;
 - `hang` — никогда не отвечает и не читает stdin (не запускается);
-- `exit` — сразу завершается с ошибкой.
+- `exit` — сразу завершается с ошибкой;
+- `stubborn` — работает как обычный, но не выходит ни по концу stdin, ни по SIGTERM.
 """
 
 from __future__ import annotations
 
 import asyncio
 import os
+import signal
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -122,6 +125,9 @@ def main() -> None:
     if mode == "hang":
         while True:
             time.sleep(60)
+    if mode == "stubborn":
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        threading.Thread(target=lambda: time.sleep(3600)).start()  # не даёт процессу выйти
     if mode == "garbage":
         print("это не JSON", flush=True)
     server.run("stdio")

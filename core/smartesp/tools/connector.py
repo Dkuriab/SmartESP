@@ -13,18 +13,20 @@ from typing import Protocol, TextIO, cast
 
 import anyio
 from anyio.streams.memory import MemoryObjectSendStream
-from mcp import ClientSession, StdioServerParameters, stdio_client, types
+from mcp import ClientSession, stdio_client, types
 from mcp.shared.exceptions import MCPError
 from mcp.shared.message import SessionMessage
 
 from smartesp.contracts import ToolResult
 
 from .messages import handle_log, logger, tool_result
+from .process import kill_group, launch_params
 from .specs import AnnounceHandler, ConnectorSpec, StateName
 
 DATA_ENV = "SMARTESP_CONNECTOR_DATA"  # папка данных коннектора
 STABLE_S = 60.0  # проработал дольше — счёт падений для задержек начинается заново
 STOP_TIMEOUT_S = 10.0  # запасной предел остановки: SDK закрывает процесс за ~6,5 с (stdin, SIGTERM, SIGKILL)
+KILL_WAIT_S = 1.0  # после SIGKILL ждём конца задачи не дольше
 CALL_GRACE_S = 2.0  # запас сверх предела вызова на случай, если не сработал предел SDK
 
 Incoming = SessionMessage | Exception
@@ -58,6 +60,7 @@ class Connector:
         self.error = ""
         self.tools: tuple[types.Tool, ...] = ()  # последний полученный список (держится и при падении)
         self._data_dir = data_dir / "connectors" / spec.id
+        self._pid_file = data_dir / "run" / "connectors" / f"{spec.id}.pid"
         self._on_announce = on_announce
         self._on_change = on_change
         self._start_timeout_s = start_timeout_s
@@ -78,14 +81,21 @@ class Connector:
         """Ждёт конца первой попытки запуска: готов, упал или выключен."""
         await self._settled.wait()
 
-    async def stop(self) -> None:
-        """Останавливает коннектор и его процесс; не бросает исключений."""
+    async def stop(self, timeout_s: float = STOP_TIMEOUT_S) -> None:
+        """Останавливает коннектор и его процесс; не бросает исключений.
+
+        Не закрылся за timeout_s (SDK: stdin, SIGTERM, SIGKILL) — группа процессов
+        коннектора получает SIGKILL сразу; итого не дольше timeout_s + KILL_WAIT_S.
+        """
         self._scope.cancel()
         task = self._task
         if task is not None:
-            done, _ = await asyncio.wait({task}, timeout=STOP_TIMEOUT_S)
+            done, _ = await asyncio.wait({task}, timeout=timeout_s)
             if not done:
-                logger.error("Коннектор %s не остановился за %g с", self.spec.id, STOP_TIMEOUT_S)
+                kill_group(self._pid_file, self.spec.id)
+                done, _ = await asyncio.wait({task}, timeout=KILL_WAIT_S)
+            if not done:
+                logger.error("Коннектор %s не остановился", self.spec.id)
                 task.cancel()
         self._session = None
 
@@ -134,6 +144,7 @@ class Connector:
         finally:
             self._session = None
             self._settled.set()
+            self._pid_file.unlink(missing_ok=True)
 
     async def _supervise(self) -> None:
         """Запускает сессию снова и снова; между падениями ждёт по restart_delays_s."""
@@ -179,7 +190,7 @@ class Connector:
     async def _open(self, stack: AsyncExitStack) -> tuple[ClientSession, anyio.Event]:
         """Запускает подпроцесс и открывает сессию; lost срабатывает, когда процесс закрыл stdout."""
         self._data_dir.mkdir(parents=True, exist_ok=True)
-        params = StdioServerParameters(command=self.spec.command, args=list(self.spec.args), env=self._env())
+        params = launch_params(self.spec.command, self.spec.args, self._env(), self._pid_file)
         read, write = await stack.enter_async_context(stdio_client(params, errlog=_errlog()))
         send, receive = anyio.create_memory_object_stream[Incoming](0)
         stack.push_async_callback(receive.aclose)
