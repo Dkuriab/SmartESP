@@ -1,8 +1,7 @@
 import AppKit
-import SmartEspKit
 
-// Пока пустой делегат: логика появится в следующих задачах.
-final class AppDelegate: NSObject, NSApplicationDelegate {}
+// Второй экземпляр не запускает второе ядро: показывает окно первого и выходит
+if SingleInstance.handOffToRunning() { exit(0) }
 
 let app = NSApplication.shared
 let delegate = AppDelegate()
