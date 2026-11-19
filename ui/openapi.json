@@ -726,6 +726,121 @@
         }
       }
     },
+    "/api/v1/core": {
+      "get": {
+        "summary": "Get Core",
+        "operationId": "get_core_api_v1_core_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoreInfoOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/core/stop": {
+      "post": {
+        "summary": "Stop Core",
+        "operationId": "stop_core_api_v1_core_stop_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/models/unload": {
+      "post": {
+        "summary": "Unload Model",
+        "operationId": "unload_model_api_v1_models_unload_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnloadIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/access": {
       "get": {
         "summary": "Get Access",
@@ -1000,6 +1115,45 @@
         ],
         "title": "ConnectorOut",
         "description": "MCP-коннектор: состояние, инструменты (как их видит модель; только у готового), ошибка."
+      },
+      "CoreInfoOut": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "uptime_s": {
+            "type": "number",
+            "title": "Uptime S"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "warming",
+              "ready",
+              "stopping"
+            ],
+            "title": "State"
+          },
+          "port": {
+            "type": "integer",
+            "title": "Port"
+          },
+          "data_dir": {
+            "type": "string",
+            "title": "Data Dir"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "uptime_s",
+          "state",
+          "port",
+          "data_dir"
+        ],
+        "title": "CoreInfoOut",
+        "description": "Ядро: версия, время работы, состояние, порт сервера из настроек и папка данных."
       },
       "DelegationOut": {
         "properties": {
@@ -1519,6 +1673,23 @@
         ],
         "title": "TurnOut",
         "description": "Данные события turn_finished."
+      },
+      "UnloadIn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "UnloadIn",
+        "description": "Какую модель выгрузить из памяти Ollama (имя как в status.ollama.loaded)."
       },
       "ValidationError": {
         "properties": {

@@ -6,6 +6,7 @@ import { connectEvents } from '../api/events'
 import { readToken, saveToken } from '../api/token'
 import type { CoreActions } from './actions'
 import { createActions } from './actions'
+import { createCoreActions } from './coreActions'
 import type { Loader } from './load'
 import { AFTER_CHANGE, ALL_RESOURCES, createLoader } from './load'
 import type { CoreState } from './model'
@@ -120,10 +121,12 @@ export function useCore(): [CoreState, CoreActions] {
   )
   // клиент и его ворота — на каждый токен: ответы старого клиента не меняют состояние;
   // отправленные исполнители переживают пересоздание действий
-  const { client, gate, sent } = useMemo(
-    () => ({ client: createClient(token.value ?? ''), gate: createGate(dispatch), sent: createSentExecutors() }),
-    [token],
-  )
+  const { client, gate, sent, coreTab } = useMemo(() => {
+    const client = createClient(token.value ?? '')
+    const gate = createGate(dispatch)
+    // действия вкладки «Ядро» — на токен: подписка на журнал не зависит от настроек
+    return { client, gate, sent: createSentExecutors(), coreTab: createCoreActions(client, gate.dispatch, token.value ?? '') }
+  }, [token])
   const onToken = useCallback((value: string) => {
     saveToken(storage(), value)
     dispatch({ type: 'connection', connection: 'connecting' })
@@ -136,8 +139,16 @@ export function useCore(): [CoreState, CoreActions] {
   const config = state.config
   // действия пересоздаются при новых настройках: правки исполнителей строятся на текущих executors
   const actions = useMemo(
-    () => createActions({ client, dispatch: gate.dispatch, getConfig: () => config, onToken, sentExecutors: sent }),
-    [client, gate, config, onToken, sent],
+    () =>
+      createActions({
+        client,
+        dispatch: gate.dispatch,
+        getConfig: () => config,
+        onToken,
+        sentExecutors: sent,
+        coreTab,
+      }),
+    [client, gate, config, onToken, sent, coreTab],
   )
   useEffect(() => {
     if (!token.value) return

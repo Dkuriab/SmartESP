@@ -78,6 +78,14 @@ function changeSent(state: CoreState, changeId: number, description: string, at:
   }
 }
 
+/** Выгруженная модель пропадает из status сразу, не дожидаясь следующего опроса. */
+function modelUnloaded(state: CoreState, name: string): CoreState {
+  const status = state.status
+  if (!status) return state
+  const loaded = status.ollama.loaded.filter((m) => m !== name)
+  return { ...state, status: { ...status, ollama: { ...status.ollama, loaded } } }
+}
+
 /** Новое состояние по действию; связь пропала — данные остаются. */
 export function reduce(state: CoreState, action: Action): CoreState {
   switch (action.type) {
@@ -103,6 +111,8 @@ export function reduce(state: CoreState, action: Action): CoreState {
       return { ...state, notice: null }
     case 'restarting':
       return { ...state, restarting: action.on }
+    case 'modelUnloaded':
+      return modelUnloaded(state, action.name)
     case 'filePhase':
       return setFilePhase(state, action.deviceId, action.phase, action.onlyFrom)
   }

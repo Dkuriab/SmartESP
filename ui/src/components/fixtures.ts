@@ -91,5 +91,10 @@ export function makeActions(): CoreActions {
     selectTurn: vi.fn(),
     dismissNotice: vi.fn(),
     showNotice: vi.fn(),
+    loadCoreInfo: vi.fn().mockResolvedValue(null),
+    stopCore: vi.fn().mockResolvedValue(true),
+    unloadModel: vi.fn().mockResolvedValue(undefined),
+    watchLogs: vi.fn(() => () => {}),
+    openInApp: vi.fn(),
   } as unknown as CoreActions
 }

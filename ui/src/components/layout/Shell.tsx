@@ -5,6 +5,7 @@ import { listExecutors } from '../../schema/blocks'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState } from '../../state/model'
 import Notice from '../common/Notice'
+import CoreTab from '../core/CoreTab'
 import RestartBanner from '../common/RestartBanner'
 import TokenScreen from '../common/TokenScreen'
 import Feed from '../feed/Feed'
@@ -21,7 +22,7 @@ export default function Shell({ state, actions }: Props) {
   const [tab, setTab] = useState<Tab>('schema')
   // открытая поверх схемы панель (только на узком экране; на широком панели видны всегда)
   const [overlay, setOverlay] = useState<Overlay | null>(null)
-  const full = tab === 'feed'
+  const full = tab !== 'schema'
   const open = (which: Overlay) => (overlay === which ? ' open' : '')
   // выбор блока в списке или на схеме открывает его настройки (на широком экране они и так видны)
   const picking: CoreActions = {
@@ -48,7 +49,11 @@ export default function Shell({ state, actions }: Props) {
           <SettingsPanel state={state} actions={actions} />
         </aside>
       )}
-      <Feed turns={state.turns} executors={listExecutors(state)} selectedId={state.selectedTurnId} onSelect={actions.selectTurn} full={full} />
+      {tab === 'core' ? (
+        <CoreTab state={state} actions={actions} />
+      ) : (
+        <Feed turns={state.turns} executors={listExecutors(state)} selectedId={state.selectedTurnId} onSelect={actions.selectTurn} full={full} />
+      )}
       <TopBar state={state} tab={tab} onTab={setTab} overlay={full ? undefined : overlay} onOverlay={setOverlay} />
       {state.status?.restart_required && (
         <RestartBanner onRestart={() => void actions.restart()} restarting={state.restarting} online={state.connection === 'online'} />

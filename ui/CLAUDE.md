@@ -1,8 +1,9 @@
 # SmartESP UI — правила части
 
 Веб-интерфейс ядра: Vite + React + TypeScript. Ядро отдаёт `ui/dist` по `/`;
-интерфейс общается с ним только через `/api/v1` и `/api/v1/events` (WebSocket).
-Других путей к ядру нет.
+интерфейс общается с ним только через `/api/v1` и WebSocket `/api/v1/events`
+(события) и `/api/v1/logs` (журнал). Других путей к ядру нет. В окне Mac-приложения
+есть ещё мост `window.smartespBridge` (`src/api/bridge.ts`): открыть файлы ядра в Finder.
 
 ## Структура
 

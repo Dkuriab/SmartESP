@@ -92,6 +92,8 @@ export type Action =
   | { type: 'dismissNotice' }
   /** Просьба о перезапуске отправлена (on) или не удалась. */
   | { type: 'restarting'; on: boolean }
+  /** Модель выгружена из памяти Ollama: до следующего status её нет в списке. */
+  | { type: 'modelUnloaded'; name: string }
   /** Фаза файла на колонке (null — не играет); onlyFrom — менять, только если сейчас эта фаза. */
   | { type: 'filePhase'; deviceId: string; phase: FilePhase | null; onlyFrom?: FilePhase }
 

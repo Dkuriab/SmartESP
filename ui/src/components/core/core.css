@@ -1,0 +1,149 @@
+/* Вкладка «Ядро»: слева состояние и модели, справа журнал. */
+.core-full {
+  left: 16px;
+  right: 16px;
+  top: 70px;
+  bottom: 16px;
+  display: flex;
+  gap: 16px;
+  padding: 14px;
+}
+
+.core-side {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.core-facts {
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.core-facts div {
+  display: flex;
+  gap: 10px;
+}
+
+.core-facts dt {
+  width: 100px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.core-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.core-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.core-buttons .btn-danger {
+  margin-top: 0;
+}
+
+.core-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.core-models {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.core-models li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.core-model-name {
+  overflow-wrap: anywhere;
+}
+
+.core-log {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.core-log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.core-filter {
+  display: flex;
+  gap: 4px;
+}
+
+.core-log-lines {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.core-line {
+  margin: 0;
+  font: 12px/1.45 ui-monospace, 'SF Mono', Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.core-line.level-warning {
+  color: var(--orange);
+}
+
+.core-line.level-error,
+.core-line.level-critical {
+  color: var(--red-text);
+}
+
+.core-resume {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+}
+
+/* Узкий экран: колонки друг под другом. */
+@media (max-width: 900px) {
+  .core-full {
+    left: 8px;
+    right: 8px;
+    top: 100px;
+    bottom: 8px;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .core-side {
+    width: auto;
+    overflow: visible;
+  }
+
+  .core-log {
+    min-height: 320px;
+  }
+}

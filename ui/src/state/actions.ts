@@ -1,5 +1,7 @@
 // Действия интерфейса: запросы к ядру. Ошибки становятся уведомлениями.
 import type { createClient } from '../api/client'
+import type { CoreTabActions } from './coreActions'
+import { createCoreActions } from './coreActions'
 import type { ExecutorActions } from './executorActions'
 import { createExecutorActions } from './executorActions'
 import type { FileActions } from './fileActions'
@@ -16,7 +18,8 @@ export type Client = ReturnType<typeof createClient>
 export type StageEntry = { kind: string; timeout_ms?: number }
 
 export type CoreActions = ExecutorActions &
-  FileActions & {
+  FileActions &
+  CoreTabActions & {
   /** Частичная правка настроек; description показывается, пока она применяется. */
   patchConfig(patch: Record<string, unknown>, description: string): Promise<void>
   downloadVoice(kind: string, voice: string): Promise<void>
@@ -47,6 +50,11 @@ export type ActionDeps = {
   getConfig: () => Config | null
   /** Новый токен: сохранить и переподключиться. */
   onToken: (token: string) => void
+  /**
+   * Действия вкладки «Ядро» (с токеном для журнала). Живут дольше самих действий, чтобы
+   * подписка на журнал не переподключалась с каждыми настройками; по умолчанию — свои, без токена.
+   */
+  coreTab?: CoreTabActions
   /** Часы, мс (в тестах — поддельные). */
   now?: () => number
   /**
@@ -95,6 +103,7 @@ export function createActions(deps: ActionDeps): CoreActions {
   return {
     ...createExecutorActions({ dispatch, getConfig, sent }, sendPatch),
     ...createFileActions(client, dispatch),
+    ...(deps.coreTab ?? createCoreActions(client, dispatch, '')),
     patchConfig: patch,
     previewVoice,
     loadAccess,

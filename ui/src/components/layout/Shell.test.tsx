@@ -38,6 +38,14 @@ describe('Shell', () => {
     expect(screen.getByLabelText('Настройки')).toBeInTheDocument()
   })
 
+  it('вкладка «Ядро» прячет схему и ленту и показывает журнал', async () => {
+    render(<Shell state={makeState({ turns: [makeTurn(1)] })} actions={makeActions()} />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Ядро' }))
+    expect(screen.queryByLabelText('Настройки')).not.toBeInTheDocument()
+    expect(screen.queryByText('вопрос 1')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Журнал')).toBeInTheDocument()
+  })
+
   it('клик по ходу выделяет его через actions.selectTurn', async () => {
     const actions = makeActions()
     render(<Shell state={makeState({ turns: [makeTurn(7)] })} actions={actions} />)
