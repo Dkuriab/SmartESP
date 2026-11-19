@@ -2,12 +2,11 @@
 
 // Обёртку ESP_SR не вызываем (она всегда грузит MultiNet, который падает,
 // и не отдаёт очищенный звук), но подключаем: только тогда ядро кладёт
-// srmodels.bin (модели слова) в сборку и прошивает его в раздел model.
+// srmodels.bin (модели AFE) в сборку и прошивает его в раздел model.
 #include "ESP_SR.h"
 #include "esp_afe_sr_iface.h"
 #include "esp_afe_sr_models.h"
 #include "esp_vad.h"
-#include "esp_wn_iface.h"
 #include "freertos/idf_additions.h"
 #include "model_path.h"
 
@@ -15,6 +14,7 @@ namespace {
 
 constexpr size_t FEED_QUEUE_FRAMES = 32;          // ~1 с при кадре 32 мс
 constexpr size_t CLEAN_QUEUE_SAMPLES = 16000 * 2;  // 2 с очищенного звука
+constexpr size_t WAKE_QUEUE_SAMPLES = 16000;       // 1 с звука для слова пробуждения
 constexpr UBaseType_t EVENT_QUEUE_LENGTH = 8;
 constexpr uint32_t LOG_PERIOD_MS = 1000;
 
@@ -42,6 +42,7 @@ bool VoiceFrontend::begin(const VoiceFrontendConfig& config) {
     return false;
   }
   afeConfig->vad_min_noise_ms = config.vadSilenceMs;
+  afeConfig->wakenet_init = false;  // слово ищет wake_word (microWakeWord)
   // Пока VAD «дослушивает» само слово (≈ vadSilenceMs), события речи не выдаём.
   speech_ = SpeechTracker(config.vadSilenceMs + 100);
   const esp_afe_sr_iface_t* afe = esp_afe_handle_from_config(afeConfig);
@@ -61,11 +62,12 @@ bool VoiceFrontend::begin(const VoiceFrontendConfig& config) {
   frame_ = (int16_t*)heap_caps_calloc(chunk_ * channels_, sizeof(int16_t), MALLOC_CAP_INTERNAL);
   feedQueue_ = xStreamBufferCreateWithCaps(frameBytes * FEED_QUEUE_FRAMES, frameBytes, MALLOC_CAP_SPIRAM);
   cleanQueue_ = xStreamBufferCreateWithCaps(CLEAN_QUEUE_SAMPLES * sizeof(int16_t), 1, MALLOC_CAP_SPIRAM);
+  wakeQueue_ = xStreamBufferCreateWithCaps(WAKE_QUEUE_SAMPLES * sizeof(int16_t), 1, MALLOC_CAP_SPIRAM);
   for (float& level : levels_) {
     level = -100.0f;  // тишина, чтобы нули не выдавали себя за 0 дБFS
   }
   events_ = xQueueCreate(EVENT_QUEUE_LENGTH, sizeof(VoiceEvent));
-  if (!frame_ || !feedQueue_ || !cleanQueue_ || !events_) {
+  if (!frame_ || !feedQueue_ || !cleanQueue_ || !wakeQueue_ || !events_) {
     Serial.println("voice_frontend: нет памяти под буферы");
     return false;
   }
@@ -120,14 +122,22 @@ size_t VoiceFrontend::readClean(int16_t* dst, size_t maxSamples) {
   return xStreamBufferReceive(cleanQueue_, dst, maxSamples * sizeof(int16_t), 0) / sizeof(int16_t);
 }
 
+size_t VoiceFrontend::readForWake(int16_t* dst, size_t maxSamples) {
+  return xStreamBufferReceive(wakeQueue_, dst, maxSamples * sizeof(int16_t), 0) / sizeof(int16_t);
+}
+
+float VoiceFrontend::level() const {
+  return level_;
+}
+
 void VoiceFrontend::drainClean() {
   int16_t scratch[256];
   while (xStreamBufferReceive(cleanQueue_, scratch, sizeof(scratch), 0) > 0) {
   }
 }
 
-void VoiceFrontend::pushEvent(VoiceEventType type, float level) {
-  const VoiceEvent event{type, level};
+void VoiceFrontend::pushEvent(VoiceEventType type) {
+  const VoiceEvent event{type, 0.0f};
   if (xQueueSend(events_, &event, 0) != pdTRUE) {
     Serial.println("voice_frontend: очередь событий полна");
   }
@@ -161,14 +171,16 @@ void VoiceFrontend::fetchTask() {
 
     levels_[levelPos_] = res->data_volume;
     levelPos_ = (levelPos_ + 1) % LEVEL_FRAMES;
+    float level = levels_[0];
+    for (int i = 1; i < LEVEL_FRAMES; i++) {
+      if (levels_[i] > level) level = levels_[i];
+    }
+    level_ = level;
 
-    if (res->wakeup_state == WAKENET_DETECTED) {
-      // Слово произнесено чуть раньше срабатывания: берём максимум за последнюю секунду.
-      float level = levels_[0];
-      for (int i = 1; i < LEVEL_FRAMES; i++) {
-        if (levels_[i] > level) level = levels_[i];
-      }
-      pushEvent(VoiceEventType::WakeWord, level);
+    // Звук для слова пробуждения — всегда; кадр только целиком, иначе
+    // в очереди окажется полотсчёта. Не успевает читатель — кадр теряется.
+    if (res->data && res->data_size > 0 && xStreamBufferSpacesAvailable(wakeQueue_) >= (size_t)res->data_size) {
+      xStreamBufferSend(wakeQueue_, res->data, res->data_size, 0);
     }
 
     if (generation != captureGeneration_) {

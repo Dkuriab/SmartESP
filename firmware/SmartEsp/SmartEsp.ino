@@ -7,6 +7,8 @@
 #include "src/audio_out/AudioOut.h"
 #include "src/audio_in/AudioIn.h"
 #include "src/voice_frontend/VoiceFrontend.h"
+#include "src/wake_word/WakeWord.h"
+#include "src/wake_word/ModelData.h"
 #include "src/wifi_link/WifiLink.h"
 #include "src/server_link/ServerLink.h"
 #include "src/session/Session.h"
@@ -17,6 +19,7 @@ constexpr size_t AUDIO_BLOCK = 512;  // 32 мс
 AudioOut audioOut;
 AudioIn audioIn;
 VoiceFrontend voiceFrontend;
+WakeWord wakeWord;
 WifiLink wifiLink;
 ServerLink serverLink;
 Session session;
@@ -34,6 +37,11 @@ void setup() {
   audioIn.begin({.sckPin = 5, .wsPin = 4, .sdPin = 9},
                 [](int16_t* dst, size_t samples) { return audioOut.readReference(dst, samples); });
   voiceFrontend.begin({.vadSilenceMs = 500});
+  wakeWord.begin({.model = WAKE_MODEL_DATA,
+                  .modelSize = WAKE_MODEL_SIZE,
+                  .arenaSize = WAKE_MODEL_ARENA_SIZE,
+                  .cutoff = WAKE_MODEL_CUTOFF,
+                  .window = WAKE_MODEL_WINDOW});
   wifiLink.begin(WIFI_SSID, WIFI_PASSWORD);
   serverLink.begin(SERVER_HOST, SERVER_PORT, "/device", FW_VERSION);
   session.begin({});
@@ -53,7 +61,15 @@ void loop() {
     voiceFrontend.feed(micBlock, refBlock, n);
   }
 
-  // Слово, начало и конец речи → сценарий.
+  // Очищенный звук → поиск слова; слово (с громкостью) → сценарий.
+  while ((n = voiceFrontend.readForWake(audioBlock, AUDIO_BLOCK)) > 0) {
+    wakeWord.feed(audioBlock, n);
+  }
+  if (wakeWord.poll()) {
+    session.onVoiceEvent(VoiceEvent{VoiceEventType::WakeWord, voiceFrontend.level()});
+  }
+
+  // Начало и конец речи → сценарий.
   VoiceEvent voiceEvent;
   while (voiceFrontend.pollEvent(voiceEvent)) {
     session.onVoiceEvent(voiceEvent);

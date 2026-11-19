@@ -1,9 +1,9 @@
 #pragma once
 
-// voice_frontend — обработка звука ESP-SR (AFE): эхоподавление,
-// слово-активатор «Hi, ESP» и детектор речи (VAD).
-// На вход — пары «микрофон + образец динамика», на выход — события и
-// очищенный от эха звук (только пока включён захват).
+// voice_frontend — обработка звука ESP-SR (AFE): эхо- и шумоподавление и
+// детектор речи (VAD). WakeNet в AFE выключен: слово ищет модуль wake_word.
+// На вход — пары «микрофон + образец динамика», на выход — события речи,
+// очищенный звук для слова пробуждения (всегда) и для вопроса (при захвате).
 
 #include <Arduino.h>
 #include "freertos/FreeRTOS.h"
@@ -25,7 +25,7 @@ class VoiceFrontend {
   // Подаёт пары «микрофон + образец» любыми кусками. Не блокирует.
   void feed(const int16_t* mic, const int16_t* ref, size_t samples);
 
-  // Следующее событие, если есть: WakeWord; при захвате — SpeechStart, SpeechEnd.
+  // Следующее событие, если есть: SpeechStart, SpeechEnd (только при захвате).
   bool pollEvent(VoiceEvent& event);
 
   // Включает/выключает захват очищенного звука и событий речи.
@@ -36,12 +36,20 @@ class VoiceFrontend {
   // Не блокирует. Возвращает число отсчётов.
   size_t readClean(int16_t* dst, size_t maxSamples);
 
+  // Очищенный звук для слова пробуждения (PCM 16 кГц, моно) — всегда, отдельной
+  // от readClean очередью. Не блокирует. Возвращает число отсчётов.
+  size_t readForWake(int16_t* dst, size_t maxSamples);
+
+  // Громкость слова: максимум громкости кадров за последнюю ~1 с, дБFS.
+  // Слово произнесено чуть раньше срабатывания, поэтому берётся максимум.
+  float level() const;
+
  private:
   static void feedTaskEntry(void* self);
   static void fetchTaskEntry(void* self);
   void feedTask();
   void fetchTask();
-  void pushEvent(VoiceEventType type, float level = 0.0f);
+  void pushEvent(VoiceEventType type);
   void drainClean();
 
   // Интерфейс AFE (const esp_afe_sr_iface_t*). В заголовке — void*, потому что
@@ -55,6 +63,7 @@ class VoiceFrontend {
   int filled_ = 0;            // сколько отсчётов на канал уже в frame_
   StreamBufferHandle_t feedQueue_ = nullptr;   // целые кадры → задача подачи
   StreamBufferHandle_t cleanQueue_ = nullptr;  // очищенный звук → readClean
+  StreamBufferHandle_t wakeQueue_ = nullptr;   // очищенный звук → readForWake
   QueueHandle_t events_ = nullptr;
 
   SpeechTracker speech_;  // используется только в задаче выборки
@@ -64,6 +73,7 @@ class VoiceFrontend {
   static constexpr int LEVEL_FRAMES = 32;
   float levels_[LEVEL_FRAMES];  // заполняется тишиной в begin()
   int levelPos_ = 0;
+  volatile float level_ = -100.0f;  // максимум levels_; пишет задача выборки
   uint32_t droppedFrames_ = 0;
   uint32_t lastDropLogMs_ = 0;
 };

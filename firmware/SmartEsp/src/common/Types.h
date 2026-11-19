@@ -8,10 +8,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// ---------- voice_frontend → session ----------
+// ---------- voice_frontend, wake_word → session ----------
 
 enum class VoiceEventType : uint8_t {
-  WakeWord,     // услышано слово-активатор
+  WakeWord,     // услышано слово-активатор (wake_word; громкость — voice_frontend)
   SpeechStart,  // началась речь (только при включённом захвате)
   SpeechEnd,    // речь закончилась (только при включённом захвате)
 };
