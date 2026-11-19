@@ -137,7 +137,7 @@ class ExecutorNetwork:
         tools = _member_tools(member, offered, extra_tools)
         executor = member.executor
         if not offered:  # передать некому: ни правила, ни структуры вызовов delegate
-            own = flatten(own)
+            own = flatten(own, keep_tools=member.tools_ok)
             executor = member.plain or executor
         outcome = _Outcome()
         stream = member_stream(
@@ -213,7 +213,7 @@ class ExecutorNetwork:
         Любое исключение цели (Exception) или ответ без текста (пусто, пробелы,
         одна метка стиля) — в конце фраза об ошибке с failure.
         """
-        own = with_task(flatten(base), handoff.task)
+        own = with_task(flatten(base, keep_tools=True), handoff.task)  # без инструментов уберёт _member_parts
         said: list[str] = []
         try:
             parts = self._member_parts(handoff.target, base, own, (), depth)

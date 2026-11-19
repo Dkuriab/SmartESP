@@ -12,6 +12,7 @@ from smartesp.contracts import (
     Handoff,
     SpeechToText,
     TextToSpeech,
+    ToolCall,
     Utterance,
 )
 
@@ -31,6 +32,15 @@ class Parts:
     analyze: Analyzer
     executor: Executor
     tts: TextToSpeech
+
+
+@dataclass(frozen=True)
+class ToolExchange:
+    """Законченный вызов инструмента в ходе: кто вызвал, вызов модели и ответ инструмента."""
+
+    executor: str
+    call: ToolCall
+    result: str
 
 
 @dataclass
@@ -60,6 +70,7 @@ class Turn:
     last_sentence: str = ""  # последнее озвученное предложение (после clean_for_speech)
     # законченные вызовы инструментов: {executor, connector, tool, ok}
     tools: list[dict[str, object]] = field(default_factory=list[dict[str, object]])
+    exchanges: list[ToolExchange] = field(default_factory=list[ToolExchange])  # те же вызовы для истории
     source: str = ""  # ход через API: откуда вопрос ("telegram"); у колонки — пусто
     person: str = ""  # ход через API: кто спрашивает; неизвестно — пусто
 

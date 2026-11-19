@@ -4,7 +4,7 @@ import re
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 
-from smartesp.contracts import ChatMessage, ReplyPart
+from smartesp.contracts import DELEGATE_TOOL, ChatMessage, ReplyPart
 
 TASK_PREFIX = "\n\nЗадача от диспетчера: "  # дописывается к последнему сообщению user у цели
 # строки перед вопросом в сообщении user (их собирает conversation.build_messages)
@@ -41,18 +41,32 @@ def question(messages: list[ChatMessage]) -> str:
     return "\n".join(lines).strip()
 
 
-def flatten(messages: list[ChatMessage]) -> list[ChatMessage]:
-    """Диалог для цели: без вызовов инструментов, ответы инструментов — ответы assistant.
+def _connector_message(message: ChatMessage) -> bool:
+    """True у вызова инструмента коннектора (не delegate) и у ответа такого инструмента."""
+    if message.role == "tool":
+        return message.tool_name != DELEGATE_TOOL
+    return bool(message.tool_calls) and all(c.name != DELEGATE_TOOL for c in message.tool_calls)
+
+
+def flatten(messages: list[ChatMessage], keep_tools: bool = False) -> list[ChatMessage]:
+    """Диалог без структуры передач: вызовы delegate убраны, их ответы — ответы assistant.
 
     Подряд идущие ответы assistant (фраза и ответ цели) склеиваются в один через пробел.
+    Вызовы инструментов коннекторов и их ответы с keep_tools остаются как есть (участник
+    умеет инструменты), без него — убираются.
     """
     result: list[ChatMessage] = []
     for m in messages:
+        if _connector_message(m):
+            if keep_tools:
+                result.append(m)
+            continue
         if m.role == "assistant" and not m.content and m.tool_calls:
             continue
         role = "assistant" if m.role == "tool" else m.role
-        if role == "assistant" and result and result[-1].role == "assistant":
-            result[-1] = ChatMessage("assistant", f"{result[-1].content} {m.content}".strip())
+        last = result[-1] if result else None
+        if role == "assistant" and last is not None and last.role == "assistant" and not last.tool_calls:
+            result[-1] = ChatMessage("assistant", f"{last.content} {m.content}".strip())
         else:
             result.append(ChatMessage(role, m.content))
     return result

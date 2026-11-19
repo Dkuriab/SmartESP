@@ -91,7 +91,8 @@ class ToolLoop:
 
         keepalive_s — период keep-alive, followup_limit_s — сколько прикрывать повторный
         прогон (None — TOOL_KEEPALIVE_S и TOOL_FOLLOWUP_KEEPALIVE_LIMIT_S на момент создания).
-        observe — получает начало и конец каждого вызова ящика (отменённый — конец с ok=False).
+        observe — получает начало и конец каждого вызова ящика (отменённый — конец с ok=False);
+        конец несёт аргументы вызова и текст ответа инструмента (его видит модель).
         """
         self._source = source
         self._observe = observe
@@ -208,7 +209,10 @@ class ToolLoop:
             _log.exception("Ящик инструментов упал на вызове %s", call.name)
             return result
         finally:  # и при отмене: подсветка инструмента не должна остаться гореть
-            self._notify(ToolUse(self._source, call.name, "finished", ok=not result.is_error))
+            finished = ToolUse(
+                self._source, call.name, "finished", not result.is_error, call.arguments, result.text
+            )
+            self._notify(finished)
         if result.is_error:
             _log.warning("Инструмент %s вернул ошибку: %s", call.name, result.text)
         return result

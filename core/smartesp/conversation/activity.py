@@ -4,7 +4,8 @@
 - executor_active {turn_id, device_id, executor, state}: state — thinking (ждём первый
   текст), speaking (его ответ звучит), done (закончил или передал задачу);
 - tool_call {turn_id, device_id, executor, connector, tool, state, ok}: state — started
-  или finished; законченные вызовы копятся в turn.tools (для turn_finished).
+  или finished; законченные вызовы копятся в turn.tools (для turn_finished) и в
+  turn.exchanges (с аргументами и ответом инструмента — для истории).
 
 Ход привязывается к контексту своей задачи (contextvars): наблюдатель вызовов, который
 сеть исполнителей получила при сборке (tool_observer), узнаёт ход без явной передачи.
@@ -17,10 +18,10 @@ import logging
 from collections.abc import AsyncIterator, Callable
 from contextvars import ContextVar
 
-from smartesp.contracts import ReplyPart, ToolObserver, ToolUse
+from smartesp.contracts import ReplyPart, ToolCall, ToolObserver, ToolUse
 
 from .streams import closing
-from .turn import Turn, turn_id
+from .turn import ToolExchange, Turn, turn_id
 
 _log = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ class TurnActivity:
             self._done()
 
     def tool(self, use: ToolUse, connector: str) -> None:
-        """Событие tool_call; законченный вызов — в turn.tools."""
+        """Событие tool_call; законченный вызов — в turn.tools и (с аргументами и ответом) в exchanges."""
         self._publish(
             "tool_call",
             {
@@ -88,6 +89,8 @@ class TurnActivity:
             self._turn.tools.append(
                 {"executor": use.executor, "connector": connector, "tool": use.tool, "ok": use.ok}
             )
+            call = ToolCall(use.tool, dict(use.arguments))
+            self._turn.exchanges.append(ToolExchange(use.executor, call, use.result))
 
     def _see(self, part: ReplyPart) -> None:
         if part.handoff is not None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from .executor import ToolSpec
@@ -41,12 +41,16 @@ class ToolUse:
 
     executor — id участника, вызвавшего инструмент; tool — имя, как его видит модель;
     state — начат или закончен; ok — итог (у начатого всегда True).
+    У законченного ещё arguments — аргументы вызова модели и result — текст ответа
+    инструмента, который получила модель (для истории хода).
     """
 
     executor: str
     tool: str
     state: ToolPhase
     ok: bool = True
+    arguments: dict[str, object] = field(default_factory=dict[str, object])
+    result: str = ""
 
 
 ToolObserver = Callable[[ToolUse], None]  # получает вызовы инструментов; не должен бросать исключений

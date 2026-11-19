@@ -285,3 +285,20 @@ async def test_queued_question_uses_executor_swapped_while_waiting() -> None:
     assert (await queued).text == "Новый."
     assert (len(old.calls), len(new.calls)) == (2, 1)
     assert [(await task).text for task in running_turns] == ["Старый.", "Старый."]
+
+
+async def test_api_turn_keeps_tool_calls_in_history() -> None:
+    from test_activity import Scripted, finished_call
+
+    from smartesp.contracts import ToolCall
+    from smartesp.conversation import tool_observer
+
+    observe = tool_observer(lambda name: "food")
+    setup = Setup(Scripted([*finished_call(observe), "Сухая или варёная?"]))  # type: ignore[arg-type]
+    answer = await setup.orchestrator.ask(telegram("Запиши гречку"))
+    assert answer.text == "Сухая или варёная?"
+    assert setup.history.messages()[1:] == [
+        ChatMessage("assistant", "", tool_calls=(ToolCall("food_log", {"what": "гречка"}),)),
+        ChatMessage("tool", "Уточни: сухая или варёная?", tool_name="food_log"),
+        ChatMessage("assistant", "Сухая или варёная?"),
+    ]

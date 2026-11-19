@@ -9,7 +9,7 @@ from test_late_answer import GatedNetwork, late_setup
 
 from fakes.fake_announcer import FakeAnnouncer
 from fakes.fake_events import RecordingSink
-from smartesp.contracts import ChatMessage, ReplyPart, ToolObserver, ToolSpec, ToolUse
+from smartesp.contracts import ChatMessage, ReplyPart, ToolCall, ToolObserver, ToolSpec, ToolUse
 from smartesp.conversation import tool_observer
 
 
@@ -138,3 +138,24 @@ async def test_deferred_target_is_done_only_when_its_answer_ends() -> None:
         network.release()
         await until(lambda: active(sink)[-1] == ("big", "done"))
     assert ("big", "speaking") in active(sink)
+
+
+def finished_call(observe: ToolObserver) -> list[object]:
+    """Вызов food_log с аргументами и ответом инструмента (как его шлёт сеть)."""
+    use = ToolUse(
+        "dispatcher", "food_log", "finished", True, {"what": "гречка"}, "Уточни: сухая или варёная?"
+    )
+    return [lambda: observe(ToolUse("dispatcher", "food_log", "started")), lambda: observe(use)]
+
+
+async def test_tool_call_with_result_goes_to_history_before_answer() -> None:
+    observe = tool_observer(lambda name: "food")
+    setup = Setup(Scripted([*finished_call(observe), "Сухая или варёная?"]), events=RecordingSink())  # type: ignore[arg-type]
+    setup.port.feed(make_utterance(7))
+    async with running(setup):
+        await until(lambda: len(setup.history.messages()) == 4)
+    assert setup.history.messages()[1:] == [
+        ChatMessage("assistant", "", tool_calls=(ToolCall("food_log", {"what": "гречка"}),)),
+        ChatMessage("tool", "Уточни: сухая или варёная?", tool_name="food_log"),
+        ChatMessage("assistant", "Сухая или варёная?"),
+    ]

@@ -30,8 +30,8 @@ class Scripted:
             yield part if isinstance(part, ReplyPart) else ReplyPart(part)
 
 
-def tool(name: str = "note_add") -> ReplyPart:
-    return ReplyPart(tool_call=ToolCall(name, {}))
+def tool(name: str = "note_add", arguments: dict[str, object] | None = None) -> ReplyPart:
+    return ReplyPart(tool_call=ToolCall(name, arguments or {}))
 
 
 def net(entry: Executor, big: Executor | None, box: FakeToolBox, seen: list[ToolUse]) -> ExecutorNetwork:
@@ -46,15 +46,23 @@ async def test_call_is_reported_started_then_finished_ok() -> None:
     await collect(net(Scripted([tool()], ["Записал."]), None, FakeToolBox([NOTE]), seen))
     assert seen == [
         ToolUse("dispatcher", "note_add", "started"),
-        ToolUse("dispatcher", "note_add", "finished", ok=True),
+        ToolUse("dispatcher", "note_add", "finished", ok=True, result="note_add: готово"),
     ]
+
+
+async def test_finished_call_carries_arguments_and_result_text() -> None:
+    seen: list[ToolUse] = []
+    box = FakeToolBox([NOTE], {"note_add": ToolResult("Записала: молоко.")})
+    await collect(net(Scripted([tool(arguments={"text": "молоко"})], ["Записал."]), None, box, seen))
+    assert seen[0].arguments == {} and seen[0].result == ""  # у начатого — ничего
+    assert (seen[-1].arguments, seen[-1].result) == ({"text": "молоко"}, "Записала: молоко.")
 
 
 async def test_failed_call_is_reported_not_ok() -> None:
     seen: list[ToolUse] = []
     box = FakeToolBox([NOTE], {"note_add": ToolResult("Не отвечает", is_error=True)})
     await collect(net(Scripted([tool()], ["Не вышло."]), None, box, seen))
-    assert seen[-1] == ToolUse("dispatcher", "note_add", "finished", ok=False)
+    assert seen[-1] == ToolUse("dispatcher", "note_add", "finished", ok=False, result="Не отвечает")
 
 
 async def test_unknown_tool_is_not_reported() -> None:
@@ -88,7 +96,7 @@ async def test_closed_stream_still_reports_finished() -> None:
     await stream.aclose()
     assert seen == [
         ToolUse("dispatcher", "note_add", "started"),
-        ToolUse("dispatcher", "note_add", "finished", ok=False),
+        ToolUse("dispatcher", "note_add", "finished", ok=False, result="Инструмент note_add не сработал."),
     ]
 
 
