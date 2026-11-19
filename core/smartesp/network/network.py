@@ -8,6 +8,7 @@ import re
 from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from types import MappingProxyType
 
 from smartesp.contracts import (
     ChatMessage,
@@ -112,6 +113,11 @@ class ExecutorNetwork:
         self.id = entry
         self._members = dict(members)
         self._max_depth = max_depth
+
+    @property
+    def members(self) -> Mapping[str, Member]:
+        """Участники сети по id (только для чтения)."""
+        return MappingProxyType(self._members)
 
     async def run(
         self, messages: list[ChatMessage], tools: Sequence[ToolSpec] = ()

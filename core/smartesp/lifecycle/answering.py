@@ -1,4 +1,4 @@
-"""Живые обработчики и исполнитель: подмена на лету, прогрев и выгрузка моделей."""
+"""Живые обработчики и исполнитель (сеть): подмена на лету, прогрев и выгрузка наборов моделей."""
 
 from __future__ import annotations
 
@@ -6,21 +6,37 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
-from typing import cast
+from typing import Protocol, cast, runtime_checkable
 
-from smartesp.contracts import Analyzer, Executor, ExecutorError, Unloads, WarmsUp
+from smartesp.contracts import Analyzer, Executor, ExecutorError, UsesModels, WarmsUp
 
 _log = logging.getLogger("smartesp")
 
 Answering = tuple[Analyzer, Executor]  # обработчики и исполнитель: меняются вместе
 
 
-class LiveAnswering:
-    """Держит живую пару (обработчики, исполнитель) и все исполнители, чья модель может быть в памяти.
+@runtime_checkable
+class _WarmsMembers(Protocol):
+    """Сеть исполнителей: прогрев участников, кроме входного (не бросает исключений)."""
 
-    Каждый собранный исполнитель, пока он не живой и не выгружен, числится «в стороне»:
-    строится, греется, ждёт выгрузки или брошен отменённой правкой. unload_all при
-    остановке выгружает живого и всех «в стороне», поэтому модель не остаётся в Ollama.
+    async def warm_up_members(self, timeout_s: float) -> dict[str, str | None]: ...
+
+
+def _models(executor: Executor | None) -> frozenset[str]:
+    """Модели, которые держит исполнитель (не UsesModels — никаких)."""
+    return executor.models() if isinstance(executor, UsesModels) else frozenset()
+
+
+class LiveAnswering:
+    """Держит живую пару (обработчики, исполнитель) и все исполнители, чьи модели могут быть в памяти.
+
+    Исполнитель — обычно сеть: у неё набор моделей. Каждый собранный исполнитель,
+    пока он не живой и не выгружен, числится «в стороне»: строится, греется, ждёт
+    выгрузки или брошен отменённой правкой. unload_all при остановке выгружает
+    модели живого и всех «в стороне», поэтому модели не остаются в Ollama.
+
+    После подмены участники сети, кроме входного, греются в фоне: это не задерживает
+    ни старт, ни правку; итог — в members_warmth.
     """
 
     def __init__(
@@ -30,16 +46,24 @@ class LiveAnswering:
         *,
         turn_wait_s: float,
         unload_s: float,
+        member_warm_s: float = 120.0,
     ) -> None:
-        """install(обработчики, исполнитель) — подмена в оркестраторе; wait_turns(с) — ждать ходы."""
+        """install(обработчики, исполнитель) — подмена в оркестраторе; wait_turns(с) — ждать ходы.
+
+        member_warm_s — предел фонового прогрева каждого участника, секунды.
+        """
         self._install = install
         self._wait_turns = wait_turns
         self._turn_wait_s = turn_wait_s
         self._unload_s = unload_s
+        self._member_warm_s = member_warm_s
         self.executor: Executor | None = None
         self._analyze: Analyzer | None = None
         self._aside: list[Executor] = []  # не живые, но, возможно, загруженные
         self._closed = False
+        self._members_warming: asyncio.Task[None] | None = None
+        # итог фонового прогрева живой сети: {id: None — прогрет, иначе текст ошибки}
+        self.members_warmth: dict[str, str | None] = {}
 
     async def warm_startup(self, part: Answering, timeout_s: float) -> None:
         """Греет пару старта (сбой — предупреждение) и ставит её, если правка не успела раньше.
@@ -55,25 +79,25 @@ class LiveAnswering:
             await self.release(part)
 
     async def build(self, part: Answering, timeout_s: float) -> Answering:
-        """Греет пару для правки настроек; не прогрелась — пробрасывает ошибку.
+        """Греет пару для правки настроек (у сети — только входного); не прогрелась — ошибка.
 
-        Модель не прогревшегося исполнителя выгружается, если только у живого не
-        та же самая модель (тогда выгрузка оборвала бы живого).
+        Выгружаются только те модели не прогревшегося исполнителя, которых нет у
+        живого: иначе выгрузка оборвала бы живого.
         """
         executor = part[1]
         self._set_aside(executor)
         try:
             await warm_strict(executor, timeout_s)
         except Exception:
-            if self._needs_unload(executor):
-                await self._unload(executor)
-            else:
-                self._forget(executor)
+            await self._unload(executor, self._leaving(executor))
             raise
         return part
 
     def use(self, part: object) -> object | None:
-        """Ставит пару в оркестратор; возвращает прежнюю пару (теперь она «в стороне») или None."""
+        """Ставит пару в оркестратор и начинает фоновый прогрев участников.
+
+        Возвращает прежнюю пару (теперь она «в стороне») или None.
+        """
         analyze, executor = cast(Answering, part)
         old = None if self.executor is None else (self._analyze, self.executor)
         if self.executor is not None:
@@ -81,58 +105,87 @@ class LiveAnswering:
         self._forget(executor)
         self._analyze, self.executor = analyze, executor
         self._install(analyze, executor)
+        self._warm_members(executor)
         return old
 
     async def release(self, part: object) -> None:
-        """Выгружает модель исполнителя пары, если у живого другая; сначала ждёт идущие ходы.
+        """Выгружает модели пары, которых нет у живого; сначала ждёт идущие ходы.
 
-        После остановки ничего не делает: исполнитель остаётся «в стороне» для unload_all.
+        После ожидания набор проверяется снова: живой мог смениться. После
+        остановки ничего не делает: исполнитель остаётся «в стороне» для unload_all.
         """
         _, old = cast(Answering, part)
         if self._closed:
             return
-        if self._needs_unload(old):
+        if self._leaving(old):
             await self._wait_turns(self._turn_wait_s)
             if self._closed:
                 return
-            if self._needs_unload(old):  # живой мог смениться, пока ждали
-                await self._unload(old)
+            await self._unload(old, self._leaving(old))
         self._forget(old)
 
     async def unload_all(self) -> None:
         """Остановка: release больше не работает; выгружает модели живого и всех «в стороне».
 
-        Каждая модель выгружается один раз; разные модели — одновременно, каждая —
-        не дольше unload_s, поэтому вся выгрузка занимает около unload_s. Сбой
-        выгрузки одной модели только пишется в журнал.
+        Фоновый прогрев участников отменяется. Каждая модель выгружается один раз;
+        исполнители — одновременно, каждая модель — не дольше unload_s. Сбой
+        выгрузки только пишется в журнал.
         """
-        self._closed = True
-        models: dict[str, Unloads] = {}
+        self.close()
+        if self._members_warming is not None:
+            await asyncio.gather(self._members_warming, return_exceptions=True)
+        claimed: set[str] = set()
+        jobs: list[tuple[UsesModels, frozenset[str]]] = []
         for executor in [self.executor, *self._aside]:
-            if isinstance(executor, Unloads):
-                models.setdefault(executor.model, executor)
-        await asyncio.gather(*(self._unload_on_stop(e) for e in models.values()))
+            if isinstance(executor, UsesModels) and (mine := executor.models() - claimed):
+                claimed |= mine
+                jobs.append((executor, mine))
+        await asyncio.gather(*(self._unload_on_stop(e, names) for e, names in jobs))
 
-    async def _unload_on_stop(self, executor: Unloads) -> None:
+    async def _unload_on_stop(self, executor: UsesModels, names: frozenset[str]) -> None:
+        listed = ", ".join(sorted(names))
         try:
-            await executor.unload(self._unload_s)
+            await executor.unload_models(names, self._unload_s)
         except Exception:
-            _log.warning("Остановка: модель %s не выгружена", executor.model, exc_info=True)
+            _log.warning("Остановка: модели %s не выгружены", listed, exc_info=True)
             return
-        _log.info("Остановка: модель %s выгружена", executor.model)
+        _log.info("Остановка: модели %s выгружены", listed)
 
     def close(self) -> None:
-        """Остановка началась: release больше ничего не ждёт и не выгружает."""
+        """Остановка началась: release больше ничего не ждёт и не выгружает, прогрев отменён."""
         self._closed = True
+        if self._members_warming is not None:
+            self._members_warming.cancel()
 
-    def _needs_unload(self, executor: Executor) -> bool:
-        live = self.executor
-        same = isinstance(live, Unloads) and isinstance(executor, Unloads) and live.model == executor.model
-        return isinstance(executor, Unloads) and not same
+    def _warm_members(self, executor: Executor) -> None:
+        """Отменяет прогрев прежней сети и, если можно, начинает прогрев участников новой."""
+        if self._members_warming is not None:
+            self._members_warming.cancel()
+            self._members_warming = None
+        self.members_warmth = {}
+        if not self._closed and isinstance(executor, _WarmsMembers):
+            warming = self._warm_members_of(executor)
+            self._members_warming = asyncio.create_task(warming, name="members-warm-up")
 
-    async def _unload(self, executor: Executor) -> None:
-        if isinstance(executor, Unloads):
-            await executor.unload(self._unload_s)
+    async def _warm_members_of(self, executor: _WarmsMembers) -> None:
+        started = time.monotonic()
+        try:
+            result = await executor.warm_up_members(self._member_warm_s)
+        except Exception:
+            _log.warning("Фоновый прогрев исполнителей упал", exc_info=True)
+            return
+        self.members_warmth = result
+        if result:
+            ready = [member_id for member_id, error in result.items() if error is None]
+            _log.info("Исполнители прогреты за %.1f с: %s", time.monotonic() - started, ready)
+
+    def _leaving(self, executor: Executor) -> frozenset[str]:
+        """Модели исполнителя, которых нет у живого."""
+        return _models(executor) - _models(self.executor)
+
+    async def _unload(self, executor: Executor, names: frozenset[str]) -> None:
+        if names and isinstance(executor, UsesModels):
+            await executor.unload_models(names, self._unload_s)
         self._forget(executor)
 
     def _set_aside(self, executor: Executor) -> None:
@@ -178,10 +231,10 @@ async def timed(what: str, work: Awaitable[object]) -> None:
         _log.error("%s не прогрелся", what, exc_info=True)
 
 
-def guarded[T](what: str, make: Callable[[], T]) -> T | None:
-    """Вызывает make(); сбой — ошибка в журнале и None, а не исключение."""
+async def guarded[T](what: str, work: Awaitable[T]) -> T | None:
+    """Ждёт work; сбой — ошибка в журнале и None, а не исключение."""
     try:
-        return make()
+        return await work
     except Exception:
         _log.error("%s не собран", what, exc_info=True)
         return None

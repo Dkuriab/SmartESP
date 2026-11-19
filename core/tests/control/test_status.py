@@ -93,6 +93,7 @@ async def test_config_lists_effective_overridden_and_restart_sections() -> None:
     assert config["restart_sections"] == ["server", "stt", "arbitration"]
     assert RESTART_SECTIONS == ("server", "stt", "arbitration")
     assert config["dispatcher_prompt"] == "Промпт. Правила."
+    assert config["executor_prompts"] == {"dispatcher": "Промпт. Правила.", "big": "Большой."}
     await h.core.aclose()
 
 
@@ -105,7 +106,11 @@ async def test_config_reads_dispatcher_prompt_on_every_call() -> None:
 
 async def test_models_in_api_shape_and_errors_propagate() -> None:
     h = Harness()
-    assert await h.core.models() == [{"name": "qwen", "size_bytes": 5_000}]
+    h.model_list = [("qwen", 5_000), ("old", 7)]
+    assert await h.core.models() == [
+        {"name": "qwen", "size_bytes": 5_000, "supports_tools": True},
+        {"name": "old", "size_bytes": 7, "supports_tools": False},
+    ]
     h.model_list = ExecutorError("нет сервера")
     with pytest.raises(ExecutorError):
         await h.core.models()

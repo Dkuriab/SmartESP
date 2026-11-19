@@ -69,6 +69,7 @@ class FakeCore:
             "overridden": ["tts.kind"],
             "restart_sections": ["server", "stt", "arbitration"],
             "dispatcher_prompt": "Ты помощник.",
+            "executor_prompts": {"dispatcher": "Ты помощник.", "big": "Ты большая модель."},
         }
 
     async def patch_config(self, patch: dict[str, Any]) -> ChangeResult:
@@ -79,7 +80,7 @@ class FakeCore:
     async def models(self) -> list[dict[str, Any]]:
         if self.models_error:
             raise self.models_error
-        return [{"name": "qwen", "size_bytes": 42}]
+        return [{"name": "qwen", "size_bytes": 42, "supports_tools": True}]
 
     def voices(self) -> list[dict[str, Any]]:
         return [

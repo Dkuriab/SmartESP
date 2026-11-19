@@ -31,7 +31,16 @@ async def no_loaded() -> list[str]:
     return []
 
 
-NO_OLLAMA = Ollama(no_models, no_loaded)
+async def no_capabilities(model: str) -> frozenset[str]:
+    return frozenset()
+
+
+async def with_tools(model: str) -> frozenset[str]:
+    return frozenset({"completion", "tools"})
+
+
+NO_OLLAMA = Ollama(no_models, no_loaded, no_capabilities)
+TOOLS_OLLAMA = Ollama(no_models, no_loaded, with_tools)  # все модели умеют инструменты
 
 
 def put_voice(home: Path) -> None:
@@ -57,14 +66,16 @@ def fake_kinds(
     )
 
 
-def make_core(home: Path, kinds: Kinds, config_yaml: str = FAST_ARBITRATION) -> Assembly:
+def make_core(
+    home: Path, kinds: Kinds, config_yaml: str = FAST_ARBITRATION, ollama: Ollama = NO_OLLAMA
+) -> Assembly:
     """Ядро на подделках в папке home: config.yaml, голос, сборка как в main."""
     home.mkdir(parents=True, exist_ok=True)
     (home / "config.yaml").write_text(config_yaml, encoding="utf-8")
     put_voice(home)
     store = ConfigFile(home / "config.yaml")
     config = store.load()
-    return assemble(store, config, home, kinds, NO_OLLAMA, version="test", token=TOKEN, ui_dir=home / "no-ui")
+    return assemble(store, config, home, kinds, ollama, version="test", token=TOKEN, ui_dir=home / "no-ui")
 
 
 def ollama_factory(

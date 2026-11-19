@@ -98,7 +98,7 @@ class CorePort(Protocol):
         ...
 
     def config(self) -> dict[str, Any]:
-        """Возвращает {effective, overridden, restart_sections, dispatcher_prompt}."""
+        """Возвращает {effective, overridden, restart_sections, dispatcher_prompt, executor_prompts}."""
         ...
 
     async def patch_config(self, patch: dict[str, Any]) -> ChangeResult:
@@ -106,7 +106,7 @@ class CorePort(Protocol):
         ...
 
     async def models(self) -> list[dict[str, Any]]:
-        """Возвращает модели Ollama: [{name, size_bytes}]; Ollama недоступна — ExecutorError."""
+        """Возвращает модели Ollama: [{name, size_bytes, supports_tools}]; нет Ollama — ExecutorError."""
         ...
 
     def voices(self) -> list[dict[str, Any]]:

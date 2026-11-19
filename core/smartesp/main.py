@@ -30,7 +30,7 @@ from smartesp.config import (
     data_dir,
 )
 from smartesp.contracts import Executor, SpeechToText, Stage, TextToSpeech
-from smartesp.executors import OllamaExecutor, list_models, loaded_models
+from smartesp.executors import OllamaExecutor, list_models, loaded_models, model_capabilities
 from smartesp.lifecycle import GracefulServer, exit_code, run_loop, watch_parent
 from smartesp.stages import WhisperDetect
 from smartesp.stt import MlxWhisperSTT
@@ -63,7 +63,7 @@ STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
     "whisper_detect": lambda c: WhisperDetect(),
 }
 KINDS = Kinds(STT_KINDS, TTS_KINDS, EXECUTOR_KINDS, STAGE_KINDS)
-OLLAMA = Ollama(list_models, loaded_models)
+OLLAMA = Ollama(list_models, loaded_models, model_capabilities)
 
 
 def _setup_logging(logs: Path, *, quiet_console: bool = False) -> None:

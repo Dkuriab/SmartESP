@@ -91,6 +91,8 @@ class Harness:
         self.model_list: list[tuple[str, int]] | Exception = [("qwen", 5_000)]
         self.device_list: list[DeviceInfo] = []
         self.prompt = "Промпт. Правила."
+        self.prompts = {"dispatcher": "Промпт. Правила.", "big": "Большой."}
+        self.tool_models = {"qwen"}
         self.core = Core(
             self.store,
             {name: s.section() for name, s in self.sections.items()},
@@ -103,7 +105,12 @@ class Harness:
             version="1.2.3",
             clock=lambda: self.now,
             dispatcher_prompt=lambda: self.prompt,
+            executor_prompts=lambda: self.prompts,
+            supports_tools=self._supports_tools,
         )
+
+    async def _supports_tools(self, model: str) -> bool:
+        return model in self.tool_models
 
     async def _models(self) -> list[tuple[str, int]]:
         if isinstance(self.model_list, Exception):

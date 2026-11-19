@@ -48,7 +48,9 @@ async def test_status_voice_before_open_and_without_error(client: httpx.AsyncCli
 
 
 async def test_config_and_patch(client: httpx.AsyncClient, core: FakeCore) -> None:
-    assert (await client.get(f"{P}/config", headers=HEADERS)).json() == core.config()
+    config = (await client.get(f"{P}/config", headers=HEADERS)).json()
+    assert config == core.config()
+    assert config["executor_prompts"] == {"dispatcher": "Ты помощник.", "big": "Ты большая модель."}
     response = await client.patch(f"{P}/config", json={"tts": {"kind": "silero"}}, headers=HEADERS)
     assert response.status_code == 200
     assert response.json() == {"change_id": 1, "status": "accepted", "error": ""}
@@ -66,7 +68,8 @@ async def test_patch_status_codes(client: httpx.AsyncClient, core: FakeCore, sta
 
 
 async def test_models(client: httpx.AsyncClient, core: FakeCore) -> None:
-    assert (await client.get(f"{P}/models", headers=HEADERS)).json() == [{"name": "qwen", "size_bytes": 42}]
+    models = (await client.get(f"{P}/models", headers=HEADERS)).json()
+    assert models == [{"name": "qwen", "size_bytes": 42, "supports_tools": True}]
     core.models_error = ExecutorError("ollama down")
     response = await client.get(f"{P}/models", headers=HEADERS)
     assert response.status_code == 502

@@ -55,6 +55,8 @@ class ConfigOut(BaseModel):
     restart_sections: list[str]
     # итоговый промпт диспетчера с правилами включённых обработчиков; только для чтения
     dispatcher_prompt: str
+    # итоговые промпты всех исполнителей по id (свой + обработчики + правило передачи)
+    executor_prompts: dict[str, str]
 
 
 class ErrorOut(BaseModel):
@@ -76,6 +78,7 @@ class ModelOut(BaseModel):
 
     name: str
     size_bytes: int
+    supports_tools: bool  # умеет вызывать инструменты (без них — не передаёт задачи)
 
 
 class VoiceOut(BaseModel):

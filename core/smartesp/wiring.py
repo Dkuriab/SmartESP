@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,62 +18,43 @@ from typing import cast
 from fastapi import FastAPI, WebSocket
 
 from smartesp.api import create_api, mount_ui
-from smartesp.config import Config, ConfigFile, ExecutorConfig, StageConfig, SttConfig
-from smartesp.contracts import Analyzer, Executor, Section, SpeechToText, Stage, TextToSpeech
+from smartesp.config import Config, ConfigFile
+from smartesp.contracts import Analyzer, Executor, Section, TextToSpeech
 from smartesp.control import Core
 from smartesp.conversation import History, Orchestrator
 from smartesp.devices import DeviceHub, WebSocketConnection
 from smartesp.events import EventBus
-from smartesp.lifecycle import Answering, LiveAnswering, RunFile, guarded, timed
-from smartesp.stages import run_stages
+from smartesp.lifecycle import (
+    Answering,
+    CapabilityCache,
+    Kinds,
+    LiveAnswering,
+    NetworkPrompts,
+    RunFile,
+    StartupError,
+    build_network,
+    check_kinds,
+    guarded,
+    timed,
+)
 from smartesp.tts import VoiceManager
 
 WARM_UP_PCM = bytes(16000)  # 0,5 с тишины (16 кГц, s16le)
 WARM_UP_TIMEOUT_S = 120.0  # дольше прогрева исполнителя не ждём
 DRAIN_S = 10.0  # звучащим ответам при остановке
 UNLOAD_S = 1.0  # выгрузка модели из Ollama
-TURN_WAIT_S = 120.0  # сколько старая модель ждёт конца идущих ходов перед выгрузкой
+TURN_WAIT_S = 150.0  # сколько старые модели ждут конца идущих ходов перед выгрузкой (передача — до 90 с)
 
 logger = logging.getLogger("smartesp")
 
 
-class StartupError(Exception):
-    """Ядро не может стартовать: понятное сообщение для человека."""
-
-
-@dataclass(frozen=True)
-class Kinds:
-    """Реестры реализаций по полю kind из config.yaml."""
-
-    stt: Mapping[str, Callable[[SttConfig], SpeechToText]]
-    tts: Mapping[str, Callable[[Path, str], TextToSpeech]]  # (путь голоса, голос)
-    executors: Mapping[str, Callable[[ExecutorConfig], Executor]]
-    stages: Mapping[str, Callable[[StageConfig], Stage]]
-
-
 @dataclass(frozen=True)
 class Ollama:
-    """Сведения Ollama для status и списка моделей."""
+    """Сведения Ollama для status, списка моделей и проверки умения инструментов."""
 
     models: Callable[[], Awaitable[list[tuple[str, int]]]]
     loaded: Callable[[], Awaitable[list[str]]]
-
-
-def _pick[T](registry: Mapping[str, T], kind: str, what: str) -> T:
-    """Реализация из реестра по имени; неизвестное имя — StartupError со списком известных."""
-    if kind not in registry:
-        known = ", ".join(sorted(registry)) or "нет"
-        raise StartupError(f"Неизвестный {what} kind={kind!r}; известные: {known}")
-    return registry[kind]
-
-
-def check_kinds(config: Config, kinds: Kinds) -> None:
-    """Проверяет виды stt, tts, входного исполнителя и обработчиков до старта сервера."""
-    _pick(kinds.stt, config.stt.kind, "stt")
-    _pick(kinds.tts, config.tts.kind, "tts")
-    _pick(kinds.executors, config.entry_executor().kind, "executor")
-    for stage in config.stages:
-        _pick(kinds.stages, stage.kind, "stage")
+    capabilities: Callable[[str], Awaitable[frozenset[str]]]
 
 
 def _kinds_validator(kinds: Kinds) -> Callable[[object], None]:
@@ -88,29 +69,10 @@ def _kinds_validator(kinds: Kinds) -> Callable[[object], None]:
     return validate
 
 
-def with_stage_hints(prompt: str, stages: Sequence[Stage]) -> str:
-    """Системный промпт входного исполнителя + правила включённых обработчиков."""
-    hints = [stage.prompt_hint for stage in stages if stage.prompt_hint]
-    return "\n".join([prompt, *hints])
-
-
-def dispatcher_prompt(config: Config, kinds: Kinds) -> str:
-    """Итоговый промпт входного исполнителя для интерфейса (обработчики без моделей)."""
-    stages = [kinds.stages[s.kind](s) for s in config.stages if s.kind in kinds.stages]
-    return with_stage_hints(config.entry_executor().system_prompt, stages)
-
-
-def make_answering(config: Config, kinds: Kinds) -> Answering:
-    """Обработчики из настроек и входной исполнитель с их правилами в промпте."""
-    stages = [(_pick(kinds.stages, s.kind, "stage")(s), s.timeout_ms / 1000) for s in config.stages]
-    prompt = with_stage_hints(config.entry_executor().system_prompt, [stage for stage, _ in stages])
-    entry = config.entry_executor().model_copy(update={"system_prompt": prompt})
-    executor = _pick(kinds.executors, entry.kind, "executor")(entry)
-    return functools.partial(run_stages, stages), executor
-
-
-async def _build_answering(kinds: Kinds, live: LiveAnswering, config: Config) -> Answering:
-    return await live.build(make_answering(config, kinds), WARM_UP_TIMEOUT_S)
+async def _build_answering(
+    kinds: Kinds, live: LiveAnswering, capabilities: CapabilityCache, config: Config
+) -> Answering:
+    return await live.build(await build_network(config, kinds, capabilities.get), WARM_UP_TIMEOUT_S)
 
 
 async def _device_names(config: Config) -> dict[str, str]:
@@ -121,14 +83,17 @@ async def _history_limits(config: Config) -> tuple[int, int]:
     return config.history.max_turns, config.history.max_age_s
 
 
-def _sections(hub: DeviceHub, history: History, live: LiveAnswering, kinds: Kinds) -> dict[str, Section]:
+def _sections(
+    hub: DeviceHub, history: History, live: LiveAnswering, kinds: Kinds, capabilities: CapabilityCache
+) -> dict[str, Section]:
     """Разделы, применяемые на лету (tts пульт открывает через менеджер голосов)."""
-    answering = Section(functools.partial(_build_answering, kinds, live), live.use, live.release)
+    build = functools.partial(_build_answering, kinds, live, capabilities)
+    answering = Section(build, live.use, live.release)
     return {
         "devices": Section(_device_names, lambda names: hub.set_names(cast(dict[str, str], names))),
         "history": Section(_history_limits, lambda new: history.set_limits(*cast(tuple[int, int], new))),
         "executors": answering,
-        "stages": answering,  # правила обработчиков в промпте: пересобираем и исполнителя
+        "stages": answering,  # правила обработчиков в промптах: пересобираем и сеть
     }
 
 
@@ -143,6 +108,7 @@ class Assembly:
     history: History
     orchestrator: Orchestrator
     live: LiveAnswering
+    capabilities: CapabilityCache  # возможности моделей: умеют ли инструменты
     voices: VoiceManager
     voice_ready: asyncio.Event
     core: Core
@@ -175,7 +141,15 @@ def assemble(
         orchestrator.use_analyzer(analyze)
         orchestrator.use_executor(executor)
 
-    live = LiveAnswering(install, orchestrator.wait_turns, turn_wait_s=TURN_WAIT_S, unload_s=UNLOAD_S)
+    live = LiveAnswering(
+        install,
+        orchestrator.wait_turns,
+        turn_wait_s=TURN_WAIT_S,
+        unload_s=UNLOAD_S,
+        member_warm_s=WARM_UP_TIMEOUT_S,
+    )
+    capabilities = CapabilityCache(ollama.capabilities)
+    prompts = NetworkPrompts(lambda: store.config, kinds, capabilities)  # настройки = живые части
     voice_ready = asyncio.Event()
 
     def on_voice(tts: TextToSpeech, kind: str, voice: str) -> None:
@@ -185,7 +159,7 @@ def assemble(
     voices = VoiceManager(home, kinds.tts, on_voice, events=bus)
     core = Core(
         store,
-        _sections(hub, history, live, kinds),
+        _sections(hub, history, live, kinds, capabilities),
         events=bus,
         feed=bus,
         voices=voices,
@@ -194,11 +168,24 @@ def assemble(
         devices=hub.devices,
         version=version,
         validate=_kinds_validator(kinds),  # иначе после перезапуска ядро не стартует
-        dispatcher_prompt=lambda: dispatcher_prompt(store.config, kinds),  # настройки = живые части
+        dispatcher_prompt=prompts.entry,
+        executor_prompts=prompts.all,
+        supports_tools=capabilities.supports_tools,
     )
     run_file = RunFile(home / "run" / "core.json")
     parts = Assembly(
-        config, kinds, bus, hub, history, orchestrator, live, voices, voice_ready, core, run_file
+        config,
+        kinds,
+        bus,
+        hub,
+        history,
+        orchestrator,
+        live,
+        capabilities,
+        voices,
+        voice_ready,
+        core,
+        run_file,
     )
     parts.app = _build_app(parts, token, ui_dir, version)
     return parts
@@ -236,12 +223,13 @@ def start(parts: Assembly) -> None:
 
 
 async def warm_up(parts: Assembly, voice: asyncio.Task[bool]) -> None:
-    """Прогрев в фоне: STT, обработчики и исполнитель (до 120 с), голос; затем ready.
+    """Прогрев в фоне: STT, обработчики и входной исполнитель сети (до 120 с), голос; затем ready.
 
+    Остальные исполнители сети греются в фоне после подмены и ready не задерживают.
     Сбой одного шага пишется в журнал и не мешает остальным.
     """
     await timed("STT", _warm_stt(parts))
-    answering = guarded("исполнитель", lambda: make_answering(parts.config, parts.kinds))
+    answering = await guarded("исполнитель", build_network(parts.config, parts.kinds, parts.capabilities.get))
     if answering is not None:
         await parts.live.warm_startup(answering, WARM_UP_TIMEOUT_S)
     waiting = asyncio.create_task(parts.voice_ready.wait())

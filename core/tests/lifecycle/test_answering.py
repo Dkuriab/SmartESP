@@ -9,6 +9,7 @@ import pytest
 from fakes.fake_executor import FakeOllama
 from smartesp.contracts import Analyzer, Annotation, Executor, ExecutorError, Utterance
 from smartesp.lifecycle import Answering, LiveAnswering
+from smartesp.network import ExecutorNetwork, Member
 
 
 async def no_annotations(utterance: Utterance) -> list[Annotation]:
@@ -170,3 +171,81 @@ async def test_unload_all_unloads_models_concurrently() -> None:
     await setup.live.unload_all()
     assert asyncio.get_running_loop().time() - started < 0.5
     assert old.unloaded == [1.0] and new.unloaded == [1.0]
+
+
+def network(entry: FakeOllama, **others: FakeOllama) -> ExecutorNetwork:
+    """Сеть: входной entry и остальные участники по id (без связей)."""
+    members = {"entry": Member(entry, "Вход", (), True)}
+    members |= {member_id: Member(e, member_id, (), True) for member_id, e in others.items()}
+    return ExecutorNetwork("entry", members)
+
+
+class SlowWarm(FakeOllama):
+    """Модель «грузится» 5 с."""
+
+    async def warm_up(self) -> None:
+        await asyncio.sleep(5)
+        await super().warm_up()
+
+
+class BrokenWarm(FakeOllama):
+    async def warm_up(self) -> None:
+        raise ExecutorError("модели нет")
+
+
+async def test_release_unloads_only_models_gone_from_live_network() -> None:
+    setup = Setup()
+    old_entry, old_big = FakeOllama([], "a"), FakeOllama([], "b")
+    new_entry, new_big = FakeOllama([], "a"), FakeOllama([], "c")
+    setup.live.use(pair(network(old_entry, big=old_big)))
+    previous = setup.live.use(pair(network(new_entry, big=new_big)))
+    assert previous is not None
+    await setup.live.release(previous)
+    assert setup.waits == [5.0]
+    assert old_entry.unloaded == [] and old_big.unloaded == [1.0]
+    await setup.live.unload_all()
+    assert new_entry.unloaded == [1.0] and new_big.unloaded == [1.0] and old_big.unloaded == [1.0]
+
+
+async def test_prompt_change_in_network_does_not_unload_or_wait() -> None:
+    setup = Setup()
+    old_entry, old_big = FakeOllama([], "a", prompt="старый"), FakeOllama([], "b")
+    setup.live.use(pair(network(old_entry, big=old_big)))
+    new = network(FakeOllama([], "a", prompt="новый"), big=FakeOllama([], "b"))
+    previous = setup.live.use(pair(new))
+    assert previous is not None
+    await setup.live.release(previous)
+    assert setup.waits == [] and old_entry.unloaded == [] and old_big.unloaded == []
+
+
+async def test_member_warm_up_does_not_delay_build_and_is_cancelled_on_stop() -> None:
+    setup = Setup()
+    entry, big = FakeOllama([], "a"), SlowWarm([], "b")
+    async with asyncio.timeout(0.5):
+        part = await setup.live.build(pair(network(entry, big=big)), 10.0)
+        setup.live.use(part)
+    assert entry.warmed == 1 and big.warmed == 0
+    async with asyncio.timeout(0.5):
+        await setup.live.unload_all()
+    assert big.warmed == 0 and big.unloaded == [1.0] and entry.unloaded == [1.0]
+
+
+async def test_member_warm_up_results_are_kept() -> None:
+    setup = Setup()
+    net = network(FakeOllama([], "a"), big=FakeOllama([], "b"), broken=BrokenWarm([], "c"))
+    await setup.live.warm_startup(pair(net), 10.0)
+    async with asyncio.timeout(1):
+        while not setup.live.members_warmth:
+            await asyncio.sleep(0.001)
+    assert setup.live.members_warmth == {"big": None, "broken": "модели нет"}
+
+
+async def test_member_warm_up_of_replaced_network_is_cancelled() -> None:
+    setup = Setup()
+    slow = SlowWarm([], "b")
+    setup.live.use(pair(network(FakeOllama([], "a"), big=slow)))
+    await asyncio.sleep(0)
+    setup.live.use(pair(network(FakeOllama([], "a"))))
+    async with asyncio.timeout(0.5):
+        await setup.live.unload_all()
+    assert slow.warmed == 0 and setup.live.members_warmth == {}

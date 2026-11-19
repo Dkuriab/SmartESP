@@ -8,6 +8,7 @@ from pathlib import Path
 from core_harness import (
     FAST_ARBITRATION,
     HEADERS,
+    TOOLS_OLLAMA,
     client,
     connect,
     eventually,
@@ -52,7 +53,7 @@ async def test_patch_with_unknown_kind_is_rejected_and_not_saved(tmp_path: Path)
     await finish(core)
 
 
-async def test_executors_and_stages_together_build_one_executor(tmp_path: Path) -> None:
+async def test_executors_and_stages_together_build_one_network(tmp_path: Path) -> None:
     made: list[FakeOllama] = []
     core = make_core(tmp_path, fake_kinds(ollama_factory(made)))
     start(core)
@@ -63,8 +64,9 @@ async def test_executors_and_stages_together_build_one_executor(tmp_path: Path) 
     async with asyncio.timeout(2):
         change = await anext(e.data async for e in applied if e.kind == "change_applied")
     assert change["ok"], change
-    assert [e.model for e in made] == [entry["model"], "other"]  # один прогрев, не два
-    assert made[1].warmed == 1 and made[0].unloaded == [1.0]
+    # старт — сеть из двух, правка — одна сеть из одного (одна сборка, не две)
+    assert [e.model for e in made] == [entry["model"], "deepseek-r1:8b", "other"]
+    assert made[2].warmed == 1 and made[0].unloaded == [1.0] and made[1].unloaded == [1.0]
     await applied.aclose()
     await stop(core)
     await finish(core)
@@ -85,4 +87,18 @@ async def test_config_shows_dispatcher_prompt_with_stage_rules(tmp_path: Path) -
         assert prompt == entry.system_prompt
     await applied.aclose()
     await core.core.aclose()
+    await finish(core)
+
+
+async def test_config_shows_prompts_of_all_executors_with_rule(tmp_path: Path) -> None:
+    core = make_core(tmp_path, fake_kinds(ollama_factory([])), ollama=TOOLS_OLLAMA)
+    start(core)
+    await eventually(lambda: core.core.state == "ready")  # сборка сети узнала возможности моделей
+    async with client(core) as http:
+        config = (await http.get("/api/v1/config", headers=HEADERS)).json()
+    prompts = config["executor_prompts"]
+    assert set(prompts) == {"dispatcher", "big"}
+    assert config["dispatcher_prompt"] == prompts["dispatcher"] and "delegate" in prompts["dispatcher"]
+    assert "[style:quiet]" in prompts["big"] and "delegate" not in prompts["big"]
+    await stop(core)
     await finish(core)

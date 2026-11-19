@@ -57,7 +57,7 @@ class FakeOllama(FakeExecutor):
 
     def __init__(
         self,
-        parts: list[str],
+        parts: Sequence[str | ReplyPart],
         model: str = "model",
         *,
         delay: float = 0,

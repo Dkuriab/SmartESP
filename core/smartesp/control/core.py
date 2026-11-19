@@ -29,6 +29,11 @@ STATES = ("warming", "ready", "stopping")
 OLLAMA_TIMEOUT_S = 2.0  # сколько status ждёт ответа Ollama о загруженных моделях
 
 
+async def _no_tools(model: str) -> bool:
+    """По умолчанию модели считаются не умеющими инструменты."""
+    return False
+
+
 class Core:
     """Реализует CorePort: всё, что нужно API, плюс состояние ядра и просьба о перезапуске.
 
@@ -51,10 +56,14 @@ class Core:
         clock: Callable[[], float] = time.monotonic,
         validate: Callable[[Any], None] | None = None,
         dispatcher_prompt: Callable[[], str] = str,
+        executor_prompts: Callable[[], Mapping[str, str]] = dict,
+        supports_tools: Callable[[str], Awaitable[bool]] = _no_tools,
     ) -> None:
         """validate(настройки) — проверка правки целиком; ValueError — status invalid.
 
-        dispatcher_prompt() — итоговый промпт входного исполнителя (с правилами обработчиков).
+        dispatcher_prompt() — итоговый промпт входного исполнителя (с правилами обработчиков);
+        executor_prompts() — итоговые промпты всех исполнителей по id;
+        supports_tools(модель) — умеет ли модель инструменты (для списка моделей).
         """
         self._store = store
         self._events = events
@@ -65,6 +74,8 @@ class Core:
         self._devices = devices
         self._version = version
         self._dispatcher_prompt = dispatcher_prompt
+        self._executor_prompts = executor_prompts
+        self._supports_tools = supports_tools
         self._clock = clock
         self._started = clock()
         self._state = "warming"
@@ -125,12 +136,13 @@ class Core:
         }
 
     def config(self) -> dict[str, Any]:
-        """Действующие настройки, ключи владельца, разделы с перезапуском и итоговый промпт."""
+        """Действующие настройки, ключи владельца, разделы с перезапуском и итоговые промпты."""
         return {
             "effective": self._store.effective(),
             "overridden": self._store.overridden(),
             "restart_sections": list(RESTART_SECTIONS),
             "dispatcher_prompt": self._dispatcher_prompt(),
+            "executor_prompts": dict(self._executor_prompts()),
         }
 
     async def patch_config(self, patch: dict[str, Any]) -> ChangeResult:
@@ -141,8 +153,13 @@ class Core:
         return self._changes.submit(next(self._ids), patch)
 
     async def models(self) -> list[dict[str, Any]]:
-        """Модели Ollama: [{name, size_bytes}]; Ollama недоступна — ExecutorError."""
-        return [{"name": name, "size_bytes": size} for name, size in await self._models()]
+        """Модели Ollama: [{name, size_bytes, supports_tools}]; Ollama недоступна — ExecutorError."""
+        listed = await self._models()
+        tools = await asyncio.gather(*(self._supports_tools(name) for name, _ in listed))
+        return [
+            {"name": name, "size_bytes": size, "supports_tools": ok}
+            for (name, size), ok in zip(listed, tools, strict=True)
+        ]
 
     def voices(self) -> list[dict[str, Any]]:
         """Каталог голосов в форме API."""

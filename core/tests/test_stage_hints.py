@@ -1,8 +1,8 @@
 """Подсказки обработчиков добавляются к системному промпту входного исполнителя."""
 
 from smartesp.config import Config, StageConfig
+from smartesp.lifecycle import with_stage_hints
 from smartesp.main import STAGE_KINDS
-from smartesp.wiring import with_stage_hints
 
 
 def test_enabled_stage_adds_its_hint_to_system_prompt() -> None:
