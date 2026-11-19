@@ -1,5 +1,7 @@
 """Русские формы для озвучки: градусы, ветер, слова для кодов погоды WMO."""
 
+import math
+
 _CONDITIONS: dict[int, str] = {
     0: "ясно",
     1: "в основном ясно",
@@ -32,6 +34,11 @@ _CONDITIONS: dict[int, str] = {
 }
 
 
+def round_half_up(value: float) -> int:
+    """Школьное округление: 2,5 даёт 3, минус 2,5 даёт минус 2 (к большему)."""
+    return math.floor(value + 0.5)
+
+
 def condition(code: int) -> str:
     """Короткое русское слово для кода погоды WMO."""
     return _CONDITIONS.get(code, "без уточнений")
@@ -57,7 +64,7 @@ def _genitive(number: int, one: str, many: str) -> str:
 
 def degrees(value: float, after_to: bool = False) -> str:
     """Температура словами: «минус 3 градуса», «1 градус»; after_to — после «до»."""
-    number = round(value)
+    number = round_half_up(value)
     if after_to:
         word = _genitive(number, "градуса", "градусов")
     else:
@@ -68,15 +75,30 @@ def degrees(value: float, after_to: bool = False) -> str:
 
 def plain_number(value: float) -> str:
     """Целое число со знаком словом для диапазона: «минус 3», «2»."""
-    number = round(value)
+    number = round_half_up(value)
     return f"минус {abs(number)}" if number < 0 else str(number)
 
 
 def meters_per_second(value: float, after_to: bool = False) -> str:
     """Скорость ветра: «4 метра в секунду»; after_to — после «до»."""
-    number = round(value)
+    number = round_half_up(value)
     if after_to:
         word = _genitive(number, "метра", "метров")
     else:
         word = _plural(number, "метр", "метра", "метров")
     return f"{number} {word} в секунду"
+
+
+def millimeters(value: float) -> str:
+    """Осадки: «2,5 миллиметра» (десятичная запятая)."""
+    text = f"{value:.1f}".rstrip("0").rstrip(".").replace(".", ",")
+    whole = abs(value - round(value)) < 0.05
+    number = round(value)
+    word = _plural(number, "миллиметр", "миллиметра", "миллиметров") if whole else "миллиметра"
+    return f"{text} {word}"
+
+
+def percent(value: float) -> str:
+    """Проценты: «1 процент», «5 процентов»."""
+    number = round_half_up(value)
+    return f"{number} {_plural(number, 'процент', 'процента', 'процентов')}"

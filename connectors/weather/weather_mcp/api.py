@@ -47,15 +47,41 @@ async def _get_json(client: httpx.AsyncClient, url: str, params: dict[str, Any])
     return data  # pyright: ignore[reportUnknownVariableType]
 
 
-async def geocode(client: httpx.AsyncClient, name: str) -> Place:
-    """Находит место по названию; нет совпадений — WeatherError."""
-    data = await _get_json(client, GEOCODING_URL, {"name": name, "language": "ru", "count": 1})
+def _split_place(query: str) -> tuple[str, str]:
+    """«Город, Страна» -> («Город», «страна»); без запятой страна пустая."""
+    city, _, country = query.partition(",")
+    return city.strip(), country.strip().casefold()
+
+
+def _pick(results: list[dict[str, Any]], country: str) -> dict[str, Any] | None:
+    """Выбор места: названная страна, иначе Россия; среди них самое людное."""
+
+    def matches(item: dict[str, Any], wanted: str) -> bool:
+        code = str(item.get("country_code", "")).casefold()
+        return wanted in (code, str(item.get("country", "")).casefold())
+
+    pool = [item for item in results if matches(item, country)] if country else []
+    if country and not pool:
+        return None
+    if not pool:
+        pool = [item for item in results if matches(item, "ru")] or results
+    if not pool:
+        return None
+    return max(pool, key=lambda item: item.get("population") or 0)
+
+
+async def geocode(client: httpx.AsyncClient, query: str) -> Place:
+    """Находит место по «Город» или «Город, Страна»; нет совпадений — WeatherError."""
+    city, country = _split_place(query)
+    data = await _get_json(client, GEOCODING_URL, {"name": city, "language": "ru", "count": 10})
     results = data.get("results")
-    if not results:
-        raise WeatherError(f"place not found: {name}")
-    first = results[0]
+    if not isinstance(results, list) or not results:
+        raise WeatherError(f"place not found: {query}")
+    chosen = _pick([item for item in results if isinstance(item, dict)], country)  # pyright: ignore[reportUnknownVariableType]
+    if chosen is None:
+        raise WeatherError(f"place not found: {query}")
     try:
-        return Place(float(first["latitude"]), float(first["longitude"]), str(first.get("name", name)))
+        return Place(float(chosen["latitude"]), float(chosen["longitude"]), str(chosen.get("name", city)))
     except (KeyError, TypeError, ValueError) as error:
         raise WeatherError("bad geocoding response") from error
 

@@ -1,6 +1,7 @@
 """Тесты инструментов через клиентскую сессию SDK в памяти; сеть — MockTransport."""
 
 import os
+from collections.abc import Mapping
 
 import httpx
 import pytest
@@ -31,7 +32,13 @@ GEO = {"results": [{"name": "Москва", "latitude": 55.75, "longitude": 37.6
 
 
 class Recorder:
-    def __init__(self, fail: bool = False, geo: dict[str, object] | None = None) -> None:
+    def __init__(
+        self,
+        fail: bool = False,
+        geo: dict[str, object] | None = None,
+        forecast: Mapping[str, object] | None = None,
+    ) -> None:
+        self.forecast = FORECAST if forecast is None else forecast
         self.requests: list[httpx.Request] = []
         self.fail = fail
         self.geo = GEO if geo is None else geo
@@ -42,7 +49,7 @@ class Recorder:
             raise httpx.ConnectError("offline")
         if "geocoding" in request.url.host:
             return httpx.Response(200, json=self.geo)
-        return httpx.Response(200, json=FORECAST)
+        return httpx.Response(200, json=self.forecast)
 
 
 async def call(
@@ -94,7 +101,7 @@ async def test_forecast_tomorrow() -> None:
     is_error, text = await call(Recorder(), "weather_forecast", {"day": "завтра"})
     assert not is_error
     assert text == (
-        "Завтра: небольшой дождь, от 1 до 5 градусов, осадки 2.5 мм, "
+        "Завтра: небольшой дождь, от 1 до 5 градусов, осадки 2,5 миллиметра, "
         "вероятность осадков 60 процентов, ветер до 6 метров в секунду."
     )
 
@@ -108,8 +115,8 @@ async def test_forecast_default_today_and_weekday() -> None:
 
 async def test_forecast_weekend() -> None:
     _, text = await call(Recorder(), "weather_forecast", {"day": "в выходные"})
-    assert text.startswith("В выходные: суббота: ясно")
-    assert "воскресенье: пасмурно, от 2 до 4 градусов" in text
+    assert text.startswith("В выходные: в субботу ясно")
+    assert "в воскресенье пасмурно, от 2 до 4 градусов" in text
 
 
 async def test_unknown_day() -> None:
@@ -145,6 +152,127 @@ async def test_geocoding_cached_between_calls() -> None:
         await client.call_tool("weather_now", {})
         await client.call_tool("weather_now", {})
     assert sum("geocoding" in r.url.host for r in recorder.requests) == 1
+
+
+def _forecast(
+    current: dict[str, object] | None = None, daily: dict[str, object] | None = None
+) -> dict[str, object]:
+    return {"current": {**CURRENT, **(current or {})}, "daily": {**DAILY, **(daily or {})}}
+
+
+async def test_null_fields_are_omitted() -> None:
+    recorder = Recorder(forecast=_forecast({"apparent_temperature": None, "weather_code": None}))
+    is_error, text = await call(recorder, "weather_now")
+    assert not is_error
+    assert text == "Сейчас минус 3 градуса, ветер 4 метра в секунду."
+
+
+async def test_missing_current_temperature_is_failure() -> None:
+    forecast = _forecast({"temperature_2m": None})
+    is_error, text = await call(Recorder(forecast=forecast), "weather_now")
+    assert is_error
+    assert text.endswith("Не получилось узнать погоду.")
+
+
+async def test_null_daily_fields() -> None:
+    daily: dict[str, object] = {
+        "temperature_2m_min": [None] * 7,
+        "precipitation_sum": [None] * 7,
+        "precipitation_probability_max": [None] * 7,
+        "wind_speed_10m_max": [None] * 7,
+    }
+    _, text = await call(Recorder(forecast=_forecast(daily=daily)), "weather_forecast", {"day": "завтра"})
+    assert text == "Завтра: небольшой дождь, максимум 5 градусов."
+
+
+async def test_empty_day_is_failure() -> None:
+    nulls: dict[str, object] = {k: [None] * 7 for k in DAILY if k != "time"}
+    is_error, text = await call(Recorder(forecast=_forecast(daily=nulls)), "weather_forecast")
+    assert is_error
+    assert text.endswith("Не получилось узнать погоду.")
+
+
+@pytest.mark.parametrize(
+    "forecast",
+    [
+        {"current": {"time": "2026-11-19T21:40"}, "daily": {"time": ["2026-11-19"]}},
+        {"current": CURRENT, "daily": {"time": ["не дата"]}},
+        {"current": CURRENT, "daily": {"time": None}},
+        {"current": [], "daily": {}},
+    ],
+)
+async def test_garbage_response_is_honest(forecast: dict[str, object]) -> None:
+    is_error, text = await call(Recorder(forecast=forecast), "weather_forecast")
+    assert is_error
+    assert text.endswith("Не получилось узнать погоду.")
+
+
+def _geo(*items: tuple[str, str, int | None, float]) -> dict[str, object]:
+    return {
+        "results": [
+            {
+                "name": "Кировск",
+                "country": country,
+                "country_code": code,
+                "population": population,
+                "latitude": lat,
+                "longitude": 30.0,
+            }
+            for country, code, population, lat in items
+        ]
+    }
+
+
+async def test_geocoding_prefers_russia_then_population() -> None:
+    geo = _geo(("Беларусь", "BY", 99999, 1.0), ("Россия", "RU", 5, 2.0), ("Россия", "RU", 500, 3.0))
+    recorder = Recorder(geo=geo)
+    is_error, text = await call(recorder, "weather_now", env={"WEATHER_PLACE": "Кировск"})
+    assert not is_error
+    assert recorder.requests[0].url.params["count"] == "10"
+    assert recorder.requests[1].url.params["latitude"] == "3.0"
+    assert text.startswith("Сейчас")
+
+
+async def test_geocoding_falls_back_to_most_populous_abroad() -> None:
+    geo = _geo(("Беларусь", "BY", 10, 1.0), ("Украина", "UA", 900, 2.0))
+    recorder = Recorder(geo=geo)
+    await call(recorder, "weather_now", env={"WEATHER_PLACE": "Кировск"})
+    assert recorder.requests[1].url.params["latitude"] == "2.0"
+
+
+@pytest.mark.parametrize("hint", ["Беларусь", "беларусь", "by"])
+async def test_geocoding_city_comma_country(hint: str) -> None:
+    geo = _geo(("Россия", "RU", 500, 3.0), ("Беларусь", "BY", 10, 1.0))
+    recorder = Recorder(geo=geo)
+    await call(recorder, "weather_now", env={"WEATHER_PLACE": f"Кировск, {hint}"})
+    assert recorder.requests[0].url.params["name"] == "Кировск"
+    assert recorder.requests[1].url.params["latitude"] == "1.0"
+
+
+async def test_geocoding_unknown_country_hint_is_failure() -> None:
+    recorder = Recorder(geo=_geo(("Россия", "RU", 500, 3.0)))
+    is_error, text = await call(recorder, "weather_now", env={"WEATHER_PLACE": "Кировск, Чили"})
+    assert is_error
+    assert text.endswith("Не получилось узнать погоду.")
+
+
+async def test_resolved_name_only_when_differs() -> None:
+    _, same = await call(Recorder(), "weather_now")  # «Москва» -> «Москва»
+    assert not same.startswith("Место")
+    geo: dict[str, object] = {"results": [{"name": "Санкт-Петербург", "latitude": 59.9, "longitude": 30.3}]}
+    _, other = await call(Recorder(geo=geo), "weather_now", env={"WEATHER_PLACE": "Питер"})
+    assert other.startswith("Место: Санкт-Петербург. Сейчас")
+
+
+async def test_bad_coordinates_message() -> None:
+    is_error, text = await call(Recorder(), "weather_now", env={"WEATHER_LAT": "x", "WEATHER_LON": "1"})
+    assert is_error
+    assert "неверно" in text
+
+
+async def test_day_with_part_of_day() -> None:
+    _, text = await call(Recorder(), "weather_forecast", {"day": "завтра вечером"})
+    assert text.startswith("Завтра:")
 
 
 @pytest.mark.skipif(not os.environ.get("WEATHER_LIVE"), reason="WEATHER_LIVE не задан")

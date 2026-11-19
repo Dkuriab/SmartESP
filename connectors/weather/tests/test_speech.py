@@ -5,7 +5,14 @@ from datetime import date
 import pytest
 
 from weather_mcp.days import parse_day
-from weather_mcp.speech import condition, degrees, meters_per_second
+from weather_mcp.speech import (
+    condition,
+    degrees,
+    meters_per_second,
+    millimeters,
+    percent,
+    round_half_up,
+)
 
 # 2026-11-19 — четверг
 TODAY = date(2026, 11, 19)
@@ -63,6 +70,9 @@ def test_condition_known_and_unknown() -> None:
         ("четверг", [0], "сегодня"),
         ("в воскресенье", [3], "в воскресенье"),
         ("в выходные", [2, 3], "в выходные"),
+        ("сегодня вечером", [0], "сегодня"),
+        ("завтра утром", [1], "завтра"),
+        ("на завтра днём", [1], "завтра"),
     ],
 )
 def test_parse_day(text: str, offsets: list[int], label: str) -> None:
@@ -73,6 +83,7 @@ def test_parse_day(text: str, offsets: list[int], label: str) -> None:
 
 
 def test_parse_day_unknown() -> None:
+    assert parse_day("средний", TODAY) is None
     assert parse_day("когда-нибудь", TODAY) is None
 
 
@@ -88,3 +99,20 @@ def test_genitive_after_to() -> None:
     assert degrees(-1, after_to=True) == "минус 1 градуса"
     assert meters_per_second(3, after_to=True) == "3 метров в секунду"
     assert meters_per_second(1, after_to=True) == "1 метра в секунду"
+
+
+def test_round_half_up() -> None:
+    assert [round_half_up(x) for x in (2.5, 0.5, -0.5, -2.5, 2.4, -7.5)] == [3, 1, 0, -2, 2, -7]
+    assert degrees(2.5) == "3 градуса"
+    assert degrees(-2.5) == "минус 2 градуса"
+
+
+def test_millimeters_and_percent() -> None:
+    assert millimeters(2.5) == "2,5 миллиметра"
+    assert millimeters(1) == "1 миллиметр"
+    assert millimeters(5) == "5 миллиметров"
+    assert millimeters(0.3) == "0,3 миллиметра"
+    assert percent(1) == "1 процент"
+    assert percent(21) == "21 процент"
+    assert percent(60) == "60 процентов"
+    assert percent(3) == "3 процента"
