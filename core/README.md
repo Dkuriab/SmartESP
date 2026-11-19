@@ -17,8 +17,9 @@ uv sync
 
 `mlx-whisper` тянет `torch` — установка долгая, это нормально.
 
-Для голосовых сообщений через API (Telegram) нужен `ffmpeg`: `brew install ffmpeg`.
-Без него всё остальное работает, а `POST /api/v1/ask/voice` отвечает 503.
+Для голосовых сообщений через API (Telegram) и файлов на колонке нужен `ffmpeg`:
+`brew install ffmpeg`. Без него всё остальное работает, а `POST /api/v1/ask/voice` и
+`POST /api/v1/devices/{id}/play` отвечают 503.
 
 ## Проверка
 
@@ -293,9 +294,11 @@ curl -X PATCH -H "Authorization: Bearer $(cat ~/SmartEsp/token)" \
 | `GET /turns?limit=100` | последние ходы (данные `turn_finished`: `turn_id`, `device_id`, `device_name`, `text`, `annotations`, `style`, `answer`, `status`, `path`, `delegations`, `tools`, `at` — время конца хода в секундах Unix, `stt_ms`, `first_text_ms`, `first_audio_ms`, `origin` — `wake`, `listen`, `core` или `api`, у хода через API ещё `source` и `person`), от новых к старым; ядро хранит 100 последних в памяти |
 | `POST /ask` | ход через API текстом: `{text, person="", source="api"}` → `{answer, turn_id}` (см. «Ход через API») |
 | `POST /ask/voice` | ход через API голосом: multipart `audio` (OGG/Opus или WAV, до 10 МБ), `person`, `source` → `{answer, turn_id}` |
+| `POST /devices/{id}/play` | звуковой файл на колонке: multipart `audio` (MP3, WAV, OGG, M4A, FLAC; до 50 МБ) → 202 `{status: "started"}` (см. «Файл на колонке») |
+| `DELETE /devices/{id}/play` | остановить файл на колонке → `{stopped}` (`false` — файл не играл); колонки нет — 404 |
 | `GET /access` | `{urls}` — адреса `http://<ip>:<порт>/?token=…` для входа с других компьютеров сети (без `127.*`) |
 | `POST /restart` | перезапуск ядра, ответ 202 |
-| `WS /events?token=` | поток событий JSON `{"kind", "data", "at"}`: `core_state`, `device_connected`, `device_disconnected`, `wake`, `arbitration`, `turn_started`, `turn_heard`, `executor_active`, `tool_call`, `turn_finished`, `change_applied`, `voice_download`, `voice_ready` |
+| `WS /events?token=` | поток событий JSON `{"kind", "data", "at"}`: `core_state`, `device_connected`, `device_disconnected`, `wake`, `arbitration`, `turn_started`, `turn_heard`, `executor_active`, `tool_call`, `turn_finished`, `change_applied`, `voice_download`, `voice_ready`, `playback_started`, `playback_finished` |
 
 Схема OpenAPI для интерфейса: `uv run python -m smartesp --openapi ../ui/openapi.json`.
 
@@ -348,6 +351,33 @@ curl -H "Authorization: Bearer $(cat ~/SmartEsp/token)" -F audio=@voice.ogg -F p
 создать бота, вписать токены и допущенных людей и запустить — по
 [`clients/telegram/README.md`](../clients/telegram/README.md). Коротко: ядро
 запущено, затем `cd clients/telegram && uv sync && uv run telegram-bot`.
+
+### Файл на колонке
+
+`POST /api/v1/devices/{id}/play` проигрывает звуковой файл на колонке — общий
+механизм (проверить звук, позже — для коннекторов), а не «музыка» в ядре.
+
+- **Файл:** `multipart/form-data` с файлом `audio` — MP3, WAV, OGG, M4A или FLAC,
+  до 50 МБ (токен и размер проверяются до чтения тела). `ffmpeg` разбирает его
+  по ходу в 16 кГц моно (не длиннее 15 минут): звук идёт на колонку кусками, а не
+  после разбора всего файла. Пока файл играет, загрузка лежит во временном файле.
+- **Как играет:** ходом ядра, как объявление: колонка сначала сыграет «внимание».
+  На колонке — один файл за раз; слово пробуждения на ней прерывает файл.
+- **Ответ 202** `{"status": "started"}` — колонка начала получать звук. Итог —
+  события `playback_started {device_id}` и `playback_finished {device_id, delivery}`,
+  `delivery` — `delivered`, `interrupted` (перебили словом или остановили), `busy`,
+  `lost`.
+- **Ошибки** (`{"detail": "…"}` по-русски): 404 — колонки нет; 409 — колонка не в
+  сети, её прошивка не умеет речь по инициативе (протокол < 3), на ней уже играет
+  файл или идёт разговор; 413 — файл больше 50 МБ; 422 — файл пуст или не
+  разобрать; 503 — нет `ffmpeg` или ядро останавливается.
+- **Остановить:** `DELETE /api/v1/devices/{id}/play` — колонке уходит `cancel_turn`,
+  итог `interrupted`.
+
+```
+curl -H "Authorization: Bearer $(cat ~/SmartEsp/token)" -F audio=@song.mp3 \
+  http://127.0.0.1:8765/api/v1/devices/AA:BB:CC:DD:EE:FF/play
+```
 
 ## Остановка и перезапуск
 
