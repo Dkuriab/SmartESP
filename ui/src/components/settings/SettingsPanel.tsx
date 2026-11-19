@@ -1,5 +1,5 @@
 // Правая панель: настройки блока, выбранного на схеме или в списке.
-import { isApplying, listDevices, listStages, stagesLocked, stagesWith } from '../../schema/blocks'
+import { isApplying, listDevices, listExecutors, listStages, stagesLocked, stagesWith } from '../../schema/blocks'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState } from '../../state/model'
 import DeviceSettings from './DeviceSettings'
@@ -28,6 +28,11 @@ export default function SettingsPanel({ state, actions }: Props) {
     return <StageSettings stage={stage} applying={isApplying(state)} locked={stagesLocked(state)} onToggle={onToggle} />
   }
   if (selected?.kind === 'dispatcher') return <DispatcherSettings state={state} actions={actions} />
+  if (selected?.kind === 'executor') {
+    // настройки исполнителя — задача 9; входной пока открывает панель диспетчера
+    const entry = listExecutors(state).find((e) => e.id === selected.id)?.entry
+    return entry ? <DispatcherSettings state={state} actions={actions} /> : <p className="set-hint">Настройки исполнителя — скоро</p>
+  }
   if (selected?.kind === 'voice') return <VoiceSettings state={state} actions={actions} />
   return hint
 }

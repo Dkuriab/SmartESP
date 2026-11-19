@@ -6,7 +6,7 @@ import { buildGraph } from './buildGraph'
 const config = (stages: unknown[]): Config => ({
   effective: {
     stages,
-    executors: [{ entry: true, model: 'qwen3' }],
+    executors: [{ id: 'dispatcher', entry: true, model: 'qwen3' }],
     tts: { kind: 'piper', voice: 'irina' },
   },
   overridden: [],
@@ -48,7 +48,7 @@ describe('buildGraph', () => {
 
   it('without stages devices connect to dispatcher', () => {
     const g = buildGraph(makeState({ config: config([]) }))
-    expect(edge(g, 'device:a', 'dispatcher')).toBeTruthy()
+    expect(edge(g, 'device:a', 'executor:dispatcher')).toBeTruthy()
     expect(g.nodes.some((n) => n.id.startsWith('stage:') && n.data.enabled)).toBe(false)
   })
 
@@ -58,9 +58,9 @@ describe('buildGraph', () => {
     expect(g.edges.some((e) => e.source.includes('whisper_detect') || e.target.includes('whisper_detect'))).toBe(false)
   })
 
-  it('dispatcher and voice labels', () => {
+  it('executor and voice labels', () => {
     const g = buildGraph(makeState({ config: config([]) }))
-    expect(node(g, 'dispatcher')?.data.label).toBe('qwen3')
+    expect(node(g, 'executor:dispatcher')?.data.model).toBe('qwen3')
     expect(node(g, 'voice')?.data.label).toBe('piper · irina')
   })
 
@@ -70,12 +70,12 @@ describe('buildGraph', () => {
       annotations: [{ source: 'whisper_detect', text: 'шёпот' }],
     })
     const g = buildGraph(makeState({ config: config([{ kind: 'whisper_detect' }]), turns: [turn] }))
-    for (const id of ['device:a', 'stage:whisper_detect', 'dispatcher', 'voice'])
+    for (const id of ['device:a', 'stage:whisper_detect', 'executor:dispatcher', 'voice'])
       expect(node(g, id)?.data.lit, id).toBe(true)
     expect(node(g, 'device:b')?.data.lit).toBe(false)
     expect(node(g, 'stage:whisper_detect')?.data.strong).toBe(true)
     expect(edge(g, 'device:a', 'stage:whisper_detect')?.data).toMatchObject({ lit: true, strong: true })
-    expect(edge(g, 'stage:whisper_detect', 'dispatcher')?.data).toMatchObject({ lit: true, strong: true })
+    expect(edge(g, 'stage:whisper_detect', 'executor:dispatcher')?.data).toMatchObject({ lit: true, strong: true })
     expect(edge(g, 'device:b', 'stage:whisper_detect')?.data?.lit).toBe(false)
   })
 
@@ -91,13 +91,81 @@ describe('buildGraph', () => {
     expect(node(g, 'stage:whisper_detect')?.data).toMatchObject({ lit: true, strong: false })
     expect(node(g, 'device:a')?.data.lit).toBe(true)
     expect(edge(g, 'device:a', 'stage:whisper_detect')?.data).toMatchObject({ lit: true, strong: false })
-    expect(edge(g, 'stage:whisper_detect', 'dispatcher')?.data).toMatchObject({ lit: true, strong: false })
+    expect(edge(g, 'stage:whisper_detect', 'executor:dispatcher')?.data).toMatchObject({ lit: true, strong: false })
     expect(edge(g, 'device:b', 'stage:whisper_detect')?.data?.lit).toBe(false)
   })
 
   it('without a turn nothing is lit', () => {
     const g = buildGraph(makeState({ config: config([{ kind: 'whisper_detect' }]) }))
     expect(node(g, 'stage:whisper_detect')?.data.lit).toBe(false)
-    expect(edge(g, 'stage:whisper_detect', 'dispatcher')?.data?.lit).toBe(false)
+    expect(edge(g, 'stage:whisper_detect', 'executor:dispatcher')?.data?.lit).toBe(false)
+  })
+
+  describe('executors', () => {
+    const withExecs = (executors: unknown[]) => {
+      const cfg = config([])
+      cfg.effective.executors = executors
+      return cfg
+    }
+    const base = [
+      { id: 'dispatcher', name: 'Диспетчер', entry: true, model: 'qwen3', delegates: [{ to: 'big', when: 'сложное' }] },
+      { id: 'big', name: 'Большая', model: 'r1' },
+    ]
+    const graph = (turns = [] as ReturnType<typeof makeTurn>[], executors: unknown[] = base) =>
+      buildGraph(makeState({ config: withExecs(executors), turns }))
+
+    it('makes executor nodes from the defaults', () => {
+      const g = graph()
+      expect(node(g, 'executor:dispatcher')?.data).toMatchObject({ label: 'Диспетчер', model: 'qwen3', kind: 'executor', id: 'dispatcher' })
+      expect(node(g, 'executor:big')?.type).toBe('executor')
+    })
+
+    it('marks a model without tools', () => {
+      const models = [{ name: 'r1', size_bytes: 1, supports_tools: false }]
+      const g = buildGraph(makeState({ config: withExecs(base), models }))
+      expect(node(g, 'executor:big')?.data.noTools).toBe(true)
+      expect(node(g, 'executor:dispatcher')?.data.noTools).toBe(false)
+    })
+
+    it('draws a labelled link', () => {
+      const e = edge(graph(), 'executor:dispatcher', 'executor:big')
+      expect(e?.label).toBe('сложное')
+      expect(e?.data).toMatchObject({ inactive: false, title: 'сложное' })
+    })
+
+    it('inactive link is flagged', () => {
+      const ex = [{ ...base[0], delegates: [{ to: 'big', when: '' }] }, base[1]]
+      expect(edge(graph([], ex), 'executor:dispatcher', 'executor:big')?.data?.inactive).toBe(true)
+    })
+
+    it('truncates a long condition, keeps the full one in title', () => {
+      const when = 'я'.repeat(60)
+      const ex = [{ ...base[0], delegates: [{ to: 'big', when }] }, base[1]]
+      const e = edge(graph([], ex), 'executor:dispatcher', 'executor:big')
+      expect(String(e?.label)).toHaveLength(40)
+      expect(String(e?.label).endsWith('…')).toBe(true)
+      expect(e?.data?.title).toBe(when)
+    })
+
+    it('highlights a handoff path', () => {
+      const g = graph([makeTurn(1, { device_id: 'a', path: ['dispatcher', 'big'] })])
+      expect(edge(g, 'executor:dispatcher', 'executor:big')?.data?.lit).toBe(true)
+      expect(edge(g, 'executor:big', 'voice')?.data?.lit).toBe(true)
+      expect(edge(g, 'executor:dispatcher', 'voice')?.data?.lit).toBe(false)
+      expect(node(g, 'executor:big')?.data.lit).toBe(true)
+    })
+
+    it('highlights entry to voice without a handoff', () => {
+      const g = graph([makeTurn(1, { device_id: 'a', path: ['dispatcher'] })])
+      expect(edge(g, 'executor:dispatcher', 'voice')?.data?.lit).toBe(true)
+      expect(edge(g, 'executor:dispatcher', 'executor:big')?.data?.lit).toBe(false)
+      expect(node(g, 'executor:big')?.data.lit).toBe(false)
+    })
+
+    it('old turn without path stops at the entry', () => {
+      const g = graph([makeTurn(1, { device_id: 'a', path: [] })])
+      expect(node(g, 'executor:dispatcher')?.data.lit).toBe(true)
+      expect(edge(g, 'executor:big', 'voice')?.data?.lit).toBe(false)
+    })
   })
 })

@@ -11,13 +11,16 @@ type Data = {
   offline?: boolean
   enabled?: boolean
   voiceState?: string
+  model?: string
+  /** Модель исполнителя не умеет вызывать инструменты. */
+  noTools?: boolean
 }
 type SchemaNode = Node<Data>
 
 const CAPTIONS: Record<string, string> = {
   device: 'Колонка',
   stage: 'Обработчик',
-  dispatcher: 'Диспетчер',
+  executor: 'Исполнитель',
   voice: 'Голос',
 }
 
@@ -56,6 +59,26 @@ function make(type: string) {
   }
 }
 
+function Executor({ data, selected }: NodeProps<SchemaNode>) {
+  const cls = ['node', 'node-executor']
+  if (data.lit) cls.push('lit')
+  if (selected) cls.push('picked')
+  return (
+    <div className={cls.join(' ')}>
+      <Handle id="in-top" type="target" position={Position.Top} isConnectable={false} />
+      <Handle id="in-left" type="target" position={Position.Left} isConnectable={false} />
+      <div className="node-cap">{CAPTIONS.executor}</div>
+      <div className="node-title" title={data.label}>
+        {data.label}
+      </div>
+      <div className="node-sub">{data.model || '—'}</div>
+      {data.noTools && <div className="node-sub">не умеет передавать</div>}
+      <Handle id="out-right" type="source" position={Position.Right} isConnectable={false} />
+      <Handle id="out-bottom" type="source" position={Position.Bottom} isConnectable={false} />
+    </div>
+  )
+}
+
 function Hint({ data }: NodeProps<SchemaNode>) {
   return <div className="node node-hint">{data.label}</div>
 }
@@ -63,7 +86,7 @@ function Hint({ data }: NodeProps<SchemaNode>) {
 export const nodeTypes = {
   device: make('device'),
   stage: make('stage'),
-  dispatcher: make('dispatcher'),
+  executor: Executor,
   voice: make('voice'),
   hint: Hint,
 }

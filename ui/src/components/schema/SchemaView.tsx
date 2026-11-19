@@ -1,4 +1,4 @@
-// Живая схема: колонки → обработчики → диспетчер → голос, путь хода подсвечен.
+// Живая схема: колонки → обработчики → исполнители → голос, путь хода подсвечен.
 import { Background, BackgroundVariant, ReactFlow } from '@xyflow/react'
 import type { Edge, NodeMouseHandler } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -16,9 +16,10 @@ const MIN_ZOOM = 0.2
 
 /** Цвет связи: не на пути — линия, на пути — акцент, через пометку обработчика — фиолетовый. */
 function styled(edge: Edge): Edge {
-  const { lit, strong } = (edge.data ?? {}) as { lit?: boolean; strong?: boolean }
+  const { lit, strong, inactive } = (edge.data ?? {}) as { lit?: boolean; strong?: boolean; inactive?: boolean }
   const stroke = strong ? 'var(--purple)' : lit ? 'var(--accent)' : 'var(--line)'
-  return { ...edge, style: { stroke, strokeWidth: strong ? 3 : lit ? 2.5 : 1.5 } }
+  const style = { stroke, strokeWidth: strong ? 3 : lit ? 2.5 : 1.5, ...(inactive ? { strokeDasharray: '6 4' } : {}) }
+  return { ...edge, style, labelStyle: { fill: 'var(--muted)', fontSize: 11 }, labelBgStyle: { fill: 'var(--panel)' } }
 }
 
 export default function SchemaView({ state, actions }: Props) {

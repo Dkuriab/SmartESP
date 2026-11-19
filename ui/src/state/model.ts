@@ -13,7 +13,7 @@ export type Device = Schemas['DeviceOut']
 export type Connection = 'connecting' | 'online' | 'offline' | 'unauthorized'
 
 export type Selection = {
-  kind: 'device' | 'stage' | 'dispatcher' | 'voice'
+  kind: 'device' | 'stage' | 'dispatcher' | 'executor' | 'voice'
   id: string
 }
 
