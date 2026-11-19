@@ -6,11 +6,11 @@ Idle → Listening → Waiting → Speaking): hello → wake → звук воп
 сколько он звучит, → playback_done.
 
 Протокол 3 (`--protocol 3`) добавляет ходы ядра:
-- `announce{turn}` — из покоя ждёт reply_start → звук → reply_end, «играет» и
-  шлёт playback_done{turn};
+- `announce{turn}` — из покоя «играет» сигнал «внимание» (как прошивка: сама и
+  только приняв), ждёт reply_start → звук → reply_end, «играет» и шлёт playback_done{turn};
 - `listen{turn}` — из покоя «слушает»: шлёт звук очередного `--answer-wav` и
   utterance_end{turn, vad}; ответы кончились — через 5 с utterance_end no_speech;
-- не в покое (или с `--busy` — всегда) на announce/listen отвечает busy{turn}.
+- не в покое (или с `--busy` — всегда) на announce/listen отвечает busy{turn}, без звука.
 
 Колонка выходит, пробыв в покое `--linger` секунд (Ctrl+C — раньше). Печатает
 сообщения ядра с отметкой времени и задержки, может сохранить ответы в WAV.
@@ -199,6 +199,7 @@ class FakeSpeaker:
         elif self.state == "idle":
             self.spoke_at = time.monotonic()
             self.enter("waiting", turn)
+            self.log("♪ внимание (колонка приняла announce)")
 
     async def on_listen(self, m: dict[str, Any]) -> None:
         turn = m.get("turn")

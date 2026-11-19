@@ -54,7 +54,8 @@ class DevicePort(Protocol):
         ...
 
     async def announce(self, device_id: str, audio: AsyncIterator[bytes]) -> Delivery:
-        """Говорит на колонке новым ходом ядра (сигнал attention, затем звук) и ждёт итог доставки."""
+        """Говорит на колонке новым ходом ядра (колонка, приняв его, сама играет сигнал «внимание»,
+        затем звук) и ждёт итог доставки."""
         ...
 
     async def listen(self, device_id: str) -> bool:

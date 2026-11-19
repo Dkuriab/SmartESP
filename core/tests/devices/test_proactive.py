@@ -44,8 +44,7 @@ async def test_announce_delivered() -> None:
     task = asyncio.create_task(hub.announce("A", chunks(b"\x01" * 100, b"\x02" * 100)))
     await eventually(lambda: REPLY_END_T1 in conn.sent)
     assert conn.sent == [
-        ANNOUNCE_T1,
-        '{"type":"tone","name":"attention"}',
+        ANNOUNCE_T1,  # сигнал «внимание» колонка играет сама, ядро tone не шлёт
         '{"type":"reply_start","turn":2147483649}',
         b"\x01" * 100,
         b"\x02" * 100,

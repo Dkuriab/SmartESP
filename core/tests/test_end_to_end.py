@@ -277,9 +277,8 @@ async def test_end_to_end_late_answer() -> None:
         core_turn = 0x80000001
         await eventually(lambda: {"type": "reply_end", "turn": core_turn} in conn.sent_json())
         frames = [m for m in conn.sent_json() if m.get("turn") == core_turn or m["type"] == "tone"]
-        assert frames[-4:] == [
+        assert frames[-3:] == [  # сигнал «внимание» колонка играет сама, tone ядро не шлёт
             {"type": "announce", "turn": core_turn},
-            {"type": "tone", "name": "attention"},
             {"type": "reply_start", "turn": core_turn},
             {"type": "reply_end", "turn": core_turn},
         ]

@@ -353,10 +353,11 @@ TEST(cancel_turn_other_turn_ignored) {
   CHECK(session.state() == SessionState::Waiting);
 }
 
+// Сигнал «внимание» колонка играет сама, только приняв объявление.
 TEST(announce_from_idle) {
   Session session = connectedSession();
   session.onServerCommand(server(ServerCommandType::Announce, 0x80000001u));
-  CHECK(sameActions(drain(session), {setActiveTurn(0x80000001u)}));
+  CHECK(sameActions(drain(session), {setActiveTurn(0x80000001u), playTone(Tone::Attention)}));
   CHECK(session.state() == SessionState::Waiting);
   session.onServerCommand(server(ServerCommandType::ReplyStart, 0x80000001u));
   CHECK(session.state() == SessionState::Speaking);
@@ -367,6 +368,7 @@ TEST(announce_from_idle) {
   CHECK(session.state() == SessionState::Idle);
 }
 
+// Занятая колонка отвечает только busy: ни сигнала «внимание», ни смены хода.
 TEST(announce_when_busy_sends_busy) {
   Session session = listeningSession();
   session.onServerCommand(server(ServerCommandType::Announce, 0x80000001u));

@@ -13,7 +13,7 @@ from smartesp.contracts import Delivery
 
 from .arbiter import Arbiter
 from .messages import announce as announce_frame
-from .messages import cancel_turn, tone
+from .messages import cancel_turn
 from .messages import listen as listen_frame
 from .playback import close_audio, send_reply
 from .session import ActiveTurn, Recording, Session
@@ -21,7 +21,6 @@ from .session import ActiveTurn, Recording, Session
 PROACTIVE_PROTOCOL = 3  # с этой версии колонка понимает listen и отвечает busy
 REPLY_GRACE_S = 15.0  # нет playback_done за длительность звука + столько секунд — объявление потеряно
 LISTEN_WAIT_S = 30.0  # сколько ждать playback_done хода перед listen
-ATTENTION_TONE = "attention"  # сигнал перед речью по инициативе
 LISTEN_ORIGIN = "listen"  # Utterance.origin хода, начатого командой listen
 
 logger = logging.getLogger(__name__)
@@ -56,7 +55,10 @@ class CoreTurns:
         return self._last_active if self._last_active in self._sessions else None
 
     async def announce(self, device_id: str, audio: AsyncIterator[bytes]) -> Delivery:
-        """announce → tone attention → reply_start → звук → reply_end новым ходом ядра; ждёт итог.
+        """announce → reply_start → звук → reply_end новым ходом ядра; ждёт итог.
+
+        Сигнал «внимание» колонка играет сама, только приняв announce: ядро tone не шлёт, иначе
+        занятая колонка сыграла бы его посреди разговора, ещё до своего ответа busy.
 
         Колонка не подключена, протокол < 3 или хаб останавливается — "lost" без кадров; у хаба на
         ней идёт ход — "busy". Поток audio закрывается при любом выходе. Отмена посреди звука
@@ -145,9 +147,7 @@ class CoreTurns:
     ) -> float:
         """Кадры объявления по порядку; возвращает, сколько секунд звука колонке ещё играть."""
         try:
-            if await session.send(announce_frame(esp_turn), turn_id) and await session.send(
-                tone(ATTENTION_TONE), turn_id
-            ):
+            if await session.send(announce_frame(esp_turn), turn_id):
                 return await send_reply(session, turn_id, audio, self._clock)
             return 0.0
         finally:

@@ -122,7 +122,8 @@ void Session::onServerCommand(const ServerCommand& command) {
       break;
     case ServerCommandType::Announce:
       // Объявление по инициативе сервера: принимаем только в покое и при связи.
-      // Ход серверный; ждём reply_start, как после вопроса.
+      // Ход серверный; сигнал «внимание» играем сами только при согласии (на busy —
+      // тишина, разговор владельца не прерываем); дальше ждём reply_start, как после вопроса.
       if (state_ == SessionState::Idle) {
         if (connected_) {
           turn_ = command.turn;
@@ -130,6 +131,7 @@ void Session::onServerCommand(const ServerCommand& command) {
           action.type = ActionType::SetActiveTurn;
           action.turn = turn_;
           push(action);
+          pushTone(Tone::Attention);
           enter(SessionState::Waiting);
         }
       } else {
