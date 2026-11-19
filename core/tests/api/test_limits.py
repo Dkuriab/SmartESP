@@ -8,7 +8,15 @@ import httpx
 import pytest
 
 from fakes.fake_core import FakeCore
-from smartesp.api.limits import ASK_BODY_BYTES, MAX_BODY_BYTES, VOICE_BODY_BYTES
+from fakes.fake_playback import FakeFilePlayback
+from smartesp.api.limits import (
+    ASK_BODY_BYTES,
+    MAX_BODY_BYTES,
+    PLAY_BODY_BYTES,
+    VOICE_BODY_BYTES,
+    guarded_limit,
+)
+from smartesp.api.play import MAX_FILE_BYTES
 
 from .conftest import HEADERS
 
@@ -32,6 +40,10 @@ class Body:
 VOICE_HEAD = (
     b'--b\r\nContent-Disposition: form-data; name="audio"; filename="voice.ogg"\r\n'
     b"Content-Type: audio/ogg\r\n\r\n"
+)
+PLAY_HEAD = (
+    b'--b\r\nContent-Disposition: form-data; name="audio"; filename="song.mp3"\r\n'
+    b"Content-Type: audio/mpeg\r\n\r\n"
 )
 MULTIPART = {"Content-Type": "multipart/form-data; boundary=b"}
 
@@ -101,3 +113,58 @@ async def test_normal_requests_pass(client: httpx.AsyncClient, core: FakeCore) -
     assert (await client.post("/api/v1/ask/voice", files=files, headers=HEADERS)).status_code == 200
     assert (await client.patch("/api/v1/config", json={"tts": {}}, headers=HEADERS)).status_code == 200
     assert (await client.get("/api/v1/status", headers=HEADERS)).status_code == 200
+
+
+PLAY = "/api/v1/devices/aa:bb:cc:dd:ee:ff/play"
+
+
+async def test_play_declared_over_limit_is_413_unread(
+    client: httpx.AsyncClient, files: FakeFilePlayback
+) -> None:
+    body = Body(100)
+    headers = {**HEADERS, **MULTIPART, "Content-Length": str(PLAY_BODY_BYTES + 1)}
+    response = await client.post(PLAY, content=body.stream(), headers=headers)
+    assert response.status_code == 413
+    assert body.read == 0
+    assert files.plays == []
+
+
+async def test_play_chunked_over_limit_is_413(client: httpx.AsyncClient, files: FakeFilePlayback) -> None:
+    body = Body(80)
+
+    async def stream() -> AsyncIterator[bytes]:
+        yield PLAY_HEAD
+        async for chunk in body.stream():
+            yield chunk
+
+    response = await client.post(PLAY, content=stream(), headers={**HEADERS, **MULTIPART})
+    assert response.status_code == 413
+    assert body.read <= PLAY_BODY_BYTES // MB + 2
+    assert files.plays == []
+
+
+async def test_play_no_token_is_401_unread(client: httpx.AsyncClient) -> None:
+    body = Body(100)
+    response = await client.post(PLAY, content=body.stream(), headers=MULTIPART)
+    assert response.status_code == 401
+    assert body.read == 0
+
+
+async def test_play_allows_more_than_global_cap(client: httpx.AsyncClient, files: FakeFilePlayback) -> None:
+    upload = {"audio": ("song.mp3", b"\x00" * (MAX_FILE_BYTES), "audio/mpeg")}  # ровно 50 МБ проходит
+    response = await client.post(PLAY, files=upload, headers=HEADERS)
+    assert response.status_code == 202
+    assert len(files.plays[0][1]) == MAX_FILE_BYTES
+
+
+@pytest.mark.parametrize(
+    "path", ["/api/v1/devices/a/b/play", "/api/v1/devices/a/play/x", "/api/v1/devices//play"]
+)
+def test_play_pattern_is_exact(path: str) -> None:
+    assert guarded_limit("POST", path) is None
+
+
+def test_play_pattern_only_for_post() -> None:
+    assert guarded_limit("POST", PLAY) == PLAY_BODY_BYTES
+    assert guarded_limit("DELETE", PLAY) is None
+    assert guarded_limit("POST", "/api/v1/ask") == ASK_BODY_BYTES

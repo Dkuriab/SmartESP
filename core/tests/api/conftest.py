@@ -8,6 +8,7 @@ import pytest
 from fastapi import FastAPI
 
 from fakes.fake_core import FakeCore
+from fakes.fake_playback import FakeFilePlayback
 from smartesp.api import BodyLimit, create_api, mount_ui
 from smartesp.events import EventBus
 
@@ -16,9 +17,9 @@ PORT = 8765
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 
 
-def make_app(core: FakeCore, bus: EventBus, ui_dir: Path) -> FastAPI:
+def make_app(core: FakeCore, bus: EventBus, ui_dir: Path, files: FakeFilePlayback | None = None) -> FastAPI:
     app = FastAPI()
-    app.include_router(create_api(core, bus, TOKEN, port=PORT))
+    app.include_router(create_api(core, bus, TOKEN, port=PORT, files=files or FakeFilePlayback()))
     app.add_middleware(BodyLimit, token=TOKEN)
     mount_ui(app, ui_dir)
     return app
@@ -35,8 +36,13 @@ def bus() -> EventBus:
 
 
 @pytest.fixture
-def app(core: FakeCore, bus: EventBus, tmp_path: Path) -> FastAPI:
-    return make_app(core, bus, tmp_path / "no-dist")
+def files() -> FakeFilePlayback:
+    return FakeFilePlayback()
+
+
+@pytest.fixture
+def app(core: FakeCore, bus: EventBus, files: FakeFilePlayback, tmp_path: Path) -> FastAPI:
+    return make_app(core, bus, tmp_path / "no-dist", files)
 
 
 @pytest.fixture

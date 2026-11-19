@@ -14,6 +14,7 @@ from smartesp.contracts import (
     CorePort,
     EventFeed,
     ExecutorError,
+    FilePlayback,
     Subscription,
     VoiceNotDownloadedError,
 )
@@ -21,6 +22,7 @@ from smartesp.contracts import (
 from .access import lan_addresses
 from .ask import add_ask_routes
 from .auth import require_token, token_matches
+from .play import add_play_routes
 from .schemas import (
     AccessOut,
     ChangeOut,
@@ -46,13 +48,17 @@ def _change_response(result: ChangeResult, codes: dict[str, int]) -> JSONRespons
     return JSONResponse(body.model_dump(), status_code=codes.get(result.status, 200))
 
 
-def create_api(core: CorePort, feed: EventFeed, token: str, *, port: int) -> APIRouter:
-    """Собирает роутер `/api/v1`; все ресурсы требуют токен. `port` — порт сервера для адресов входа."""
+def create_api(core: CorePort, feed: EventFeed, token: str, *, port: int, files: FilePlayback) -> APIRouter:
+    """Собирает роутер `/api/v1`; все ресурсы требуют токен.
+
+    `port` — порт сервера для адресов входа; `files` — проигрывание файлов на колонках.
+    """
     router = APIRouter(prefix="/api/v1")
     secured = APIRouter(dependencies=[Depends(require_token(token))], responses=_UNAUTHORIZED)
     _add_core_routes(secured, core)
     _add_voice_routes(secured, core)
     add_ask_routes(secured, core)
+    add_play_routes(secured, files)
     _add_access_route(secured, token, port)
     router.include_router(secured)
     _add_events_route(router, feed, token)

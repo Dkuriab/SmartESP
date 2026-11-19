@@ -18,6 +18,7 @@ from smartesp.control import Core
 from smartesp.conversation import History, Orchestrator
 from smartesp.devices import DeviceHub
 from smartesp.events import EventBus
+from smartesp.fileplay import FilePlayer
 from smartesp.kinds import Kinds, Ollama, kinds_validator, member_specs, prompt_stages
 from smartesp.lifecycle import (
     Answering,
@@ -30,7 +31,7 @@ from smartesp.lifecycle import (
 from smartesp.network import NetworkPrompts
 from smartesp.notify import Announcer
 from smartesp.sections import live_sections, speech_settings
-from smartesp.stt import decode_audio
+from smartesp.stt import decode_audio, decode_file
 from smartesp.tools import McpHub
 from smartesp.tts import VoiceManager
 
@@ -57,6 +58,7 @@ class Assembly:
     retry: CapabilityRetry = field(init=False)  # пересборка сети, когда станут известны возможности моделей
     refresh: ToolsRefresh = field(init=False)  # пересборка сети, когда меняется список инструментов
     core: Core = field(init=False)
+    files: FilePlayer = field(init=False)  # звуковые файлы на колонках
     app: FastAPI = field(init=False)
     running: asyncio.Task[None] | None = None  # оркестратор
     warming: asyncio.Task[None] | None = None  # прогрев частей
@@ -78,6 +80,11 @@ def conversation(
     use_speech = speech_settings(orchestrator, announcer)
     use_speech(config.speech)
     return hub, history, orchestrator, announcer, use_speech
+
+
+def file_player(hub: DeviceHub, bus: EventBus) -> FilePlayer:
+    """Файлы на колонках: ходом ядра через хаб, разбор ffmpeg по ходу, итог — в ленту событий."""
+    return FilePlayer(hub, hub.devices, decode_file, events=bus)
 
 
 def live_answering(

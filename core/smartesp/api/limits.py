@@ -1,7 +1,7 @@
 """Предел размера тела запроса и ранняя проверка токена — до чтения тела (чистый ASGI).
 
 FastAPI читает тело (multipart — в файл на диске без предела) раньше зависимостей с
-токеном. Поэтому для ходов через API токен проверяется здесь, по заголовкам, а размер —
+токеном. Поэтому для ходов через API и файла на колонку токен проверяется здесь, по заголовкам, а размер —
 по Content-Length сразу и по счёту байтов для тела без длины (chunked): перебор — 413,
 дальше тело не читается. Остальным запросам — общий предел MAX_BODY_BYTES.
 """
@@ -9,6 +9,7 @@ FastAPI читает тело (multipart — в файл на диске без 
 from __future__ import annotations
 
 import json
+import re
 
 from starlette.exceptions import HTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -18,7 +19,9 @@ from .auth import bearer_token, token_matches
 MAX_BODY_BYTES = 12 * 1024 * 1024  # общий предел тела любого запроса
 ASK_BODY_BYTES = 64 * 1024  # POST /ask: JSON с текстом
 VOICE_BODY_BYTES = 10 * 1024 * 1024 + 64 * 1024  # POST /ask/voice: 10 МБ звука и обвязка multipart
+PLAY_BODY_BYTES = 50 * 1024 * 1024 + 64 * 1024  # POST /devices/{id}/play: 50 МБ файла и обвязка
 GUARDED = {"/api/v1/ask": ASK_BODY_BYTES, "/api/v1/ask/voice": VOICE_BODY_BYTES}  # токен — до тела
+GUARDED_PATTERNS = ((re.compile(r"/api/v1/devices/[^/]+/play"), PLAY_BODY_BYTES),)  # путь целиком
 TOO_LARGE = "Тело запроса слишком большое"
 
 
@@ -30,7 +33,7 @@ class _TooLarge(HTTPException):
 
 
 class BodyLimit:
-    """ASGI-прослойка: предел тела для всех запросов, для ходов через API — и токен до тела."""
+    """ASGI-прослойка: предел тела для всех запросов, для ходов и файла на колонку — и токен до тела."""
 
     def __init__(self, app: ASGIApp, token: str, max_body: int = MAX_BODY_BYTES) -> None:
         """app — приложение; token — токен API; max_body — общий предел тела в байтах."""
@@ -45,11 +48,12 @@ class BodyLimit:
             return
         headers = {key.decode("latin-1").lower(): value.decode("latin-1") for key, value in scope["headers"]}
         limit = self._max_body
-        if scope["method"] == "POST" and scope["path"] in GUARDED:
+        guarded = guarded_limit(scope["method"], scope["path"])
+        if guarded is not None:
             if not token_matches(bearer_token(headers.get("authorization")), self._token):
                 await _reply(send, 401, "unauthorized")
                 return
-            limit = GUARDED[scope["path"]]
+            limit = guarded
         if _declared(headers) > limit:
             await _reply(send, 413, TOO_LARGE)
             return
@@ -80,6 +84,15 @@ class BodyLimit:
             if started:
                 raise
             await _reply(send, 413, TOO_LARGE)
+
+
+def guarded_limit(method: str, path: str) -> int | None:
+    """Предел тела запроса с токеном до тела (POST ходов и файла на колонку); другим — None."""
+    if method != "POST":
+        return None
+    if path in GUARDED:
+        return GUARDED[path]
+    return next((limit for pattern, limit in GUARDED_PATTERNS if pattern.fullmatch(path)), None)
 
 
 def _declared(headers: dict[str, str]) -> int:

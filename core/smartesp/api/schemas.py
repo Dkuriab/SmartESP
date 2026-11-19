@@ -206,3 +206,15 @@ class AskOut(BaseModel):
 
     answer: str
     turn_id: str
+
+
+class PlayOut(BaseModel):
+    """Файл на колонке начал играть; итог придёт событием playback_finished."""
+
+    status: Literal["started"] = "started"
+
+
+class StopOut(BaseModel):
+    """Остановка файла: stopped=False — файл не играл."""
+
+    stopped: bool

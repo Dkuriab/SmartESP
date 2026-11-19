@@ -40,6 +40,7 @@ from smartesp.parts import (
     Assembly,
     control,
     conversation,
+    file_player,
     live_answering,
     voice_manager,
 )
@@ -119,6 +120,7 @@ def assemble(
     parts.refresh = ToolsRefresh(
         lambda: live.executor is not None, lambda: parts.core.rebuild(ANSWERING_SECTIONS)
     )
+    parts.files = file_player(hub, bus)
     parts.app = _build_app(parts, token, ui_dir, version)
     return parts
 
@@ -139,7 +141,8 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str) -> FastA
         await ws.accept()
         await parts.hub.handle(WebSocketConnection(ws))
 
-    app.include_router(create_api(parts.core, parts.bus, token, port=parts.config.server.port))
+    api = create_api(parts.core, parts.bus, token, port=parts.config.server.port, files=parts.files)
+    app.include_router(api)
     app.add_middleware(BodyLimit, token=token)  # предел тела и токен ходов через API — до чтения тела
     mount_ui(app, ui_dir)  # последним: монтирование на / перехватывает всё, что объявлено позже
     return app
@@ -189,13 +192,14 @@ async def _warm_stt(parts: Assembly) -> None:
 
 
 async def stop(parts: Assembly) -> None:
-    """Честная остановка: договорить (одновременно закрыть коннекторы), бросить очередь речи,
-    отключить колонки, выгрузить модель, убрать файл запуска."""
+    """Честная остановка: остановить файлы на колонках, договорить (одновременно закрыть коннекторы),
+    бросить очередь речи, отключить колонки, выгрузить модель, убрать файл запуска."""
     logger.info("Остановка: новые ходы и правки не принимаются")
     parts.core.set_state("stopping")
     parts.hub.stop_accepting()
     parts.orchestrator.stop_accepting()
     parts.live.close()  # освобождения старых моделей больше не ждут ходов: их выгрузит unload_all
+    await parts.files.aclose()  # файл на колонке может играть минуты — не ждём его
     await cancel_tasks(parts.warming, parts.retrying, parts.refreshing)  # оркестратор — в finish
     # коннекторы закрываются, пока договариваются ходы (их вызовы инструментов уже не пройдут)
     closing = asyncio.create_task(parts.tools.aclose(TOOLS_CLOSE_S), name="tools-close")
@@ -218,5 +222,6 @@ async def finish(parts: Assembly) -> None:
     await cancel_tasks(parts.running, parts.warming, parts.retrying, parts.refreshing)
     await parts.tools.aclose()
     await parts.announcer.aclose()
+    await parts.files.aclose()
     await parts.voices.aclose()
     await parts.hub.aclose()
