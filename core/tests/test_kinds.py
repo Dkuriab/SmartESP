@@ -6,7 +6,7 @@ import pytest
 
 from fakes.fake_executor import FakeOllama
 from smartesp.config import Config, ExecutorConfig
-from smartesp.config.models import BIG_WHEN, DelegateLink
+from smartesp.config.models import BIG_WHEN, REPO_DIR, DelegateLink
 from smartesp.contracts import Executor, ToolResult, ToolSpec
 from smartesp.kinds import (
     Kinds,
@@ -88,6 +88,11 @@ class Box:
 async def test_toolbox_tools_go_to_members_with_tools() -> None:
     _, network = await build_answering(Config(), kinds([]), with_tools, Box())
     assert [t.name for t in network.members["dispatcher"].tools] == ["note_add"]
+
+
+def test_connector_specs_expand_repo_placeholder() -> None:
+    notes = connector_specs(Config())[0]
+    assert notes.args[2] == str(REPO_DIR / "connectors" / "notes")
 
 
 def test_connector_specs_follow_settings() -> None:

@@ -15,21 +15,34 @@ def test_defaults_are_our_five_connectors() -> None:
     assert [c.id for c in connectors] == ["notes", "calc", "timers", "weather", "food"]
     for c in connectors:
         assert c.command == "uv"
-        assert c.args == ["run", "--project", str(REPO / "connectors" / c.id), f"{c.id}-mcp"]
+        assert c.args == ["run", "--project", f"{{repo}}/connectors/{c.id}", f"{c.id}-mcp"]
         assert c.enabled
         assert c.name
-        assert Path(c.args[2]).is_absolute()
-        assert (Path(c.args[2]) / "pyproject.toml").exists()
+        project = Path(c.expanded().args[2])
+        assert project == REPO / "connectors" / c.id
+        assert (project / "pyproject.toml").exists()
     weather = next(c for c in connectors if c.id == "weather")
     assert weather.env == {"WEATHER_PLACE": ""}
     assert all(c.env == {} for c in connectors if c.id != "weather")
 
 
-def test_defaults_file_has_repo_path(tmp_path: Path) -> None:
+def test_defaults_file_keeps_repo_placeholder(tmp_path: Path) -> None:
+    # путь не закрепляется в настройках: перенос репозитория их не ломает
     load_config(tmp_path / "config.yaml")
     text = (tmp_path / "config.defaults.yaml").read_text(encoding="utf-8")
     defaults = yaml.safe_load(text)
-    assert defaults["connectors"][0]["args"][2] == str(REPO / "connectors" / "notes")
+    assert defaults["connectors"][0]["args"][2] == "{repo}/connectors/notes"
+
+
+def test_expanded_replaces_placeholder_and_keeps_absolute_paths() -> None:
+    custom = ConnectorConfig(
+        id="x", name="X", command="{repo}/bin/x", args=["/abs/path", "{repo}"], env={"P": "{repo}/d"}
+    )
+    expanded = custom.expanded()
+    assert expanded.command == f"{REPO}/bin/x"
+    assert expanded.args == ["/abs/path", str(REPO)]
+    assert expanded.env == {"P": f"{REPO}/d"}
+    assert custom.args == ["/abs/path", "{repo}"]  # исходные настройки не меняются
 
 
 def test_owner_file_without_connectors_gets_defaults(tmp_path: Path) -> None:

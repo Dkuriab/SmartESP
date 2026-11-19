@@ -83,11 +83,9 @@ def member_specs(config: Config) -> list[MemberSpec]:
 
 
 def connector_specs(config: Config) -> list[ConnectorSpec]:
-    """Коннекторы из настроек — описания для MCP-хаба."""
-    return [
-        ConnectorSpec(c.id, c.name, c.command, tuple(c.args), dict(c.env), c.enabled)
-        for c in config.connectors
-    ]
+    """Коннекторы из настроек — описания для MCP-хаба («{repo}» — путь к репозиторию)."""
+    expanded = [c.expanded() for c in config.connectors]
+    return [ConnectorSpec(c.id, c.name, c.command, tuple(c.args), dict(c.env), c.enabled) for c in expanded]
 
 
 def prompt_stages(config: Config, kinds: Kinds) -> list[Stage]:
