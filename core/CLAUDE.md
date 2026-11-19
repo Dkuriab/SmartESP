@@ -24,7 +24,8 @@ core/
   smartesp/
     contracts/           ← только типы и протоколы (аналог Types.h)
     devices/ stt/ stages/ conversation/ executors/ tts/ config/
-    tools/ people/ tasks/ notify/   ← (будут)
+    tools/               ← MCP-хаб: коннекторы — подпроцессы stdio, их инструменты (ToolBox), объявления
+    people/ tasks/ notify/   ← (будут)
     events/              ← шина событий: лента для интерфейса, у подписчика ограниченная очередь
     control/             ← управление ядром: состояние, применение правок настроек на лету
     api/                 ← HTTP/WebSocket API `/api/v1`, токен (и его сокрытие в журнале), раздача интерфейса
