@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -27,7 +28,8 @@ _log = logging.getLogger(__name__)
 
 MAX_DEPTH = 2  # передач в одном ходе: диспетчер → A → B
 TASK_PREFIX = "\n\nЗадача от диспетчера: "  # дописывается к последнему сообщению user у цели
-FAILURE_PHRASE = "{name} сейчас не отвечает."  # цель недоступна
+FAILURE_PHRASE = "{name} сейчас не отвечает."  # цель недоступна или ничего не сказала
+_STYLE_TAG = re.compile(r"^\s*\[\s*style\s*:\s*[\w-]+\s*\]", re.IGNORECASE)  # «[style:quiet]»
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,11 @@ def _with_task(messages: list[ChatMessage], task: str) -> list[ChatMessage]:
             changed = ChatMessage("user", last.content + TASK_PREFIX + task)
             return [*messages[:index], changed, *messages[index + 1 :]]
     return [*messages, ChatMessage("user", TASK_PREFIX.lstrip() + task)]
+
+
+def _speakable(text: str) -> bool:
+    """True, если в тексте есть что озвучить, кроме метки стиля в начале."""
+    return any(ch.isalnum() for ch in _STYLE_TAG.sub("", text, count=1))
 
 
 def _last_user_text(messages: list[ChatMessage]) -> str:
@@ -196,16 +203,26 @@ class ExecutorNetwork:
     async def _target_parts(
         self, handoff: Handoff, base: list[ChatMessage], depth: int
     ) -> AsyncIterator[ReplyPart]:
-        """Куски цели передачи; её ExecutorError — фраза об ошибке с failure."""
+        """Куски цели передачи; хотя бы один из них — с текстом для озвучки.
+
+        ExecutorError цели или ответ без текста (пусто, пробелы, одна метка
+        стиля) — в конце фраза об ошибке с failure.
+        """
         own = _with_task(base, handoff.task)
+        said: list[str] = []
         try:
             parts = self._member_parts(handoff.target, base, own, (), depth)
             async with _closing(parts):
                 async for part in parts:
+                    said.append(part.text)
                     yield part
         except ExecutorError as exc:
             _log.warning("Исполнитель «%s» недоступен: %s", handoff.target, exc)
-            yield ReplyPart(FAILURE_PHRASE.format(name=handoff.target_name), failure=True)
+        else:
+            if _speakable("".join(said)):
+                return
+            _log.warning("Исполнитель «%s» ничего не сказал", handoff.target)
+        yield ReplyPart(FAILURE_PHRASE.format(name=handoff.target_name), failure=True)
 
     async def warm_up(self) -> None:
         """Прогревает только входного исполнителя (остальных греет связка в фоне)."""

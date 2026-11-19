@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from smartesp.contracts import Executor, ExecutorError, Handoff, Identified, ReplyPart
 
-from .sentences import DEFAULT_STYLE, clean_for_speech, split_sentences, take_style
+from .sentences import DEFAULT_STYLE, clean_for_speech, split_sentences, strip_style_tag, take_style
 from .streams import closing, first_part, next_part
 from .turn import Turn, answer_text
 
@@ -21,6 +21,7 @@ _log = logging.getLogger(__name__)
 DELEGATE_FIRST_PART_LIMIT_S = 90.0  # дольше первого куска цели передачи не ждём
 LIVE_POLL_S = 0.1  # как часто проверять, актуален ли ход, пока ждём цель
 TIMEOUT_PHRASE = "Не успела ответить, спроси попозже."  # цель не ответила в срок
+SILENT_PHRASE = "{name} сейчас не отвечает."  # цель ничего не сказала
 ENTRY_ID = "entry"  # id входного исполнителя, который своего id не знает
 
 
@@ -68,36 +69,73 @@ async def collect(
 
     После куска с handoff первый кусок цели ждём с «думаю» (без сказанного до
     передачи текста — «думаю» сразу) не дольше delegate_limit_s; не дождались —
-    отдаём фразу TIMEOUT_PHRASE с failure и заканчиваем. Ход стал неактуальным,
-    пока ждём цель, — заканчиваем сразу. Кусок failure помечает ход ошибкой.
-    Пауза между остальными кусками дольше part_idle_s — ExecutorError.
+    фраза TIMEOUT_PHRASE с failure и конец. Цель так ничего и не сказала (поток
+    кончился или замолк дольше part_idle_s) — фраза SILENT_PHRASE с failure.
+    Ход стал неактуальным, пока ждём цель, — заканчиваем сразу. Пауза между
+    кусками дольше part_idle_s в остальных случаях — ExecutorError.
     """
-    part = first
+    part, target_start = first, 0
     while part is not None:
         if part.handoff is not None:
-            record_handoff(turn, part.handoff)
-        else:
-            _take(turn, part)
+            target_start = len(turn.answer)
+        _take(turn, part)
         yield part
-        if part.handoff is None:
-            part = await next_part(parts, waiting.part_idle_s)
-            continue
         try:
-            part = await _target_first(turn, parts, waiting)
+            part = await _following(turn, part, parts, waiting)
         except ExecutorError as error:
+            if part.handoff is None and not _target_silent(turn, target_start):
+                raise
             _log.warning("Колонка %s: цель передачи не ответила: %s", turn.device_name, error)
-            timeout = ReplyPart(TIMEOUT_PHRASE, failure=True)
-            _take(turn, timeout)
-            yield timeout
+            failure = _timeout_part() if part.handoff is not None else _silent_part(turn)
+            _take(turn, failure)
+            yield failure
             return
+    if _target_silent(turn, target_start) and waiting.is_live():
+        _log.warning("Колонка %s: цель передачи ничего не сказала", turn.device_name)
+        failure = _silent_part(turn)
+        _take(turn, failure)
+        yield failure
 
 
 def _take(turn: Turn, part: ReplyPart) -> None:
-    """Копит текст куска; кусок failure помечает ход ошибкой со сказанной фразой."""
-    turn.answer.append(part.text)
+    """Учитывает кусок в ходе: передачу, текст, время первого текста, ошибку.
+
+    Фраза об ошибке (failure) начинает в ответе новый кусок и помечает ход ошибкой.
+    """
+    if part.handoff is not None:
+        record_handoff(turn, part.handoff)
+        return
     if part.failure:
+        turn.breaks.append(len(turn.answer))
         turn.failed = True
-        turn.failure_phrase = True
+    if part.text and turn.first_text_ms is None:
+        turn.first_text_ms = turn.elapsed_ms()
+    turn.answer.append(part.text)
+
+
+def _timeout_part() -> ReplyPart:
+    """Фраза «не успела»: цель не дала первый кусок в срок."""
+    return ReplyPart(TIMEOUT_PHRASE, failure=True)
+
+
+def _silent_part(turn: Turn) -> ReplyPart:
+    """Фраза «<Имя> сейчас не отвечает.» о последней цели передачи."""
+    return ReplyPart(SILENT_PHRASE.format(name=turn.delegations[-1].target_name), failure=True)
+
+
+def _target_silent(turn: Turn, target_start: int) -> bool:
+    """True, если в ходе была передача, а цель не сказала ничего, что можно озвучить."""
+    said = "".join(turn.answer[target_start:])
+    return bool(turn.delegations) and not clean_for_speech(strip_style_tag(said)[1])
+
+
+async def _following(
+    turn: Turn, previous: ReplyPart, parts: AsyncIterator[ReplyPart], waiting: Waiting
+) -> ReplyPart | None:
+    """Следующий кусок: после передачи — первый кусок цели, иначе — с пределом паузы."""
+    if previous.handoff is not None:
+        return await _target_first(turn, parts, waiting)
+    return await next_part(parts, waiting.part_idle_s)
 
 
 async def _target_first(turn: Turn, parts: AsyncIterator[ReplyPart], waiting: Waiting) -> ReplyPart | None:
@@ -129,38 +167,43 @@ async def _watch(is_live: Callable[[], bool], deadline: asyncio.Timeout, poll_s:
     deadline.reschedule(asyncio.get_running_loop().time())
 
 
-class _Segment:
-    """Куски ответа одного исполнителя: до передачи или до конца потока."""
+class _Segments:
+    """Делит поток кусков на ответы: исполнителя до передачи и отдельно каждую фразу об ошибке."""
 
     def __init__(self, parts: AsyncIterator[ReplyPart]) -> None:
         self._parts = parts
-        self.handed_off = False  # кончился передачей: дальше — ответ цели
+        self._pending: ReplyPart | None = None  # фраза об ошибке, с которой начнётся следующий ответ
+        self.more = True  # после текущего ответа будет следующий
 
-    async def parts(self) -> AsyncIterator[ReplyPart]:
-        """Куски до передачи (её кусок не отдаётся); общий поток не закрывает."""
+    async def next(self) -> AsyncIterator[ReplyPart]:
+        """Куски следующего ответа; кусок передачи не отдаётся; общий поток не закрывает."""
+        self.more = False
+        if self._pending is not None:
+            yield self._pending
+            self._pending = None
         async for part in self._parts:
-            if part.handoff is not None:
-                self.handed_off = True
+            if part.handoff is not None or part.failure:
+                self._pending = part if part.failure else None
+                self.more = True
                 return
             yield part
 
 
 async def answer_sentences(parts: AsyncIterator[ReplyPart]) -> AsyncIterator[Sentence]:
-    """Режет поток кусков на предложения отдельно для каждого исполнителя.
+    """Режет поток кусков на предложения отдельно для каждого ответа.
 
-    На передаче недоговорённое входным предложение отдаётся сразу (фраза
-    «Сейчас спрошу…» звучит, пока ждём цель), а ответ цели начинается с нового
-    предложения с opens_answer=True.
+    Ответ — куски исполнителя до передачи или фраза об ошибке. На их границе
+    недоговорённое предложение отдаётся сразу (фраза «Сейчас спрошу…» звучит,
+    пока ждём цель), а следующий ответ начинается с нового предложения с
+    opens_answer=True.
     """
-    while True:
-        segment = _Segment(parts)
-        async with closing(split_sentences(segment.parts())) as sentences:
+    segments = _Segments(parts)
+    while segments.more:
+        async with closing(split_sentences(segments.next())) as sentences:
             opens = True
             async for text in sentences:
                 yield Sentence(text, opens)
                 opens = False
-        if not segment.handed_off:
-            return
 
 
 def speech_text(turn: Turn, sentence: Sentence, styles: list[str]) -> str:

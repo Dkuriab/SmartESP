@@ -223,8 +223,6 @@ class Orchestrator:
                 await self._error_tone(turn)
                 await self._play(turn, no_audio())
                 return
-            if first is not None:
-                turn.first_text_ms = turn.elapsed_ms()
             async with (
                 closing(handoffs.collect(turn, first, stream, self._waiting(turn))) as texts,
                 closing(handoffs.answer_sentences(texts)) as sentences,
@@ -235,14 +233,14 @@ class Orchestrator:
     async def _finish_reply(self, turn: Turn) -> None:
         """Итог проигранного ответа.
 
-        Пустой ответ модели — сбой. Сигнал ошибки — если звука не было или
-        прозвучала фраза об ошибке: оборванного на полуслове ответа колонке достаточно.
+        Пустой ответ модели — сбой. Сигнал ошибки — только если звука не было:
+        оборванного на полуслове ответа или фразы об ошибке колонке достаточно.
         """
         if turn.completed and not answer_text(turn):
             _log.warning("Колонка %s: модель вернула пустой ответ", turn.device_name)
             turn.completed = False
             turn.failed = True
-        if turn.failed and (turn.first_audio_ms is None or turn.failure_phrase):
+        if turn.failed and turn.first_audio_ms is None:
             await self._error_tone(turn)
 
     async def _thinking(self, turn: Turn) -> None:

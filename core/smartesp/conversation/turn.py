@@ -50,8 +50,9 @@ class Turn:
     style: str = DEFAULT_STYLE  # стиль озвучки, выбранный моделью
     path: list[str] = field(default_factory=list[str])  # id исполнителей хода по порядку
     delegations: list[Handoff] = field(default_factory=list[Handoff])  # передачи задачи в ходе
-    breaks: list[int] = field(default_factory=list[int])  # номера кусков answer, где начался ответ цели
-    failure_phrase: bool = False  # прозвучала фраза об ошибке — после звука нужен сигнал ошибки
+    breaks: list[int] = field(
+        default_factory=list[int]
+    )  # где в answer начинается ответ цели или фраза об ошибке
 
     def elapsed_ms(self) -> float:
         """Сколько миллисекунд прошло с прихода реплики."""

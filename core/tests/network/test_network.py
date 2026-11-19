@@ -205,6 +205,13 @@ async def test_target_error_becomes_failure_phrase() -> None:
     ]
 
 
+@pytest.mark.parametrize("said", [[], [""], [" \n"], ["[style:quiet]"]])
+async def test_silent_target_becomes_failure_phrase(said: list[str]) -> None:
+    entry = FakeExecutor(["Сейчас спрошу большую модель.", call()])
+    parts = await collect(network(entry, FakeExecutor(said)))
+    assert parts[-1] == ReplyPart("Большая модель сейчас не отвечает.", failure=True)
+
+
 async def test_entry_error_propagates() -> None:
     entry = FakeExecutor([], error=ExecutorError("Ollama недоступна"))
     with pytest.raises(ExecutorError):
