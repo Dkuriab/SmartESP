@@ -28,6 +28,13 @@ POLL = timedelta(seconds=1)
 logger = logging.getLogger(__name__)
 
 
+# имя таймера — только сказанное человеком: модель брала его из пометки «[время] … вечер»
+NAME_HINT = (
+    "Имя таймера, только если человек сам его назвал («картошка»); иначе пусто. "
+    "Не бери имя из строк «[время] …» и «Колонка: …»"
+)
+
+
 def _person(ctx: Context) -> str | None:
     """Человек из `_meta.person` вызова; не строка или нет — общее «дом»."""
     meta: dict[str, Any] = dict(ctx.request_context.meta or {})
@@ -92,7 +99,7 @@ def _add_tools(server: MCPServer[Any], board: Board, clock: Clock) -> None:
     async def timer_start(
         ctx: Context,
         minutes: Annotated[float, Field(description="Сколько минут, можно дробное: 0.5 — полминуты")],
-        name: Annotated[str, Field(description="Имя таймера, например «картошка»; можно пусто")] = "",
+        name: Annotated[str, Field(description=NAME_HINT)] = "",
     ) -> str:
         if not 0 < minutes <= MAX_MINUTES:
             raise ToolError("Таймер можно поставить от нескольких секунд до недели.")

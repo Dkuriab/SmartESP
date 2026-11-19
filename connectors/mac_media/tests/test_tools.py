@@ -41,6 +41,14 @@ async def test_tools_listed_in_russian() -> None:
         assert any("а" <= ch.lower() <= "я" for ch in tool.description)
 
 
+async def test_actions_only_on_direct_request_reads_are_free() -> None:
+    async with Client(build_server(FakeSystem())) as client:
+        tools = {tool.name: tool.description or "" for tool in (await client.list_tools()).tools}
+    asked = {name for name, text in tools.items() if text.endswith("Только по прямой просьбе человека.")}
+    assert asked == TOOLS - {"volume_get", "output_devices", "media_now_playing"}
+    assert "«Колонка: …» — не устройство Mac" in tools["output_set"]
+
+
 # --- медиа-клавиши ---
 
 

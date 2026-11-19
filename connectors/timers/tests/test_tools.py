@@ -13,6 +13,8 @@ async def test_tools_are_listed_with_russian_descriptions(make_server: ServerFac
         tools = {t.name: t for t in (await s.client.list_tools()).tools}
     assert set(tools) == {"timer_start", "reminder_at", "timers", "timer_cancel"}
     assert "таймер" in (tools["timer_start"].description or "").lower()
+    name_hint = tools["timer_start"].input_schema["properties"]["name"]["description"]
+    assert "только если человек сам его назвал" in name_hint and "«[время] …»" in name_hint
 
 
 async def test_timer_start_named(make_server: ServerFactory) -> None:
