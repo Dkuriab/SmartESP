@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import contextlib
+import asyncio
 import io
 import json
 import logging
@@ -20,6 +20,7 @@ import httpx
 import pytest
 from core_harness import NO_OLLAMA, put_voice
 
+import smartesp.main as smartesp_main
 from fakes.fake_executor import FakeOllama
 from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
@@ -150,27 +151,75 @@ def test_restart_request_stops_and_execs_same_command(home: Path, monkeypatch: p
     assert "Остановка: готово" in (home / "logs" / "core.log").read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("restart_after", [False, True])
-def test_stop_request_exits_zero_without_restart(
-    home: Path, monkeypatch: pytest.MonkeyPatch, restart_after: bool
+class StopGate:
+    """Держит честную остановку открытой, пока тест шлёт вторую просьбу; потом пускает настоящую."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.started = threading.Event()
+        self.go = threading.Event()
+        real = smartesp_main.stop
+
+        async def gated(parts: Any) -> None:
+            self.started.set()
+            while not self.go.is_set():
+                await asyncio.sleep(0.01)
+            await real(parts)
+
+        monkeypatch.setattr(smartesp_main, "stop", gated)
+
+
+def wait_ready(base: str, headers: dict[str, str], timeout: float = 10) -> None:
+    deadline = time.monotonic() + timeout
+    while httpx.get(f"{base}/status", headers=headers).json()["state"] != "ready":
+        assert time.monotonic() < deadline, "ядро не прогрелось"
+        time.sleep(0.02)
+
+
+STOP_STEPS = ("Остановка: коннекторы остановлены", "Остановка: колонки отключены", "Остановка: готово")
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [("stop", None), ("stop", "restart"), ("restart", "stop"), ("stop", "stdin"), ("restart", "stdin")],
+)
+def test_stop_requests_merge_and_finish_honest_stop(
+    home: Path, monkeypatch: pytest.MonkeyPatch, first: str, second: str | None
 ) -> None:
-    """POST /core/stop: честная остановка и выход с кодом 0; перезапуск после неё не выполняется."""
+    """Вторая просьба во время остановки не прерывает её; остановка из API и выход важнее перезапуска."""
     fake_core(home, monkeypatch)
+    executors: list[FakeOllama] = []
+    monkeypatch.setitem(
+        EXECUTOR_KINDS, "ollama", lambda c: executors.append(FakeOllama(["Да."], c.model)) or executors[-1]
+    )
+    read_fd, write_fd = os.pipe()
+    monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(os.fdopen(read_fd, "rb")))
+    gate = StopGate(monkeypatch)
     calls: list[ExecCall] = []
-    thread = run_main([], calls)
+    thread = run_main(["--parent-watch"], calls)
     run = wait_run_file(home)
     token = (home / "token").read_text(encoding="utf-8").strip()
     base, headers = f"http://127.0.0.1:{run['port']}/api/v1", {"Authorization": f"Bearer {token}"}
+    wait_ready(base, headers)
     info = httpx.get(f"{base}/core", headers=headers).json()
     assert info["data_dir"] == str(home) and info["port"] == 0  # порт из настроек
-    assert httpx.post(f"{base}/core/stop", headers=headers).status_code == 202
-    if restart_after:
-        with contextlib.suppress(httpx.TransportError):  # сервер мог уже закрыться
-            httpx.post(f"{base}/restart", headers=headers)
+    paths = {"stop": "/core/stop", "restart": "/restart"}
+    assert httpx.post(f"{base}{paths[first]}", headers=headers).status_code == 202
+    assert gate.started.wait(5)
+    if second == "stdin":
+        os.close(write_fd)  # приложение закрылось посреди остановки
+    elif second is not None:
+        assert httpx.post(f"{base}{paths[second]}", headers=headers).status_code == 202
+    gate.go.set()
     thread.join(10)
     assert not thread.is_alive()
     assert calls == [("exit", ["0"])]
+    log = (home / "logs" / "core.log").read_text(encoding="utf-8")
+    assert all(step in log for step in STOP_STEPS)
+    assert "Повторная просьба" not in log
+    assert executors and all(e.unloaded for e in executors)  # модели выгружены из Ollama
     assert not (home / "run" / "core.json").exists()
+    if second != "stdin":
+        os.close(write_fd)
 
 
 def test_parent_watch_closed_stdin_stops_core(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:

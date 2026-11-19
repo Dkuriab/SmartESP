@@ -22,8 +22,11 @@ class GracefulServer(uvicorn.Server):
     stop_after): тогда перезапуск отменяется, процесс просто выходит.
     Сигналы SIGINT/SIGTERM, request_stop() и stop_after() ведут к одной остановке:
     первая просьба запускает stop() (не дольше limit_s секунд), после неё сервер
-    выходит; вторая — немедленный выход (force_exit). Сигнал после остановки не
-    поднимается снова, поэтому процесс завершается с кодом 0.
+    выходит. Просьбы во время остановки её не прерывают, а только уточняют итог
+    (exit_requested). Единственный аварийный выход — вторая просьба о выходе
+    (повторный Ctrl+C/SIGTERM, сигнал после закрытого stdin): немедленный выход
+    (force_exit). Сигнал после остановки не поднимается снова, поэтому процесс
+    завершается с кодом 0.
     Создавать внутри работающего цикла asyncio.
     """
 
@@ -43,6 +46,7 @@ class GracefulServer(uvicorn.Server):
         self._loop = asyncio.get_running_loop()
         self._stopping: asyncio.Task[None] | None = None
         self._watchers: set[asyncio.Task[None]] = set()
+        self._exit_requests = 0  # просьбы о выходе, дошедшие до цикла
         self.exit_requested = False
 
     async def serve(self, sockets: list[socket.socket] | None = None) -> None:
@@ -66,16 +70,19 @@ class GracefulServer(uvicorn.Server):
         """
         self.exit_requested = True
         try:
-            self._loop.call_soon_threadsafe(self._on_request)
+            self._loop.call_soon_threadsafe(self._on_exit_request)
         except RuntimeError:  # цикл уже закрыт: процесс и так выходит
             pass
 
     def stop_after(self, waiting: Awaitable[object]) -> None:
-        """Просит остановку, когда waiting завершится (например, просьба о перезапуске)."""
+        """Просит остановку, когда waiting завершится (например, просьба о перезапуске).
+
+        Во время уже идущей остановки ничего не делает: её не прерывает.
+        """
 
         async def watch() -> None:
             await waiting
-            self._on_request()
+            self._start_stop()
 
         task = self._loop.create_task(watch())
         self._watchers.add(task)
@@ -85,13 +92,19 @@ class GracefulServer(uvicorn.Server):
         """Сигнал — та же просьба об остановке (в _captured_signals не попадает)."""
         self.request_stop()
 
-    def _on_request(self) -> None:
-        if self._stopping is not None:
-            _log.warning("Повторная просьба об остановке — выхожу сразу")
+    def _on_exit_request(self) -> None:
+        self._exit_requests += 1
+        if self._exit_requests > 1 and self._stopping is not None:
+            _log.warning("Повторная просьба о выходе — выхожу сразу")
             self.force_exit = True
             self.should_exit = True
             return
-        self._stopping = self._loop.create_task(self._graceful(), name="graceful-stop")
+        self._start_stop()
+
+    def _start_stop(self) -> None:
+        """Первая просьба запускает честную остановку; следующие её не трогают."""
+        if self._stopping is None:
+            self._stopping = self._loop.create_task(self._graceful(), name="graceful-stop")
 
     async def _graceful(self) -> None:
         try:

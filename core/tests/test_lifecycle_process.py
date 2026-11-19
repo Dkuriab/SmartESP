@@ -101,9 +101,40 @@ async def test_exit_request_during_restart_stop_cancels_restart(tmp_path: Path) 
     restart.set()  # перезапуск: идёт честная остановка
     await asyncio.sleep(0.05)
     assert not server.exit_requested
-    server.request_stop()  # а тут SIGTERM от приложения
+    server.request_stop()  # а тут SIGTERM от приложения: итог — выход, остановка не прерывается
+    await asyncio.sleep(0.05)
+    assert server.exit_requested and not server.force_exit and not serving.done()
+    hang.set()
     await asyncio.wait_for(serving, 5)
-    assert server.exit_requested
+    assert not server.force_exit
+    await finish(core)
+
+
+async def test_api_requests_during_stop_do_not_interrupt_it(tmp_path: Path) -> None:
+    """Перезапуск и остановка из API во время остановки не ведут к аварийному выходу."""
+    hang = asyncio.Event()
+    stops: list[str] = []
+
+    async def slow_stop() -> None:
+        stops.append("stop")
+        await hang.wait()
+
+    core = make_core(tmp_path, fake_kinds(ollama_factory([])))
+    config = uvicorn.Config(core.app, host="127.0.0.1", port=0, log_config=None)
+    server = GracefulServer(config, stop=slow_stop)
+    restart, stop_request = asyncio.Event(), asyncio.Event()
+    server.stop_after(restart.wait())
+    server.stop_after(stop_request.wait())
+    serving = asyncio.create_task(server.serve())
+    await eventually(lambda: server.started)
+    restart.set()
+    await asyncio.sleep(0.05)
+    stop_request.set()
+    await asyncio.sleep(0.05)
+    assert not serving.done() and not server.force_exit
+    hang.set()
+    await asyncio.wait_for(serving, 5)
+    assert stops == ["stop"] and not server.force_exit and not server.exit_requested
     await finish(core)
 
 
