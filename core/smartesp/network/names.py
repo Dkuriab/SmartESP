@@ -39,6 +39,11 @@ def _mentions(phrase: list[str], name: str) -> bool:
     return bool(stems) and all(any(p.startswith(s) for p in phrase) for s in stems)
 
 
+def _mentions_id(phrase: list[str], target: Target) -> bool:
+    """id цели стоит во фразе отдельным словом («Сейчас спрошу big.»)."""
+    return target.id.lower() in phrase
+
+
 def named_target(text: str, targets: Sequence[Target]) -> Target | None:
     """Цель, которую исполнитель назвал во фразе без вызова инструмента, или None.
 
@@ -48,11 +53,12 @@ def named_target(text: str, targets: Sequence[Target]) -> Target | None:
     без регистра, по основе: каждое слово имени цели длиной от 3 букв своими
     первыми max(4, len - 2) символами начинает какое-то слово фразы
     («большую модель» находит «Большая модель», «программиста» — «Программист»).
+    Id цели отдельным словом (без регистра) тоже считается названием.
     Найдена ровно одна цель — она; ни одной или несколько — None.
     """
     phrase = _LEADING_TAG.sub("", text, count=1).strip(_EDGE)
     if not _is_one_short_sentence(phrase):
         return None
     words = _words(phrase)
-    found = [t for t in targets if _mentions(words, t.name)]
+    found = [t for t in targets if _mentions(words, t.name) or _mentions_id(words, t)]
     return found[0] if len(found) == 1 else None

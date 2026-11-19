@@ -4,10 +4,11 @@ import httpx
 import ollama
 import pytest
 
-from smartesp.config.models import DEFAULT_SYSTEM_PROMPT
+from smartesp.config.models import BIG_WHEN, DEFAULT_SYSTEM_PROMPT
 from smartesp.contracts import ChatMessage
 from smartesp.executors import OllamaExecutor
 from smartesp.network import DELEGATE_TOOL, Target, delegate_rule, delegate_tool
+from smartesp.stages.whisper_detect import PROMPT_HINT
 
 MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
 TARGETS = (
@@ -64,3 +65,36 @@ async def test_gemma_routes_to_right_target() -> None:
     print(f"right={right} of {len(QUESTIONS)}")
     assert right >= MIN_RIGHT
     assert not silent_calls, f"вызов без фразы: {silent_calls}"
+
+
+DEFAULT_TARGET = (Target("big", "Большая модель", BIG_WHEN),)
+DEFAULT_HARD = [
+    "Почему пала Римская империя? Главные причины",
+    "Объясни подробно, почему небо голубое",
+    "Посчитай 17 процентов от 2384 и умножь на 3",
+]
+DEFAULT_SIMPLE = ["Привет, как дела?", "Спасибо большое"]
+
+
+@pytest.mark.models
+async def test_gemma_default_config_one_target_with_whisper_hint() -> None:
+    """Промпт как у ядра по умолчанию: одна цель big, подсказка про шёпот перед правилом."""
+    prompt = f"{DEFAULT_SYSTEM_PROMPT}\n{PROMPT_HINT}\n{delegate_rule(DEFAULT_TARGET)}"
+    executor = OllamaExecutor(MODEL, prompt, "5m")
+    try:
+        await executor.warm_up()
+    except (httpx.HTTPError, ConnectionError, ollama.ResponseError):
+        pytest.skip("Ollama или модель недоступны")
+    tools = [delegate_tool(DEFAULT_TARGET)]
+
+    async def delegated(question: str) -> bool:
+        async for part in executor.run([ChatMessage("user", question)], tools):
+            if part.tool_call is not None and part.tool_call.name == DELEGATE_TOOL:
+                return True
+        return False
+
+    hard = [await delegated(q) for q in DEFAULT_HARD for _ in range(2)]
+    simple = [await delegated(q) for q in DEFAULT_SIMPLE for _ in range(2)]
+    print(f"\nhard delegated {sum(hard)} of {len(hard)}; simple delegated {sum(simple)} of {len(simple)}")
+    assert sum(hard) >= 5
+    assert not any(simple)

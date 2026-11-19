@@ -51,3 +51,9 @@ def test_two_sentences_give_none() -> None:
 def test_empty_text_gives_none() -> None:
     assert named_target("", TARGETS) is None
     assert named_target("Спрошу программиста.", []) is None
+
+
+def test_id_as_whole_word_names_target() -> None:
+    assert named_target("Сейчас спрошу big.", TARGETS) == BIG
+    assert named_target("Сейчас спрошу BIG", TARGETS) == BIG
+    assert named_target("Сейчас спрошу bigger.", TARGETS) is None
