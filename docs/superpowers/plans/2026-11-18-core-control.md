@@ -113,6 +113,8 @@
 - `annotations` — список `{source, text}`;
 - `style`, `answer`;
 - `status` — `ok`, `error`, `interrupted` или `meaningless`;
+- `path` — id исполнителей по порядку (`["dispatcher", "big"]`);
+- `delegations` — список `{from, to, task, auto}`;
 - `at` — когда ход закончился (секунды Unix, `time.time()`);
 - `stt_ms`, `first_text_ms`, `first_audio_ms` (каждое — число или `null`).
 
