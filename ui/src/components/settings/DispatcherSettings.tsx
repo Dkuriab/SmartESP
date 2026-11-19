@@ -1,4 +1,4 @@
-// Настройки диспетчера: модель из Ollama и промпт с кнопкой «Сохранить».
+// Настройки диспетчера: модель из Ollama, промпт с кнопкой «Сохранить» и итоговый промпт.
 import { useState } from 'react'
 import { dispatcherInfo, isApplying } from '../../schema/blocks'
 import type { CoreActions } from '../../state/actions'
@@ -52,6 +52,16 @@ function PromptField({ current, applying, onSave }: PromptProps) {
   )
 }
 
+/** Промпт, с которым работает диспетчер: свой + правила включённых обработчиков. */
+function FinalPrompt({ text }: { text: string }) {
+  return (
+    <details className="final-prompt">
+      <summary className="cap">Итоговый промпт (с правилами обработчиков)</summary>
+      <pre className="prompt prompt-final">{text}</pre>
+    </details>
+  )
+}
+
 export default function DispatcherSettings({ state, actions }: Props) {
   const info = dispatcherInfo(state)
   const reachable = state.status?.ollama.reachable ?? true
@@ -74,6 +84,7 @@ export default function DispatcherSettings({ state, actions }: Props) {
           {applying && <div className="set-note">{APPLYING}</div>}
           {/* key: после применения черновик берёт новый промпт */}
           <PromptField key={info.systemPrompt} current={info.systemPrompt} applying={applying} onSave={(text) => void actions.setDispatcher({ system_prompt: text })} />
+          {state.config && <FinalPrompt text={state.config.dispatcher_prompt} />}
         </>
       )}
     </div>

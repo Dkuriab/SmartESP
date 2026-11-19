@@ -37,7 +37,9 @@ export default function Shell({ state, actions }: Props) {
       )}
       <Feed turns={state.turns} selectedId={state.selectedTurnId} onSelect={actions.selectTurn} full={full} />
       <TopBar state={state} tab={tab} onTab={setTab} />
-      {state.status?.restart_required && <RestartBanner onRestart={() => void actions.restart()} />}
+      {state.status?.restart_required && (
+        <RestartBanner onRestart={() => void actions.restart()} restarting={state.restarting} online={state.connection === 'online'} />
+      )}
       {state.notice && <Notice notice={state.notice} onDismiss={actions.dismissNotice} />}
       {state.connection === 'unauthorized' && <TokenScreen onToken={actions.setToken} />}
     </main>

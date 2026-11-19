@@ -4,7 +4,7 @@ import type { CoreActions } from '../../state/actions'
 import type { Download, Voice } from '../../state/model'
 import { playBlob, progressText, stopPlayback } from './voice'
 
-type Actions = Pick<CoreActions, 'downloadVoice' | 'previewVoice' | 'selectVoice'>
+type Actions = Pick<CoreActions, 'downloadVoice' | 'previewVoice' | 'selectVoice' | 'showNotice'>
 type Props = { voice: Voice; download?: Download; applying: boolean; actions: Actions }
 
 const STYLES: Array<[string, string]> = [
@@ -40,8 +40,10 @@ function Availability({ voice, download, actions }: Omit<Props, 'applying'>) {
   )
 }
 
+const REFUSED = { text: 'Не удалось воспроизвести образец', tone: 'error' as const }
+
 /** Образец голоса: какой стиль играет и запуск; уход строки с экрана останавливает звук. */
-function usePreview(voice: Voice, previewVoice: Actions['previewVoice']) {
+function usePreview(voice: Voice, { previewVoice, showNotice }: Actions) {
   const [playing, setPlaying] = useState<string | null>(null)
   // строка на экране и играет ли её образец
   const mounted = useRef(true)
@@ -59,7 +61,7 @@ function usePreview(voice: Voice, previewVoice: Actions['previewVoice']) {
       const blob = await previewVoice(voice.kind, voice.voice, style)
       if (!mounted.current) return
       mine.current = true
-      await playBlob(blob)
+      await playBlob(blob, () => showNotice(REFUSED))
     } catch {
       // ошибку уже показало действие уведомлением
     } finally {
@@ -71,7 +73,7 @@ function usePreview(voice: Voice, previewVoice: Actions['previewVoice']) {
 }
 
 export default function VoiceRow({ voice, download, applying, actions }: Props) {
-  const { playing, play } = usePreview(voice, actions.previewVoice)
+  const { playing, play } = usePreview(voice, actions)
   return (
     <li className="voice" aria-label={voice.title}>
       <div className="voice-head">
@@ -87,10 +89,11 @@ export default function VoiceRow({ voice, download, applying, actions }: Props) 
           </button>
         ))}
         {!voice.current && (
-          <button type="button" className="btn small" disabled={applying} onClick={() => void actions.selectVoice(voice.kind, voice.voice)}>
+          <button type="button" className="btn small" disabled={applying || !voice.downloaded} onClick={() => void actions.selectVoice(voice.kind, voice.voice)}>
             {applying ? 'Применяется…' : 'Выбрать'}
           </button>
         )}
+        {!voice.current && !voice.downloaded && <span className="voice-hint">сначала скачайте</span>}
       </div>
     </li>
   )

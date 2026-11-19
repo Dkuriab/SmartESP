@@ -76,5 +76,6 @@ export function makeActions(): CoreActions {
     select: vi.fn(),
     selectTurn: vi.fn(),
     dismissNotice: vi.fn(),
+    showNotice: vi.fn(),
   } as unknown as CoreActions
 }

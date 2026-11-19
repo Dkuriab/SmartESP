@@ -1,9 +1,15 @@
 // Настройки обработчика фразы: включить или выключить, описание.
 import type { StageItem } from '../../schema/blocks'
 
-type Props = { stage: StageItem; applying: boolean; onToggle: (on: boolean) => void }
+type Props = {
+  stage: StageItem
+  applying: boolean
+  /** Переключать нельзя (применяется или настройки не загружены). */
+  locked: boolean
+  onToggle: (on: boolean) => void
+}
 
-export default function StageSettings({ stage, applying, onToggle }: Props) {
+export default function StageSettings({ stage, applying, locked, onToggle }: Props) {
   return (
     <div className="set">
       <h3 className="set-title cut">{stage.title}</h3>
@@ -15,7 +21,7 @@ export default function StageSettings({ stage, applying, onToggle }: Props) {
           role="switch"
           className="switch"
           checked={stage.enabled}
-          disabled={applying}
+          disabled={locked}
           onChange={(e) => onToggle(e.target.checked)}
         />
       </label>

@@ -53,6 +53,19 @@ describe('connectEvents', () => {
     expect(handlers.onEvent).toHaveBeenCalledWith(ev)
   })
 
+  it('пропускает сообщения не в форме события', () => {
+    const { handlers } = setup()
+    for (const raw of ['null', '42', '"текст"', '[]', '{}', '{"kind": 5}', '{"data": {}}'])
+      sock(0).onmessage?.({ data: raw })
+    expect(handlers.onEvent).not.toHaveBeenCalled()
+  })
+
+  it('без data и at событие получает пустые data и at=0', () => {
+    const { handlers } = setup()
+    sock(0).onmessage?.({ data: '{"kind": "core_state", "data": null}' })
+    expect(handlers.onEvent).toHaveBeenCalledWith({ kind: 'core_state', data: {}, at: 0 })
+  })
+
   it('игнорирует невалидный JSON', () => {
     const { handlers } = setup()
     sock(0).onmessage?.({ data: 'not json' })

@@ -39,10 +39,19 @@ function applyLoaded(state: CoreState, loaded: Loaded, requestedAt?: number): Co
 /**
  * (Пере)подключение: ядро могло перезапуститься и начать нумерацию change_id
  * и turn_id заново — сведения о них от прежнего подключения сбрасываются.
- * Изменение, отправленное после этого, снова попадёт в pending.
+ * Изменение, отправленное после этого, снова попадёт в pending. Перезапуск
+ * отменяет скачивания без voice_ready — их ход тоже сбрасывается; кнопка
+ * перезапуска снова доступна.
  */
 function opened(state: CoreState): CoreState {
-  return { ...state, connection: 'online', pending: {}, pendingSince: {}, applied: [], currentTurnIds: [] }
+  return { ...state, connection: 'online', pending: {}, pendingSince: {}, applied: [], currentTurnIds: [], downloads: {}, restarting: false }
+}
+
+/** Повтор скачивания пользователем: его неуспех снова даст уведомление. */
+function downloadRequested(state: CoreState, kind: string, voice: string): CoreState {
+  const voiceFailures = { ...state.voiceFailures }
+  delete voiceFailures[`${kind}/${voice}`]
+  return { ...state, voiceFailures }
 }
 
 /** Изменение отправлено; если его итог уже пришёл событием — не ждём. */
@@ -72,9 +81,13 @@ export function reduce(state: CoreState, action: Action): CoreState {
       return { ...state, selectedTurnId: action.turnId }
     case 'changeSent':
       return changeSent(state, action.changeId, action.description, action.at)
+    case 'downloadRequested':
+      return downloadRequested(state, action.kind, action.voice)
     case 'notice':
       return { ...state, notice: action.notice }
     case 'dismissNotice':
       return { ...state, notice: null }
+    case 'restarting':
+      return { ...state, restarting: action.on }
   }
 }

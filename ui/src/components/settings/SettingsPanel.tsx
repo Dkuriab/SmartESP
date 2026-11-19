@@ -1,5 +1,5 @@
 // Правая панель: настройки блока, выбранного на схеме или в списке.
-import { isApplying, listDevices, listStages, stagesWith } from '../../schema/blocks'
+import { isApplying, listDevices, listStages, stagesLocked, stagesWith } from '../../schema/blocks'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState } from '../../state/model'
 import DeviceSettings from './DeviceSettings'
@@ -25,7 +25,7 @@ export default function SettingsPanel({ state, actions }: Props) {
     const stage = listStages(state).find((s) => s.kind === selected.id)
     if (!stage) return hint
     const onToggle = (on: boolean) => void actions.setStages(stagesWith(state, stage.kind, on))
-    return <StageSettings stage={stage} applying={isApplying(state)} onToggle={onToggle} />
+    return <StageSettings stage={stage} applying={isApplying(state)} locked={stagesLocked(state)} onToggle={onToggle} />
   }
   if (selected?.kind === 'dispatcher') return <DispatcherSettings state={state} actions={actions} />
   if (selected?.kind === 'voice') return <VoiceSettings state={state} actions={actions} />

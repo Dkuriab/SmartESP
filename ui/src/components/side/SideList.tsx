@@ -1,6 +1,6 @@
 // Левая панель: колонки, обработчики, диспетчер и голос; клик выбирает блок.
 import type { ReactNode } from 'react'
-import { dispatcherInfo, isApplying, listDevices, listStages, stagesWith, voiceLabel } from '../../schema/blocks'
+import { dispatcherInfo, listDevices, listStages, stagesLocked, stagesWith, voiceLabel } from '../../schema/blocks'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState, Selection } from '../../state/model'
 import AccessInfo from '../common/AccessInfo'
@@ -50,7 +50,7 @@ function Devices(props: Props) {
 
 function Stages(props: Props) {
   const { state, actions } = props
-  const applying = isApplying(state)
+  const locked = stagesLocked(state)
   return (
     <Section title="Обработчики">
       {listStages(state).map((s) => {
@@ -61,7 +61,7 @@ function Stages(props: Props) {
             className="switch"
             aria-label={s.title}
             checked={s.enabled}
-            disabled={applying}
+            disabled={locked}
             onChange={(e) => void actions.setStages(stagesWith(state, s.kind, e.target.checked))}
           />
         )

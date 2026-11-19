@@ -42,6 +42,11 @@ describe('SideList', () => {
     expect(actions.select).toHaveBeenCalledWith({ kind: 'stage', id: 'whisper_detect' })
   })
 
+  it('настройки ещё не загружены — переключатели обработчиков неактивны', () => {
+    setup({ config: null })
+    expect(within(section('Обработчики')).getByRole('switch', { name: 'Шёпот' })).toBeDisabled()
+  })
+
   it('диспетчер и голос показывают модель и голос, выбираются кликом', async () => {
     const { actions } = setup({ selected: { kind: 'voice', id: 'voice' } })
     const dispatcher = screen.getByRole('button', { name: /Диспетчер/ })

@@ -9,8 +9,14 @@ type Props = {
 }
 
 const COPIED_MS = 2000
+const MANUAL = 'Выделите адрес и скопируйте'
 
-/** Копирует в буфер; в http-странице из сети буфера нет — тогда false. */
+/** Есть ли буфер обмена: в http-странице из сети его нет. */
+function hasClipboard(): boolean {
+  return typeof navigator.clipboard?.writeText === 'function'
+}
+
+/** Копирует в буфер; браузер отказал — false. */
 async function copy(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text)
@@ -23,6 +29,8 @@ async function copy(text: string): Promise<boolean> {
 export default function AccessInfo({ loadAccess, online }: Props) {
   const [urls, setUrls] = useState<string[] | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  // буфера нет или он отказал — вместо кнопки подсказка скопировать вручную
+  const [manual, setManual] = useState(() => !hasClipboard())
   const load = useEffectEvent(() => loadAccess())
   useEffect(() => {
     if (!online) return
@@ -40,6 +48,7 @@ export default function AccessInfo({ loadAccess, online }: Props) {
   }, [copied])
   const onCopy = async (url: string) => {
     if (await copy(url)) setCopied(url)
+    else setManual(true)
   }
   return (
     <section className="access" aria-label="Доступ из сети">
@@ -48,11 +57,14 @@ export default function AccessInfo({ loadAccess, online }: Props) {
       {urls?.map((url) => (
         <div key={url} className="access-row">
           <span className="access-url" title={url}>{url}</span>
-          <button type="button" className="chip" onClick={() => void onCopy(url)}>
-            {copied === url ? 'Скопировано' : 'Скопировать'}
-          </button>
+          {!manual && (
+            <button type="button" className="chip" onClick={() => void onCopy(url)}>
+              {copied === url ? 'Скопировано' : 'Скопировать'}
+            </button>
+          )}
         </div>
       ))}
+      {manual && !!urls?.length && <p className="access-none">{MANUAL}</p>}
     </section>
   )
 }

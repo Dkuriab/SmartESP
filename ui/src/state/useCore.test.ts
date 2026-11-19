@@ -95,6 +95,61 @@ describe('useCore', () => {
     expect(paths().slice(5).sort()).toEqual(['/api/v1/config', '/api/v1/status', '/api/v1/voices'])
   })
 
+  it('core_state — перечитывает config, status, voices', async () => {
+    renderHook(() => useCore())
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(5))
+    act(() => socket().onEvent({ kind: 'core_state', data: { state: 'ready' }, at: 1 }))
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(8))
+    expect(paths().slice(5).sort()).toEqual(['/api/v1/config', '/api/v1/status', '/api/v1/voices'])
+  })
+
+  it('на связи status перечитывается каждые 10 с; без связи — нет', async () => {
+    // поддельный только setInterval: ожидание ответов идёт на настоящих таймерах
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const flush = () => act(() => new Promise((r) => setTimeout(r, 0)))
+    try {
+      const { unmount } = renderHook(() => useCore())
+      await flush()
+      act(() => socket().onOpen())
+      await flush()
+      expect(GET).toHaveBeenCalledTimes(10)
+      vi.advanceTimersByTime(10_000)
+      await flush()
+      expect(paths().slice(10)).toEqual(['/api/v1/status'])
+      act(() => socket().onClose(1006))
+      vi.advanceTimersByTime(30_000)
+      expect(GET).toHaveBeenCalledTimes(11)
+      act(() => socket().onOpen())
+      await flush()
+      vi.advanceTimersByTime(10_000)
+      await flush()
+      expect(GET).toHaveBeenCalledTimes(17)
+      unmount()
+      vi.advanceTimersByTime(30_000)
+      expect(GET).toHaveBeenCalledTimes(17)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('Ollama снова доступна — список моделей перечитывается', async () => {
+    let reachable = false
+    GET.mockImplementation((path: string) => {
+      const data = path.endsWith('/status') ? { applying: false, ollama: { reachable, loaded: [] } } : []
+      return Promise.resolve({ data, response: { status: 200 } })
+    })
+    const { result } = renderHook(() => useCore())
+    await waitFor(() => expect(result.current[0].status).not.toBeNull())
+    const models = () => paths().filter((p) => p === '/api/v1/models').length
+    expect(models()).toBe(1)
+    reachable = true
+    act(() => socket().onEvent({ kind: 'core_state', data: { state: 'ready' }, at: 1 }))
+    await waitFor(() => expect(models()).toBe(2))
+    act(() => socket().onEvent({ kind: 'core_state', data: { state: 'ready' }, at: 2 }))
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(12))
+    expect(models()).toBe(2) // доступна и была — не перечитываем
+  })
+
   it('4401 — unauthorized; setToken подключается заново', () => {
     const { result } = renderHook(() => useCore())
     act(() => socket().onClose(4401))

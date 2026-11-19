@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CoreState } from '../../state/model'
 import { makeActions, makeConfig, makeState, makeStatus } from '../fixtures'
@@ -17,6 +17,18 @@ function setup(over: Partial<CoreState> = {}) {
 }
 
 describe('DispatcherSettings', () => {
+  it('итоговый промпт с правилами обработчиков — свёрнут и только для чтения', async () => {
+    setup()
+    const summary = screen.getByText('Итоговый промпт (с правилами обработчиков)')
+    const details = summary.closest('details')
+    expect(details).not.toHaveAttribute('open')
+    await userEvent.click(summary)
+    expect(details).toHaveAttribute('open')
+    const text = within(details as HTMLElement).getByText(/Правило шёпота/)
+    expect(text.tagName).toBe('PRE')
+    expect(screen.getAllByRole('textbox')).toHaveLength(1) // правится только свой промпт
+  })
+
   it('модели с размером в ГБ; выбор вызывает setDispatcher({model})', async () => {
     const { actions } = setup()
     const select = screen.getByLabelText('Модель')

@@ -73,3 +73,8 @@ export function voiceLabel(state: CoreState): string | null {
 export function isApplying(state: CoreState): boolean {
   return Object.keys(state.pending).length > 0 || !!state.status?.applying
 }
+
+/** Переключать обработчики нельзя: правка применяется или настройки ещё не загружены. */
+export function stagesLocked(state: CoreState): boolean {
+  return isApplying(state) || state.config === null
+}

@@ -11,9 +11,10 @@ export function stopPlayback(): void {
 
 /**
  * Проигрывает образец, остановив прежний; промис завершается по окончании,
- * ошибке или остановке, URL освобождается.
+ * ошибке или остановке, URL освобождается. Браузер отказался играть
+ * (play() отклонён) — вызывается onRefused.
  */
-export function playBlob(blob: Blob): Promise<void> {
+export function playBlob(blob: Blob, onRefused: () => void = () => {}): Promise<void> {
   stopPlayback()
   const url = URL.createObjectURL(blob)
   return new Promise((resolve) => {
@@ -30,7 +31,10 @@ export function playBlob(blob: Blob): Promise<void> {
     current = { audio, finish }
     audio.onended = finish
     audio.onerror = finish
-    audio.play().catch(finish)
+    audio.play().catch(() => {
+      if (!finished) onRefused() // остановленный раньше образец — не ошибка
+      finish()
+    })
   })
 }
 

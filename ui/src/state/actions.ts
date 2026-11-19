@@ -1,6 +1,6 @@
 // Действия интерфейса: запросы к ядру. Ошибки становятся уведомлениями.
 import type { createClient } from '../api/client'
-import type { Config, Selection } from './model'
+import type { Config, Notice, Selection } from './model'
 import type { Dispatch } from './request'
 import { send, sendNotify } from './request'
 
@@ -31,6 +31,8 @@ export type CoreActions = {
   /** Выбор хода в ленте (null — снять). */
   selectTurn(turnId: number | string | null): void
   dismissNotice(): void
+  /** Показать уведомление (ошибка в самом браузере, без запроса к ядру). */
+  showNotice(notice: Notice): void
 }
 
 export type ActionDeps = {
@@ -55,6 +57,13 @@ function patchedExecutors(config: Config | null, patch: DispatcherPatch): Execut
   // не переданные поля (undefined) не затирают текущие значения
   const changes = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined))
   return executors.map((e) => (e.entry === true ? { ...e, ...changes } : e))
+}
+
+/** Просьба о перезапуске: кнопка ждёт переподключения; отказ снова открывает её. */
+async function restartCore(client: Client, dispatch: Dispatch): Promise<void> {
+  dispatch({ type: 'restarting', on: true })
+  const outcome = await sendNotify(dispatch, () => client.POST('/api/v1/restart'))
+  if (!outcome.ok) dispatch({ type: 'restarting', on: false })
 }
 
 /** Создаёт действия поверх клиента; в тестах клиент поддельный. */
@@ -94,17 +103,17 @@ export function createActions(deps: ActionDeps): CoreActions {
     setDispatcher,
     loadAccess,
     async downloadVoice(kind, voice) {
+      dispatch({ type: 'downloadRequested', kind, voice })
       await sendNotify(dispatch, () => client.POST('/api/v1/voices/download', { body: { kind, voice } }))
     },
     selectVoice: (kind, voice) => patchConfig({ tts: { kind, voice } }, `Голос ${voice}`),
     renameDevice: (id, name) => patchConfig({ devices: { [id]: { name } } }, `Имя колонки: ${name}`),
     setStages: (list) => patchConfig({ stages: list }, 'Обработчики'),
-    async restart() {
-      await sendNotify(dispatch, () => client.POST('/api/v1/restart'))
-    },
+    restart: () => restartCore(client, dispatch),
     setToken: onToken,
     select: (selected) => dispatch({ type: 'select', selected }),
     selectTurn: (turnId) => dispatch({ type: 'selectTurn', turnId }),
     dismissNotice: () => dispatch({ type: 'dismissNotice' }),
+    showNotice: (notice) => dispatch({ type: 'notice', notice }),
   }
 }

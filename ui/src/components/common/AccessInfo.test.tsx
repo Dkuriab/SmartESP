@@ -54,14 +54,23 @@ describe('AccessInfo', () => {
     expect(await screen.findByText('Адрес в сети не найден')).toBeInTheDocument()
   })
 
-  it('без буфера обмена (http в сети) не падает', async () => {
+  it('без буфера обмена (http в сети) — подсказка вместо кнопки', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+    render(<AccessInfo loadAccess={() => Promise.resolve([URL_1])} online />)
+    expect(await screen.findByText(URL_1)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Скопировать' })).not.toBeInTheDocument()
+    expect(screen.getByText('Выделите адрес и скопируйте')).toBeInTheDocument()
+  })
+
+  it('буфер отказал при копировании — подсказка вместо кнопки', async () => {
     const user = userEvent.setup()
+    const writeText = vi.fn().mockRejectedValue(new Error('NotAllowedError'))
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
     render(<AccessInfo loadAccess={() => Promise.resolve([URL_1])} online />)
     await screen.findByText(URL_1)
-    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
     await user.click(screen.getByRole('button', { name: 'Скопировать' }))
-    expect(screen.getByText(URL_1)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Скопировать' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Скопировать' })).not.toBeInTheDocument()
+    expect(screen.getByText('Выделите адрес и скопируйте')).toBeInTheDocument()
   })
 
   it('не запрашивает адреса, пока связи нет, и запрашивает при подключении', async () => {

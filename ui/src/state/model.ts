@@ -37,6 +37,8 @@ export type CoreState = {
   /** change_id → описание изменения, пока оно применяется. */
   pending: Record<number, string>
   notice: Notice | null
+  /** Перезапуск попросили: кнопка ждёт переподключения к ядру. */
+  restarting: boolean
   // --- служебное, компоненты не читают ---
   /**
    * turn_id ходов, полученных при текущем подключении (событием или загрузкой).
@@ -74,8 +76,12 @@ export type Action =
   | { type: 'selectTurn'; turnId: number | string | null }
   /** at — когда пришёл ответ PATCH (мс). */
   | { type: 'changeSent'; changeId: number; description: string; at: number }
+  /** Пользователь просит скачать голос: его прежний неуспех снова будет показан. */
+  | { type: 'downloadRequested'; kind: string; voice: string }
   | { type: 'notice'; notice: Notice }
   | { type: 'dismissNotice' }
+  /** Просьба о перезапуске отправлена (on) или не удалась. */
+  | { type: 'restarting'; on: boolean }
 
 export const MAX_TURNS = 100
 /** Сколько последних применённых change_id помнить. */
@@ -95,6 +101,7 @@ export function initialState(connection: Connection = 'connecting'): CoreState {
     downloads: {},
     pending: {},
     notice: null,
+    restarting: false,
     currentTurnIds: [],
     pendingSince: {},
     voiceFailures: {},

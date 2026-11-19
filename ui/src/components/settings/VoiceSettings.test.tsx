@@ -30,6 +30,8 @@ const row = (title: string) => screen.getByRole('listitem', { name: title })
 /** Поддельный Audio: запоминает экземпляры, конец проигрывания — вручную. */
 class FakeAudio {
   static last: FakeAudio | null = null
+  /** Браузер не дал играть (например, запрет автозапуска). */
+  static refuse = false
   onended: (() => void) | null = null
   onerror: (() => void) | null = null
   paused = true
@@ -37,6 +39,7 @@ class FakeAudio {
     FakeAudio.last = this
   }
   play() {
+    if (FakeAudio.refuse) return Promise.reject(new Error('NotAllowedError'))
     this.paused = false
     return Promise.resolve()
   }
@@ -47,6 +50,7 @@ class FakeAudio {
 
 describe('VoiceSettings', () => {
   beforeEach(() => {
+    FakeAudio.refuse = false
     vi.stubGlobal('Audio', FakeAudio)
     URL.createObjectURL = vi.fn(() => 'blob:x')
     URL.revokeObjectURL = vi.fn()
@@ -83,6 +87,24 @@ describe('VoiceSettings', () => {
     const { actions } = setup()
     await userEvent.click(within(row('Vosk русский')).getByRole('button', { name: 'Выбрать' }))
     expect(actions.selectVoice).toHaveBeenCalledWith('vosk', 'ru')
+  })
+
+  it('не скачанный голос выбрать нельзя: «сначала скачайте»', () => {
+    setup()
+    const r = row('Ксения')
+    expect(within(r).getByRole('button', { name: 'Выбрать' })).toBeDisabled()
+    expect(within(r).getByText('сначала скачайте')).toBeInTheDocument()
+    expect(within(row('Vosk русский')).queryByText('сначала скачайте')).not.toBeInTheDocument()
+  })
+
+  it('браузер не дал проиграть образец — уведомление, URL освобождён', async () => {
+    const { actions } = setup()
+    FakeAudio.refuse = true
+    vi.mocked(actions.previewVoice).mockResolvedValue(new Blob(['x']))
+    await userEvent.click(within(row('Ирина')).getByRole('button', { name: '▶ Обычный' }))
+    expect(actions.showNotice).toHaveBeenCalledWith({ text: 'Не удалось воспроизвести образец', tone: 'error' })
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:x')
+    expect(within(row('Ирина')).getByRole('button', { name: '▶ Обычный' })).toBeEnabled()
   })
 
   it('при pending «Выбрать» показывает «Применяется…»', () => {

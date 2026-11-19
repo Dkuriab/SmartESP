@@ -49,10 +49,12 @@ describe('actions', () => {
     actions.select({ kind: 'device', id: 'a' })
     actions.selectTurn(5)
     actions.dismissNotice()
+    actions.showNotice({ text: 'Ой', tone: 'error' })
     expect(dispatched).toEqual([
       { type: 'select', selected: { kind: 'device', id: 'a' } },
       { type: 'selectTurn', turnId: 5 },
       { type: 'dismissNotice' },
+      { type: 'notice', notice: { text: 'Ой', tone: 'error' } },
     ])
   })
 
@@ -98,14 +100,28 @@ describe('actions', () => {
     client.POST.mockResolvedValue(fail({ change_id: 5, status: 'stopping', error: 'ядро останавливается' }, 503))
     await actions.downloadVoice('vosk', 'big')
     expect(client.POST).toHaveBeenCalledWith('/api/v1/voices/download', { body: { kind: 'vosk', voice: 'big' } })
-    expect(dispatched).toEqual([{ type: 'notice', notice: { text: 'ядро останавливается', tone: 'error' } }])
+    expect(dispatched).toEqual([
+      { type: 'downloadRequested', kind: 'vosk', voice: 'big' },
+      { type: 'notice', notice: { text: 'ядро останавливается', tone: 'error' } },
+    ])
   })
 
   it('401 → connection unauthorized', async () => {
     const { client, actions, dispatched } = setup()
     client.POST.mockResolvedValue(fail({ detail: 'Неверный токен' }, 401))
     await actions.restart()
-    expect(dispatched).toEqual([{ type: 'connection', connection: 'unauthorized' }])
+    expect(dispatched).toEqual([
+      { type: 'restarting', on: true },
+      { type: 'connection', connection: 'unauthorized' },
+      { type: 'restarting', on: false },
+    ])
+  })
+
+  it('restart: принят — кнопка ждёт переподключения', async () => {
+    const { client, actions, dispatched } = setup()
+    client.POST.mockResolvedValue(ok(null, 202))
+    await actions.restart()
+    expect(dispatched).toEqual([{ type: 'restarting', on: true }])
   })
 
   it('сеть недоступна → notice, без исключения', async () => {

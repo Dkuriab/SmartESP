@@ -200,6 +200,11 @@
   margin-top: 6px;
 }
 
+.voice-hint {
+  color: var(--faint);
+  font-size: 12px;
+}
+
 .voice-ok {
   color: var(--green);
   font-size: 12px;
@@ -217,4 +222,18 @@
   width: 70px;
   height: 4px;
   accent-color: var(--accent);
+}
+
+.final-prompt {
+  margin-top: 10px;
+}
+
+.final-prompt summary {
+  cursor: pointer;
+}
+
+.prompt-final {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  color: var(--muted);
 }

@@ -6,6 +6,7 @@ import { connectEvents } from '../api/events'
 import { readToken, saveToken } from '../api/token'
 import type { CoreActions } from './actions'
 import { createActions } from './actions'
+import type { Loader } from './load'
 import { AFTER_CHANGE, ALL_RESOURCES, createLoader } from './load'
 import type { CoreState } from './model'
 import { initialState } from './model'
@@ -15,7 +16,9 @@ import type { Dispatch } from './request'
 /** Ядро закрывает WebSocket с этим кодом при неверном токене. */
 const AUTH_FAILED = 4401
 /** После этих событий заново читаем config, status, voices. */
-const REFRESH_ON = new Set(['change_applied', 'voice_ready'])
+const REFRESH_ON = new Set(['change_applied', 'voice_ready', 'core_state'])
+/** Пока связь есть, status перечитывается так часто (Ollama и applying без событий). */
+const STATUS_POLL_MS = 10_000
 
 function storage(): Storage | null {
   try {
@@ -48,26 +51,54 @@ function createGate(dispatch: Dispatch) {
   }
 }
 
+/** Пропускает действия дальше; Ollama снова стала доступна — перечитывает модели. */
+function watchOllama(dispatch: Dispatch, reloadModels: () => void): Dispatch {
+  let reachable: boolean | null = null
+  return (action) => {
+    dispatch(action)
+    if (action.type !== 'loaded' || action.resource !== 'status') return
+    const now: unknown = action.data.ollama?.reachable
+    if (typeof now !== 'boolean') return
+    if (reachable === false && now) reloadModels()
+    reachable = now
+  }
+}
+
+/** Перечитывание status по таймеру, пока связь есть. */
+function statusPoll(load: Loader) {
+  let timer: ReturnType<typeof setInterval> | undefined
+  const stop = () => clearInterval(timer)
+  const start = () => {
+    stop()
+    timer = setInterval(() => load(['status']), STATUS_POLL_MS)
+  }
+  return { start, stop }
+}
+
 /** Загружает ресурсы сразу и при каждом (пере)подключении событий; возвращает отключение. */
 function connect(token: string, client: ReturnType<typeof createClient>, dispatch: Dispatch): () => void {
   const gate = createGate(dispatch)
   const live = gate.dispatch
-  const load = createLoader(client, live)
+  const load: Loader = createLoader(client, watchOllama(live, () => load(['models'])))
+  const poll = statusPoll(load)
   load(ALL_RESOURCES) // данные видны, даже если WebSocket не подключается
   const conn = connectEvents(token, {
     onOpen() {
       live({ type: 'opened' })
       load(ALL_RESOURCES)
+      poll.start()
     },
     onEvent(event: CoreEvent) {
       live({ type: 'event', event })
       if (REFRESH_ON.has(event.kind)) load(AFTER_CHANGE)
     },
     onClose(code) {
+      poll.stop()
       live({ type: 'connection', connection: code === AUTH_FAILED ? 'unauthorized' : 'offline' })
     },
   })
   return () => {
+    poll.stop()
     gate.close()
     conn.close()
   }

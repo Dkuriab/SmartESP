@@ -27,6 +27,21 @@ function eventsUrl(token: string): string {
   return `${scheme}//${location.host}/api/v1/events?token=${encodeURIComponent(token)}`
 }
 
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** Событие из сообщения: только объект со строковым kind; иначе null. */
+export function parseEvent(text: string): CoreEvent | null {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return null
+  }
+  if (!isObject(raw) || typeof raw.kind !== 'string') return null
+  const data = isObject(raw.data) ? raw.data : {}
+  return { kind: raw.kind, data, at: typeof raw.at === 'number' ? raw.at : 0 }
+}
+
 /**
  * Подключается к /api/v1/events и сам переподключается по задержкам.
  * Код 4401 — без переподключения. close() останавливает всё.
@@ -51,11 +66,8 @@ export function connectEvents(
       handlers.onOpen()
     }
     ws.onmessage = (m) => {
-      try {
-        handlers.onEvent(JSON.parse(String(m.data)) as CoreEvent)
-      } catch {
-        // битое сообщение пропускаем
-      }
+      const event = parseEvent(String(m.data))
+      if (event) handlers.onEvent(event) // битое сообщение пропускаем
     }
     ws.onclose = (e) => {
       if (stopped) return

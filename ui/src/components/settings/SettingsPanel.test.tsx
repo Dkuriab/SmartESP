@@ -95,6 +95,12 @@ describe('SettingsPanel', () => {
     expect(actions.setStages).toHaveBeenCalledWith([{ kind: 'whisper_detect' }])
   })
 
+  it('обработчик: настройки не загружены — переключатель заблокирован', () => {
+    setup({ kind: 'stage', id: 'whisper_detect' }, { config: null })
+    expect(screen.getByRole('switch', { name: 'Включён' })).toBeDisabled()
+    expect(screen.queryByText('Применяется…')).not.toBeInTheDocument()
+  })
+
   it('обработчик: пока применяется — «Применяется…» и переключатель заблокирован', () => {
     setup({ kind: 'stage', id: 'whisper_detect' }, { pending: { 3: 'Обработчики' } })
     expect(screen.getByText('Применяется…')).toBeInTheDocument()
