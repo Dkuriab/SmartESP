@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from smartesp.contracts import ToolResult, ToolSpec
+from smartesp.contracts import ConnectorState, ToolResult, ToolSpec
 
 from .connector import Connector
 from .messages import logger
 from .naming import pick_name
-from .specs import AnnounceHandler, ConnectorSpec, ConnectorState
+from .specs import AnnounceHandler, ConnectorSpec
 
 START_TIMEOUT_S = 10.0  # дольше коннектор при запуске не ждём
 START_GRACE_S = 10.0  # запас на закрытие процесса, не уложившегося в предел запуска
@@ -24,7 +24,7 @@ class McpHub:
     в настройках) или с `delegate` — префикс `<id>_`; символы вне [a-zA-Z0-9_-]
     заменяются на `_`, длинные имена обрезаются до 64 с хешем. Упавший коннектор перезапускается через
     restart_delays_s (последняя задержка повторяется); проработал минуту —
-    счёт задержек сначала.
+    счёт задержек сначала. После aclose хаб ничего не запускает.
     """
 
     def __init__(
@@ -32,15 +32,18 @@ class McpHub:
         data_dir: Path,
         *,
         on_announce: AnnounceHandler | None = None,
+        on_tools: Callable[[], None] | None = None,
         call_timeout_s: float = 15.0,
         restart_delays_s: tuple[float, ...] = (1.0, 5.0, 30.0, 300.0),
         start_timeout_s: float = START_TIMEOUT_S,
     ) -> None:
         """data_dir — папка данных ядра (коннектор получает <data_dir>/connectors/<id>);
-        on_announce(text, person, connector_id) — коннектор просит сказать вслух.
+        on_announce(text, person, connector_id) — коннектор просит сказать вслух;
+        on_tools() — изменился список инструментов готовых коннекторов (specs()).
         """
         self._data_dir = data_dir
         self._on_announce = on_announce
+        self._on_tools = on_tools
         self._call_timeout_s = call_timeout_s
         self._restart_delays_s = restart_delays_s
         self._start_timeout_s = start_timeout_s
@@ -50,14 +53,21 @@ class McpHub:
         self._exposed: dict[str, tuple[str, ...]] = {}
         self._warned: set[str] = set()
         self._lock = asyncio.Lock()
+        self._closed = False
+        self._applying: set[asyncio.Task[None]] = set()  # правки apply_soon
 
     async def start(self, specs: Sequence[ConnectorSpec]) -> None:
         """Запускает коннекторы; ждёт каждого не дольше предела запуска. Упавший — failed, не исключение."""
         await self.apply(specs)
 
     async def apply(self, specs: Sequence[ConnectorSpec]) -> None:
-        """Применяет новый список: изменённые перезапускает, убранные останавливает, новые запускает."""
+        """Применяет новый список: изменённые перезапускает, убранные останавливает, новые запускает.
+
+        Ждёт первой попытки запуска новых (не дольше предела запуска с запасом).
+        """
         async with self._lock:
+            if self._closed:
+                return
             self._warned.clear()  # после правки настроек предупреждения о совпадениях — заново
             wanted = _unique(specs)
             old = self._connectors
@@ -76,6 +86,14 @@ class McpHub:
             for connector in fresh:
                 connector.launch()
         await self._wait_started(fresh)  # вне замка: остановка не ждёт чужого запуска
+
+    def apply_soon(self, specs: Sequence[ConnectorSpec]) -> None:
+        """Применяет список в фоне, не дожидаясь запуска; правки применяются по порядку вызовов."""
+        if self._closed:
+            return
+        task = asyncio.create_task(self._apply_logged(list(specs)), name="mcp-hub-apply")
+        self._applying.add(task)
+        task.add_done_callback(self._applying.discard)
 
     def specs(self) -> list[ToolSpec]:
         """Описания инструментов готовых коннекторов (имена уникальны)."""
@@ -103,12 +121,23 @@ class McpHub:
         ]
 
     async def aclose(self) -> None:
-        """Останавливает все коннекторы и их процессы."""
+        """Останавливает все коннекторы и их процессы; фоновые правки отменяются. Повтор безопасен."""
+        self._closed = True
         async with self._lock:
             connectors = list(self._connectors.values())
             self._connectors = {}
             self._rebuild()
             await asyncio.gather(*(c.stop() for c in connectors))
+        applying = list(self._applying)
+        for task in applying:
+            task.cancel()
+        await asyncio.gather(*applying, return_exceptions=True)
+
+    async def _apply_logged(self, specs: list[ConnectorSpec]) -> None:
+        try:
+            await self.apply(specs)
+        except Exception:
+            logger.exception("Коннекторы: настройки не применены")
 
     def _make(self, spec: ConnectorSpec) -> Connector:
         return Connector(
@@ -125,9 +154,11 @@ class McpHub:
         if not connectors:
             return
         waits = [asyncio.create_task(c.wait_settled()) for c in connectors]
-        _, pending = await asyncio.wait(waits, timeout=self._start_timeout_s + START_GRACE_S)
-        for task in pending:
-            task.cancel()
+        try:
+            await asyncio.wait(waits, timeout=self._start_timeout_s + START_GRACE_S)
+        finally:
+            for task in waits:
+                task.cancel()
 
     def _rebuild(self) -> None:
         """Пересобирает таблицу имён инструментов по всем коннекторам (в порядке настроек)."""
@@ -145,7 +176,13 @@ class McpHub:
                 if connector.state == "ready":
                     specs.append(ToolSpec(name, tool.description or "", dict(tool.input_schema)))
             exposed[connector.spec.id] = tuple(names)
+        changed = specs != self._specs
         self._routes, self._specs, self._exposed = routes, specs, exposed
+        if changed and self._on_tools is not None:
+            try:
+                self._on_tools()
+            except Exception:
+                logger.exception("Коннекторы: обработчик смены инструментов упал")
 
     def _free_name(self, routes: dict[str, tuple[Connector, str]], cid: str, tool: str) -> str | None:
         """Имя инструмента для модели: своё или с префиксом `<id>_` (см. pick_name); None — не нашлось."""

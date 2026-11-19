@@ -3,9 +3,26 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from .executor import ToolSpec
+
+ConnectorStateName = Literal["starting", "ready", "failed", "disabled"]
+
+
+@dataclass(frozen=True)
+class ConnectorState:
+    """Состояние коннектора для интерфейса.
+
+    tools — имена инструментов, как их видит модель (только у готового);
+    error — текст последней ошибки (пусто, если её нет).
+    """
+
+    id: str
+    name: str
+    state: ConnectorStateName
+    tools: tuple[str, ...] = ()
+    error: str = ""
 
 
 @dataclass(frozen=True)

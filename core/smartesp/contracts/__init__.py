@@ -21,7 +21,7 @@ from .executor import (
 from .notify import Announcer
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
-from .tools import ToolBox, ToolResult
+from .tools import ConnectorState, ConnectorStateName, ToolBox, ToolResult
 from .tts import TextToSpeech, VoiceInfo, VoiceNotDownloadedError
 
 __all__ = [
@@ -33,6 +33,8 @@ __all__ = [
     "ChangeResult",
     "ChatMessage",
     "ConfigStore",
+    "ConnectorState",
+    "ConnectorStateName",
     "CorePort",
     "CoreEvent",
     "Delivery",

@@ -1,12 +1,13 @@
-"""Описание коннектора из настроек и его состояние для интерфейса."""
+"""Описание коннектора из настроек (состояние для интерфейса — в contracts)."""
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Literal
 
-StateName = Literal["starting", "ready", "failed", "disabled"]
+from smartesp.contracts import ConnectorStateName
+
+StateName = ConnectorStateName
 
 # on_announce(text, person, connector_id): коннектор просит что-то сказать вслух
 AnnounceHandler = Callable[[str, str | None, str], None]
@@ -27,18 +28,3 @@ class ConnectorSpec:
     args: tuple[str, ...] = ()
     env: Mapping[str, str] = field(default_factory=dict[str, str])
     enabled: bool = True
-
-
-@dataclass(frozen=True)
-class ConnectorState:
-    """Состояние коннектора для интерфейса.
-
-    tools — имена инструментов, как их видит модель (только у готового);
-    error — текст последней ошибки (пусто, если её нет).
-    """
-
-    id: str
-    name: str
-    state: StateName
-    tools: tuple[str, ...] = ()
-    error: str = ""

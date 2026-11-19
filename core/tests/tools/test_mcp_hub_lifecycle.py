@@ -119,3 +119,48 @@ async def test_aclose_during_startup_leaves_no_processes(tmp_path: Path):
     await starting
     assert time.monotonic() - began < 10.0
     assert not alive(pid)
+
+
+async def test_on_tools_called_when_ready_tools_change(tmp_path: Path):
+    seen: list[list[str]] = []
+    hub = McpHub(tmp_path, on_tools=lambda: seen.append([t.name for t in hub.specs()]))
+    try:
+        await hub.start([spec("a")])
+        assert seen and "echo" in seen[-1]
+        count = len(seen)
+        await hub.apply([spec("a")])  # ничего не изменилось — не зовём
+        assert len(seen) == count
+        await hub.apply([spec("a", enabled=False)])
+        assert seen[-1] == []
+    finally:
+        await hub.aclose()
+
+
+async def test_apply_soon_starts_in_background(tmp_path: Path):
+    hub = McpHub(tmp_path)
+    try:
+        hub.apply_soon([spec("a")])
+        assert hub.specs() == []  # ещё не запущен: вызов не ждёт
+        await wait_until(lambda: state(hub, "a").state == "ready" if hub.states() else False)
+        assert (await hub.call("echo", {"text": "да"}, None)).text == "да"
+        hub.apply_soon([spec("a", enabled=False)])
+        hub.apply_soon([spec("a"), spec("b")])  # по порядку: последняя правка побеждает
+        await wait_until(lambda: [s.state for s in hub.states()] == ["ready", "ready"])
+    finally:
+        await hub.aclose()
+
+
+async def test_aclose_cancels_pending_apply_and_ignores_later(tmp_path: Path):
+    hub = McpHub(tmp_path, start_timeout_s=30.0)
+    hub.apply_soon([spec("hang", "hang")])
+    await wait_until(lambda: (tmp_path / "connectors" / "hang" / "pid").exists())
+    pid = file_pid(tmp_path, "hang")
+    hub.apply_soon([spec("a")])  # ждёт замка: после остановки не должен ничего запускать
+    await hub.aclose()
+    assert not alive(pid)
+    assert hub.states() == []
+    await hub.apply([spec("a")])
+    hub.apply_soon([spec("a")])
+    await asyncio.sleep(0.2)
+    assert hub.states() == []
+    assert not (tmp_path / "connectors" / "a" / "pid").exists()
