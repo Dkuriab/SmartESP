@@ -1,10 +1,12 @@
 """Тесты Open Food Facts: проверка штрихкода, разбор ответа, нет сети. Сеть — подделка."""
 
+import asyncio
 import os
 
 import httpx
 import pytest
 
+from food_mcp import off as off_module
 from food_mcp.off import OpenFoodFacts, valid_barcode
 
 from .conftest import BARCODE, BARCODE_8, FakeOff
@@ -119,3 +121,20 @@ async def test_live_open_food_facts() -> None:
     assert result.status == "found"
     assert result.food is not None
     assert 450 < result.food.kcal_100g < 600
+
+
+async def test_zero_kcal_is_a_value(off: FakeOff) -> None:
+    off.products[BARCODE] = {"product_name": "Вода", "nutriments": {"energy-kcal_100g": 0}}
+    result = await OpenFoodFacts(transport=off.transport()).lookup(BARCODE)
+    assert result.status == "found"
+    assert result.food is not None and result.food.kcal_100g == 0
+
+
+async def test_whole_request_has_one_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def slow(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(1)
+        return httpx.Response(200, json={"status": 1, "product": {}})
+
+    monkeypatch.setattr(off_module, "TIMEOUT_S", 0.05)
+    result = await OpenFoodFacts(transport=httpx.MockTransport(slow)).lookup(BARCODE)
+    assert result.status == "offline"

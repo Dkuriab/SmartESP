@@ -10,7 +10,7 @@ from .names import tokens
 from .off import OffResult, OpenFoodFacts, valid_barcode
 from .table import table_foods
 
-MAX_OPTIONS = 4
+MAX_OPTIONS = 3
 NOTHING = "Что записать? Скажи продукт и вес."
 
 
@@ -25,20 +25,27 @@ class Found:
 
 @dataclass(frozen=True)
 class Reply:
-    """Не нашлось или неоднозначно: ответ человеку, запись не делается."""
+    """Не нашлось или неоднозначно: ответ человеку, запись не делается.
+
+    `options` — названия, которые предложены на выбор (пусто — не вопрос «какой из»).
+    """
 
     text: str
+    options: tuple[str, ...] = ()
 
 
 def bad_barcode(raw: str, tail: str = "проверь цифры.") -> str:
     return f"Штрихкод «{raw.strip()}» не похож на настоящий — {tail}"
 
 
-def _ask(foods: list[Food]) -> Reply:
-    names = list(dict.fromkeys(f.name for f in foods))
+def _ask(found: list[Found]) -> Reply:
+    """Вопрос «какой из»: один вариант — «это X?», до трёх — списком, больше — «или другое»."""
+    names = tuple(dict.fromkeys(f.food.name for f in found))
+    if len(names) == 1:
+        return Reply(f"Уточни: это {names[0]}?", names)
     if len(names) > MAX_OPTIONS:
-        return Reply(f"Уточни: {', '.join(names[:MAX_OPTIONS])} или другое?")
-    return Reply(f"Уточни: {', '.join(names[:-1])} или {names[-1]}?")
+        return Reply(f"Уточни: {', '.join(names[:MAX_OPTIONS])} или другое?", names[:MAX_OPTIONS])
+    return Reply(f"Уточни: {', '.join(names[:-1])} или {names[-1]}?", names)
 
 
 def _one_or_ask(found: list[Found]) -> Found | Reply | None:
@@ -46,11 +53,17 @@ def _one_or_ask(found: list[Found]) -> Found | Reply | None:
     distinct = list({f.food.name: f for f in found}.values())
     if not distinct:
         return None
-    return distinct[0] if len(distinct) == 1 else _ask([f.food for f in distinct])
+    return distinct[0] if len(distinct) == 1 else _ask(distinct)
+
+
+def _offer(found: list[Found]) -> Reply | None:
+    """Частичное совпадение никогда не пишется молча — только предлагается."""
+    return _ask(found) if found else None
 
 
 def _from_diary(root: Path, wanted: frozenset[str]) -> Found | None:
-    same = [e for e in diary.load_all(root) if tokens(e.food.name) == wanted]
+    """«Как в прошлый раз»: запись, где так же было сказано или так же назван продукт."""
+    same = [e for e in diary.load_all(root) if wanted in (tokens(e.said), tokens(e.food.name))]
     if not same:
         return None
     return Found(max(same, key=lambda e: e.seq).food, "diary")
@@ -65,9 +78,10 @@ def _table(match: Callable[[frozenset[str]], bool]) -> list[Found]:
 
 
 def by_name(root: Path, name: str) -> Found | Reply:
-    """Продукт по названию: своя база, дневник, таблица; затем частичное совпадение.
+    """Продукт по названию: своя база, дневник, таблица — только точное совпадение.
 
-    Частичное — сказанное название входит в название продукта («гречка» → «гречка варёная»).
+    Сказанное лишь входит в название продукта («мясо» → «плов с мясом») — продукт
+    предлагается вопросом, а не записывается.
     """
     wanted = tokens(name)
     if not wanted:
@@ -83,7 +97,7 @@ def by_name(root: Path, name: str) -> Found | Reply:
         _one_or_ask(_own(root, exact))
         or _from_diary(root, wanted)
         or _one_or_ask(_table(exact))
-        or _one_or_ask(_own(root, partial) + _table(partial))
+        or _offer(_own(root, partial) + _table(partial))
     )
     return found or Reply(f"Не знаю калорийность «{name}». Скажи, сколько ккал на 100 г.")
 
@@ -126,4 +140,6 @@ async def resolve(root: Path, name: str, barcode: str, off: OpenFoodFacts) -> Fo
             return Reply(_off_reply(result, code))
         note = _off_note(result)
     found = by_name(root, name)
-    return replace(found, note=note) if isinstance(found, Found) else Reply(f"{note} {found.text}")
+    if isinstance(found, Found):
+        return replace(found, note=note)
+    return replace(found, text=f"{note} {found.text}")

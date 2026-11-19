@@ -65,7 +65,7 @@ async def test_no_grams_asks(call: Caller, data_dir: Path) -> None:
 async def test_bad_grams(call: Caller) -> None:
     assert await call("food_log", {"what": "яблоко", "grams": -5}) == "Вес должен быть больше нуля."
     out = await call("food_log", {"what": "яблоко", "grams": 6000})
-    assert out == "Слишком большой вес: 6000 г. Проверь."
+    assert out == "Записать 6 кг (яблоко)? Это много — скажи вес порции."
 
 
 async def test_grams_inside_what(call: Caller) -> None:
@@ -178,13 +178,34 @@ async def test_bad_barcode(call: Caller, off: FakeOff) -> None:
     assert off.requests == []
 
 
-async def test_diary_remembers_like_yesterday(call: Caller, clock: Clock, data_dir: Path) -> None:
-    await call("product_add", {"name": "суп мамин", "kcal_100g": 60})
-    await call("food_log", {"what": "суп мамин", "grams": 300})
-    (data_dir / "home" / "products.json").unlink()
+async def test_diary_remembers_choice_like_yesterday(call: Caller, clock: Clock, data_dir: Path) -> None:
+    assert (await call("food_log", {"what": "гречку", "grams": 150})).startswith("Уточни")
+    await call("food_log", {"what": "гречка (сухая)", "grams": 150})
+    assert _diary(data_dir)[-1]["said"] == "гречку"
     clock.now = clock.now.replace(day=20)
-    out = await call("food_log", {"what": "супа мамина", "grams": 200})
-    assert out == "Записала: суп мамин, 200 г — 120 ккал. За сегодня 120 ккал."
+    out = await call("food_log", {"what": "гречка", "grams": 100})
+    assert out == "Записала: гречка (сухая), 100 г — 343 ккал. За сегодня 343 ккал."
+    assert _diary(data_dir)[-1]["source"] == "diary"
+
+
+async def test_choice_is_remembered_only_right_after_question(call: Caller, clock: Clock) -> None:
+    await call("food_log", {"what": "гречку", "grams": 150})
+    await call("food_log", {"what": "яблоко", "grams": 100})
+    await call("food_log", {"what": "гречка (сухая)", "grams": 150})
+    clock.now = clock.now.replace(day=20)
+    assert (await call("food_log", {"what": "гречка", "grams": 100})).startswith("Уточни")
+
+
+async def test_diary_matches_said_words(call: Caller, clock: Clock, data_dir: Path) -> None:
+    await call("product_add", {"name": "Суп от бабушки Нины", "kcal_100g": 60})
+    await call("food_log", {"what": "Суп от бабушки Нины", "grams": 300})
+    clock.now = clock.now.replace(day=20)
+    out = await call("food_log", {"what": "суп бабушки", "grams": 100})
+    assert out.startswith("Уточни")
+    await call("food_log", {"what": "Суп от бабушки Нины", "grams": 100})
+    clock.now = clock.now.replace(day=21)
+    out = await call("food_log", {"what": "суп бабушки", "grams": 200})
+    assert out == "Записала: Суп от бабушки Нины, 200 г — 120 ккал. За сегодня 120 ккал."
     assert _diary(data_dir)[-1]["source"] == "diary"
 
 

@@ -30,7 +30,12 @@ _NUMBER_WORDS = {
     "десять": 10,
 }
 _PIECE_WORDS = {"шт", "шт.", "штука", "штуки", "штук", "штуку"}
-_GRAMS = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:г|гр|грамм|грамма|граммов)\.?(?=\s|$)")
+# Вес в тексте; миллилитры и литры считаются как граммы (для напитков — приблизительно).
+_WEIGHT = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*(г|гр|грамм|грамма|граммов|мл|кг|килограмм|килограмма|л|литр|литра|литров)"
+    r"\.?(?=\s|$)"
+)
+_THOUSANDS = ("к", "л")  # кг, литры — ×1000
 
 
 def stem(word: str) -> str:
@@ -71,11 +76,13 @@ def _count(words: list[str]) -> tuple[int, list[str]]:
 
 
 def parse_amount(text: str) -> Amount:
-    """Разбирает «2 яйца», «гречка 150 г», «200 гр творога» на название и количество."""
+    """Разбирает «2 яйца», «гречка 150 г», «200 мл молока» на название и количество."""
     grams = 0.0
-    found = _GRAMS.search(text.lower())
+    found = _WEIGHT.search(text.lower())
     if found:
         grams = float(found.group(1).replace(",", "."))
+        if found.group(2).startswith(_THOUSANDS):
+            grams *= 1000
         text = text[: found.start()] + text[found.end() :]
     count, words = _count(text.split())
     if grams:

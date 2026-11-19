@@ -56,3 +56,15 @@ def test_tokens_drop_single_letters() -> None:
 )
 def test_parse_amount(text: str, expected: Amount) -> None:
     assert parse_amount(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("200 мл молока", Amount("молока", 0, 200)),
+        ("молоко 0,5 л", Amount("молоко", 0, 500)),
+        ("картошка 1,5 кг", Amount("картошка", 0, 1500)),
+    ],
+)
+def test_parse_amount_other_units(text: str, expected: Amount) -> None:
+    assert parse_amount(text) == expected

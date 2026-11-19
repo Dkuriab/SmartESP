@@ -8,7 +8,7 @@ from typing import Annotated
 from mcp.server.mcpserver import Context, MCPServer
 from pydantic import Field
 
-from . import diary, products
+from . import choice, diary, products
 from .context import root_of
 from .diary import Entry
 from .food import Food
@@ -18,30 +18,50 @@ from .off import OpenFoodFacts, valid_barcode
 from .speech import day_words, kcal, num, plural
 from .when import parse_when
 
-MAX_GRAMS = 5000
+MAX_GRAMS = 2000  # больше за одну запись — переспросить
+MAX_PIECES = 20
+MAX_DEFAULT_PACK = 1000  # упаковка тяжелее не берётся за порцию без слов «одну упаковку»
+MAX_PACK = 50_000
 MAX_KCAL_100G = 900
 
 
 def portion(food: Food, grams: float, count: int) -> tuple[float, int] | None:
-    """Вес порции и штук: граммы сказаны — они; иначе штуки × вес штуки/упаковки; иначе None."""
+    """Вес порции и штук: граммы сказаны — они; иначе штуки × вес штуки/упаковки; иначе None.
+
+    Без сказанных штук упаковка тяжелее `MAX_DEFAULT_PACK` за порцию не считается.
+    """
     if grams > 0:
         return grams, 0
-    if food.unit_grams > 0:
-        pieces = count or 1
-        return pieces * food.unit_grams, pieces
+    if food.piece_grams > 0:
+        return (count or 1) * food.piece_grams, count or 1
+    if food.pack_grams > 0 and (count or food.pack_grams <= MAX_DEFAULT_PACK):
+        return (count or 1) * food.pack_grams, count or 1
     return None
+
+
+def _units(food: Food, n: int, accusative: bool = False) -> str:
+    """«2 штуки» / «1 упаковка»; в вопросе «записать 21 штуку» — винительный падеж."""
+    if food.piece_grams:
+        forms = ("штуку" if accusative else "штука", "штуки", "штук")
+    else:
+        forms = ("упаковку" if accusative else "упаковка", "упаковки", "упаковок")
+    return f"{n} {plural(n, *forms)}"
+
+
+def _too_much(food: Food, grams: float, count: int) -> str | None:
+    """Большая порция не пишется: «Записать 3 кг (хлеб белый)? Это много — скажи вес порции.»"""
+    if grams <= MAX_GRAMS and count <= MAX_PIECES:
+        return None
+    weight = f"{num(grams / 1000)} кг" if grams >= 1000 else f"{num(grams)} г"
+    amount = f"{_units(food, count, accusative=True)}, {weight}" if count else weight
+    return f"Записать {amount} ({food.name})? Это много — скажи вес порции."
 
 
 def describe(entry: Entry) -> str:
     """«гречка, 150 г — 515 ккал» или «яйцо, 2 штуки, 110 г — 157 ккал»."""
     amount = f"{num(entry.grams)} г"
     if entry.count:
-        n = entry.count
-        if entry.food.piece_grams:
-            unit = plural(n, "штука", "штуки", "штук")
-        else:
-            unit = plural(n, "упаковка", "упаковки", "упаковок")
-        amount = f"{n} {unit}, {amount}"
+        amount = f"{_units(entry.food, entry.count)}, {amount}"
     return f"{entry.food.name}, {amount} — {kcal(entry.kcal)} ккал"
 
 
@@ -51,11 +71,7 @@ def day_label(day: date, today: date) -> str:
 
 
 def _grams_error(grams: float) -> str | None:
-    if grams < 0:
-        return "Вес должен быть больше нуля."
-    if grams > MAX_GRAMS:
-        return f"Слишком большой вес: {num(grams)} г. Проверь."
-    return None
+    return "Вес должен быть больше нуля." if grams < 0 else None
 
 
 def _product_error(name: str, kcal_100g: float, macros: tuple[float, ...], barcode: str) -> str | None:
@@ -86,11 +102,17 @@ async def log_food(
         return NOTHING
     found = await resolve(root, amount.name, barcode, off)
     if not isinstance(found, Found):
+        if found.options:
+            choice.remember(root, amount.name, found.options, now)
         return found.text
     weight = portion(found.food, grams, amount.count)
     if weight is None:
         return f"Скажи вес в граммах: {found.food.name}."
-    entry = diary.add(root, eaten, found.food, weight[0], weight[1], found.source)
+    question = _too_much(found.food, *weight)
+    if question:
+        return question
+    said = choice.take(root, found.food.name, now) or amount.name
+    entry = diary.add(root, eaten, found.food, weight[0], weight[1], found.source, said)
     total = sum(e.kcal for e in diary.on_day(root, entry.time.date()))
     label = day_label(entry.time.date(), now.date())
     text = f"Записала: {describe(entry)}. {label} {kcal(total)} ккал."
@@ -105,8 +127,8 @@ def add_product(
     error = _product_error(clean, kcal_100g, macros, barcode)
     if error:
         return error
-    if not 0 <= pack <= MAX_GRAMS:
-        return f"Вес упаковки — от 0 до {MAX_GRAMS} г."
+    if not 0 <= pack <= MAX_PACK:
+        return f"Вес упаковки — от 0 до {MAX_PACK} г."
     code = valid_barcode(barcode) or ""
     food = Food(clean, kcal_100g, *macros, barcode=code, pack_grams=pack)
     verb = "Обновила" if products.upsert(root, food, "own") else "Запомнила"

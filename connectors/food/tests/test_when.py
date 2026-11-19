@@ -33,3 +33,14 @@ def test_parse_when(text: str, expected: datetime) -> None:
 @pytest.mark.parametrize("text", ["завтра", "25:00", "когда-то", "2026-13-01", "2026-12-01"])
 def test_parse_when_rejects(text: str) -> None:
     assert parse_when(text, NOW) is None
+
+
+def test_clock_later_than_now_is_yesterday_never_future() -> None:
+    after_midnight = datetime(2026, 11, 19, 0, 30)
+    assert parse_when("23:30", after_midnight) == datetime(2026, 11, 18, 23, 30)
+    assert parse_when("1:00", after_midnight) == after_midnight
+    assert parse_when("10:45", NOW) == NOW
+    assert parse_when("11:32", NOW) == NOW
+    assert parse_when("11:40", NOW) == datetime(2026, 11, 18, 11, 40)
+    assert parse_when("сегодня 23:30", NOW) is None
+    assert parse_when("вчера 23:30", NOW) == datetime(2026, 11, 18, 23, 30)

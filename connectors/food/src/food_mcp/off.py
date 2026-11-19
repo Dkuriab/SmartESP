@@ -1,5 +1,6 @@
 """Open Food Facts: продукт по штрихкоду (сеть), проверка штрихкода."""
 
+import asyncio
 import re
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -63,11 +64,13 @@ def _name(product: dict[str, Any]) -> str:
     return name
 
 
-def _kcal(nutriments: dict[str, Any]) -> float:
-    kcal = _number(nutriments.get("energy-kcal_100g"))
-    if kcal:
-        return kcal
-    return round(_number(nutriments.get("energy_100g")) / _KJ_PER_KCAL, 1)
+def _kcal(nutriments: dict[str, Any]) -> float | None:
+    """Ккал на 100 г; 0 — тоже значение (вода). Нет ни ккал, ни кДж — None."""
+    if nutriments.get("energy-kcal_100g") is not None:
+        return _number(nutriments["energy-kcal_100g"])
+    if nutriments.get("energy_100g") is not None:
+        return round(_number(nutriments["energy_100g"]) / _KJ_PER_KCAL, 1)
+    return None
 
 
 def parse_product(code: str, product: dict[str, Any]) -> OffResult:
@@ -76,7 +79,7 @@ def parse_product(code: str, product: dict[str, Any]) -> OffResult:
     nutriments: dict[str, Any] = raw_nutriments if isinstance(raw_nutriments, dict) else {}
     name = _name(product) or f"продукт {code}"
     kcal = _kcal(nutriments)
-    if kcal <= 0:
+    if kcal is None:
         return OffResult("no_kcal", name=name)
     food = Food(
         name=name,
@@ -99,15 +102,17 @@ class OpenFoodFacts:
     async def lookup(self, code: str) -> OffResult:
         """Продукт по проверенному штрихкоду; ошибки сети и сервиса — `offline`."""
         try:
-            async with httpx.AsyncClient(
-                transport=self._transport, timeout=TIMEOUT_S, headers={"User-Agent": USER_AGENT}
-            ) as client:
-                response = await client.get(API + code, params={"fields": FIELDS})
+            # Один срок на весь запрос: таймаут httpx ограничивает каждую фазу отдельно.
+            async with asyncio.timeout(TIMEOUT_S):
+                async with httpx.AsyncClient(
+                    transport=self._transport, timeout=TIMEOUT_S, headers={"User-Agent": USER_AGENT}
+                ) as client:
+                    response = await client.get(API + code, params={"fields": FIELDS})
             if response.status_code == 404:
                 return OffResult("missing")
             response.raise_for_status()
             payload = response.json()
-        except (httpx.HTTPError, ValueError):
+        except (httpx.HTTPError, ValueError, TimeoutError):
             return OffResult("offline")
         if not isinstance(payload, dict) or payload.get("status") != 1:
             return OffResult("missing")

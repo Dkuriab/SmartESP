@@ -16,7 +16,8 @@ TIME_FORMAT = "%Y-%m-%dT%H:%M"
 class Entry:
     """Запись дневника: что, когда, сколько граммов (и штук), откуда калорийность.
 
-    `seq` — порядковый номер добавления (для «убери последнее»).
+    `seq` — порядковый номер добавления (для «убери последнее»); `said` — как человек
+    назвал продукт (по нему шаг «как в прошлый раз»).
     """
 
     seq: int
@@ -25,6 +26,7 @@ class Entry:
     grams: float
     count: int
     source: str
+    said: str = ""
 
     def _part(self, per_100g: float) -> float:
         return per_100g * self.grams / 100
@@ -58,6 +60,7 @@ class Entry:
             "fat": round(self.fat, 2),
             "carbs": round(self.carbs, 2),
             "source": self.source,
+            "said": self.said,
             "food": self.food.to_dict(),
         }
         return json.dumps(data, ensure_ascii=False)
@@ -72,6 +75,7 @@ class Entry:
             grams=float(raw["grams"]),
             count=int(raw.get("count", 0)),
             source=str(raw.get("source", "")),
+            said=str(raw.get("said", "")),
         )
 
 
@@ -83,21 +87,16 @@ def _month_path(root: Path, when: datetime) -> Path:
     return _folder(root) / f"{when:%Y-%m}.jsonl"
 
 
+def _parse(line: str) -> Entry | None:
+    try:
+        return Entry.from_json(line)
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
 def _read(path: Path) -> list[Entry]:
-    entries: list[Entry] = []
-    for line in read_text(path).splitlines():
-        try:
-            entries.append(Entry.from_json(line))
-        except (ValueError, KeyError, TypeError):
-            continue  # испорченная строка не мешает остальным
-    return entries
-
-
-def _write(path: Path, entries: list[Entry]) -> None:
-    if entries:
-        write_atomic(path, "".join(e.to_json() + "\n" for e in entries))
-    else:
-        path.unlink(missing_ok=True)
+    """Записи файла; испорченные строки пропускаются (но в файле остаются)."""
+    return [e for e in map(_parse, read_text(path).splitlines()) if e is not None]
 
 
 def load_all(root: Path) -> list[Entry]:
@@ -109,23 +108,36 @@ def load_all(root: Path) -> list[Entry]:
     return sorted(entries, key=lambda e: (e.time, e.seq))
 
 
-def add(root: Path, when: datetime, food: Food, grams: float, count: int, source: str) -> Entry:
-    """Добавляет запись в файл её месяца (атомарно) и возвращает её."""
+def add(
+    root: Path, when: datetime, food: Food, grams: float, count: int, source: str, said: str = ""
+) -> Entry:
+    """Добавляет запись в конец файла её месяца (атомарно) и возвращает её."""
     seq = max((e.seq for e in load_all(root)), default=0) + 1
-    entry = Entry(seq, when.replace(second=0, microsecond=0), food, grams, count, source)
+    entry = Entry(seq, when.replace(second=0, microsecond=0), food, grams, count, source, said)
     path = _month_path(root, entry.time)
-    _write(path, [*_read(path), entry])
+    old = read_text(path)
+    if old and not old.endswith("\n"):
+        old += "\n"
+    write_atomic(path, old + entry.to_json() + "\n")
     return entry
 
 
 def pop_last(root: Path) -> Entry | None:
-    """Убирает последнюю добавленную запись; дневник пуст — None."""
+    """Убирает последнюю добавленную запись; дневник пуст — None.
+
+    Остальные строки файла (и непонятые) остаются как были.
+    """
     entries = load_all(root)
     if not entries:
         return None
     last = max(entries, key=lambda e: e.seq)
     path = _month_path(root, last.time)
-    _write(path, [e for e in _read(path) if e.seq != last.seq])
+    lines = read_text(path).splitlines()
+    kept = [line for line in lines if (e := _parse(line)) is None or e.seq != last.seq]
+    if any(line.strip() for line in kept):
+        write_atomic(path, "".join(line + "\n" for line in kept))
+    else:
+        path.unlink(missing_ok=True)
     return last
 
 
