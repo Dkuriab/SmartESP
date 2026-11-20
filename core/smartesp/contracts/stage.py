@@ -17,6 +17,9 @@ class Annotation:
     source: str  # имя обработчика
     data: dict[str, object] = field(default_factory=lambda: dict[str, object]())
     label: str = ""  # как показать источник в промпте («[время]»); пусто — имя источника
+    # справка, а не пометка к реплике: данные для инструментов и прямых вопросов (время);
+    # в промпте — в строке «Справочные данные…» с запретом упоминать их без вопроса
+    reference: bool = False
 
 
 class Stage(Protocol):

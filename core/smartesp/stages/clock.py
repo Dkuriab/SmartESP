@@ -1,7 +1,10 @@
-"""Обработчик «время»: к каждой фразе пометка с местным временем.
+"""Обработчик «время»: к каждой фразе справка с местными датой и временем.
 
-У модели нет часов, и без пометки она выдумывает время. Это общий контекст,
-а не инструмент: маленькая модель вызывала бы «который час» ненадёжно.
+У модели нет часов, и без справки она выдумывает время. Это общий контекст,
+а не инструмент: маленькая модель вызывала бы «который час» ненадёжно. Пометка —
+справочная (reference): модель видит её как данные для инструментов и прямых
+вопросов и не вставляет время в обычные ответы. Части суток («вечер») в ней нет:
+это слово модель охотнее всего переносила в ответы («в этот вечер»).
 """
 
 from collections.abc import Callable
@@ -25,31 +28,25 @@ _MONTHS = (
     "ноября",
     "декабря",
 )
-# (час, с которого начинается часть суток, название)
-_PARTS = ((18, "вечер"), (12, "день"), (6, "утро"), (0, "ночь"))
-
-
-def part_of_day(hour: int) -> str:
-    """Часть суток: ночь 0–5, утро 6–11, день 12–17, вечер 18–23."""
-    return next(name for start, name in _PARTS if hour >= start)
 
 
 def describe(moment: datetime) -> str:
-    """«среда, 19 ноября 2026, 21:40, вечер»."""
+    """«среда, 19 ноября 2026, 21:40»."""
     date = f"{_WEEKDAYS[moment.weekday()]}, {moment.day} {_MONTHS[moment.month - 1]} {moment.year}"
-    return f"{date}, {moment:%H:%M}, {part_of_day(moment.hour)}"
+    return f"{date}, {moment:%H:%M}"
 
 
 class Clock:
-    """Добавляет к фразе пометку с местным временем."""
+    """Добавляет к фразе справку с местным временем."""
 
     name = "clock"
-    prompt_hint = "Пометка [время] — текущие дата и время, пользуйся ей."
+    prompt_hint = ""  # справка объясняет себя сама (conversation/prompt.py)
 
     def __init__(self, now: Callable[[], datetime] = datetime.now) -> None:
         """now — часы (в тестах подменяются); по умолчанию местное время."""
         self._now = now
 
     async def analyze(self, utterance: Utterance) -> list[Annotation]:
-        """Одна пометка «[время] …»."""
-        return [Annotation(text=describe(self._now()), source=self.name, label=LABEL)]
+        """Одна справочная пометка «время — …»."""
+        text = describe(self._now())
+        return [Annotation(text=text, source=self.name, label=LABEL, reference=True)]

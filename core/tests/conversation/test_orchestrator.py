@@ -19,7 +19,7 @@ from fakes.fake_executor import FakeExecutor
 from fakes.fake_stt import FakeSTT
 from smartesp.contracts import Annotation, ChatMessage, ReplyPart, ToolSpec
 from smartesp.conversation import Orchestrator
-from smartesp.conversation.prompt import CONTEXT_HEAD
+from smartesp.conversation.prompt import CONTEXT_HEAD, REFERENCE_HEAD
 
 
 async def test_happy_path() -> None:
@@ -33,8 +33,9 @@ async def test_happy_path() -> None:
     assert (play.device_id, play.turn, play.finished) == ("kitchen", 1, True)
     assert len(play.audio) > 0
     assert analyzer.seen[0].text == "Какая погода?"
-    assert executor.calls[0][-2:] == [
-        ChatMessage("system", f"{CONTEXT_HEAD}\n[voice] говорит Даня\nКолонка: Кухня"),
+    assert executor.calls[0][-3:] == [
+        ChatMessage("system", f"{REFERENCE_HEAD} колонка — Кухня."),
+        ChatMessage("system", f"{CONTEXT_HEAD}\n[voice] говорит Даня"),
         ChatMessage("user", "Какая погода?"),
     ]
     assert setup.tts.texts == ["Сегодня солнечно и тепло.", "Хорошего тебе дня!"]

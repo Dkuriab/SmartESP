@@ -46,8 +46,8 @@ async def understand(
 ) -> list[ChatMessage]:
     """Пометки обработчиков (в turn.annotations) и диалог для исполнителя.
 
-    context — пометки только для промпта (в ленту не идут); device_name — строка
-    «Колонка: …» (пусто — без неё).
+    context — пометки только для промпта (в ленту не идут); device_name — имя колонки
+    для справки (пусто — без него).
     """
     turn.annotations = await analyze(dataclasses.replace(turn.utterance, text=turn.text))
     return build_messages([*turn.annotations, *context], history.messages(), turn.text, device_name)

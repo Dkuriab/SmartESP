@@ -1,8 +1,7 @@
 """Тесты истории диалога и сборки сообщений для исполнителя."""
 
-from smartesp.contracts import Annotation, ChatMessage, ToolCall
-from smartesp.conversation import History, build_messages
-from smartesp.conversation.prompt import CONTEXT_HEAD
+from smartesp.contracts import ChatMessage, ToolCall
+from smartesp.conversation import History
 
 
 class FakeClock:
@@ -32,29 +31,6 @@ def test_old_turns_expire() -> None:
     history.add("новый", "ответ")
     clock.now += 31
     assert [m.content for m in history.messages()] == ["новый", "ответ"]
-
-
-def test_build_messages() -> None:
-    history = [ChatMessage("user", "раньше"), ChatMessage("assistant", "давно")]
-    annotations = [Annotation(text="говорит Даня", source="voice"), Annotation(text="ночь", source="time")]
-    messages = build_messages(annotations, history, "Который час?", "Кухня")
-    assert messages[:2] == history
-    assert messages[2:] == [  # контекст хода — отдельным system, в user только слова человека
-        ChatMessage("system", f"{CONTEXT_HEAD}\n[voice] говорит Даня\n[time] ночь\nКолонка: Кухня"),
-        ChatMessage("user", "Который час?"),
-    ]
-
-
-def test_build_messages_without_annotations() -> None:
-    messages = build_messages([], [], "Привет", "Спальня")
-    assert messages == [
-        ChatMessage("system", f"{CONTEXT_HEAD}\nКолонка: Спальня"),
-        ChatMessage("user", "Привет"),
-    ]
-
-
-def test_build_messages_without_context_has_no_system_message() -> None:
-    assert build_messages([], [], "Привет", "") == [ChatMessage("user", "Привет")]
 
 
 def test_set_limits_keeps_newest() -> None:
