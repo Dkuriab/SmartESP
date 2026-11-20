@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ConnectorSetting } from '../../state/model'
-import { changedEnv, formatFolders, parseFolders, valueError } from './connectorValues'
+import { changedEnv, formatFolders, initialValue, parseFolders, valueError } from './connectorValues'
 
 const setting = (type: ConnectorSetting['type'], value = ''): ConnectorSetting => ({
   key: 'K',
@@ -44,13 +44,20 @@ describe('valueError', () => {
 })
 
 describe('changedEnv', () => {
-  it('только изменённое; секрет с маской не уходит', () => {
-    const settings = [
-      { ...setting('text', 'Тверь'), key: 'CITY' },
-      { ...setting('secret', '•••'), key: 'TOKEN' },
-      { ...setting('flag', ''), key: 'ON' },
-    ]
-    expect(changedEnv(settings, { CITY: 'Тверь', TOKEN: '•••', ON: '1' })).toEqual({ ON: '1' })
+  const settings = [
+    { ...setting('text', 'Тверь'), key: 'CITY' },
+    { ...setting('secret', '•••'), key: 'TOKEN' },
+    { ...setting('flag', ''), key: 'ON' },
+  ]
+
+  it('только изменённое; секрет — пустое поле значит «не менять»', () => {
+    expect(settings.map(initialValue)).toEqual(['Тверь', '', ''])
+    expect(changedEnv(settings, { CITY: 'Тверь', TOKEN: '', ON: '1' })).toEqual({ ON: '1' })
     expect(changedEnv(settings, { CITY: 'Москва', TOKEN: 'new', ON: '' })).toEqual({ CITY: 'Москва', TOKEN: 'new' })
+  })
+
+  it('список, вписанный руками с пробелами и «;», без правки — не изменён', () => {
+    const list = [{ ...setting('list', ' дом = /tmp/h ;'), key: 'F' }]
+    expect(changedEnv(list, { F: formatFolders(parseFolders(' дом = /tmp/h ;')) })).toEqual({})
   })
 })

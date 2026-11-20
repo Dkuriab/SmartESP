@@ -26,14 +26,21 @@ _log = logging.getLogger(__name__)
 MANIFEST_NAME = "smartesp.json"
 MASK = "•••"  # значение секрета в ответах API; оно же назад — «не менять»
 SettingType = Literal["text", "path", "list", "secret", "flag"]
-# окружение, которое меняет, что и как запускается: через API не меняется никогда
+# Главная граница — свой префикс коннектора (settable_key). Это — вторая линия: окружение,
+# которое меняет, что и как запускается (sh -c — это bash на macOS, uv, node, perl, ruby, pip,
+# git), куда идёт трафик (прокси, CA) или как читаются файлы: через API не меняется никогда.
 _PROTECTED = re.compile(
-    r"^(PATH|HOME|SHELL|ENV|BASH_ENV|IFS|VIRTUAL_ENV|PYTHON.*|DYLD_.*|LD_.*|UV_.*|SMARTESP_.*)$",
+    r"^(PATH|HOME|SHELL|ENV|IFS|TMPDIR|LANG|LC_.*|VIRTUAL_ENV|SHELLOPTS|BASHOPTS|PS4|BASH_.*"
+    r"|PYTHON.*|DYLD_.*|LD_.*|UV_.*|PIP_.*|NODE_.*|PERL5.*|PERLLIB|RUBY.*|GIT_.*|XDG_.*"
+    r"|SSL_.*|REQUESTS_CA_BUNDLE|CURL_CA_BUNDLE|.*_PROXY|ANTHROPIC_.*|SMARTESP_.*)$",
     re.IGNORECASE,
 )
+_KEY_FORM = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
-# такие ключи скрыты и в GET /config (api/redact.py), даже если объявлены как text
-_SECRET_NAME = re.compile(r"TOKEN|KEY|SECRET|PASSWORD", re.IGNORECASE)
+# такие ключи скрыты и в GET /config; то же правило — api/redact.py (SECRET_KEY, MASKED),
+# равенство проверяет тест: api не импортирует config
+SECRET_NAME = re.compile(r"TOKEN|KEY|SECRET|PASSWORD", re.IGNORECASE)
+_warned: set[tuple[str, str]] = set()  # (id, ключ): о пропуске уже писали
 
 
 class ConnectorSetting(BaseModel):
@@ -49,7 +56,7 @@ class ConnectorSetting(BaseModel):
     @property
     def secret(self) -> bool:
         """Значение скрыто в ответах API: тип secret или имя ключа как у секрета."""
-        return self.type == "secret" or bool(_SECRET_NAME.search(self.key))
+        return self.type == "secret" or bool(SECRET_NAME.search(self.key))
 
 
 class _Manifest(BaseModel):
@@ -61,6 +68,19 @@ class _Manifest(BaseModel):
 def protected_key(key: str) -> bool:
     """True — ключ окружения нельзя менять через API ни при каком объявлении."""
     return bool(_PROTECTED.match(key))
+
+
+def key_prefix(cid: str) -> str:
+    """Свой префикс коннектора: id заглавными, не буквы и не цифры — «_», плюс «_».
+
+    Например, mac_media → MAC_MEDIA_, my-conn → MY_CONN_.
+    """
+    return re.sub(r"[^A-Za-z0-9]", "_", cid).upper() + "_"
+
+
+def settable_key(cid: str, key: str) -> bool:
+    """Ключ можно объявить для API: заглавные [A-Z][A-Z0-9_]*, свой префикс, не под запретом."""
+    return bool(_KEY_FORM.match(key)) and key.startswith(key_prefix(cid)) and not protected_key(key)
 
 
 def project_dir(args: Sequence[str]) -> Path | None:
@@ -93,13 +113,23 @@ def manifest_note(connector: ConnectorConfig) -> dict[str, str]:
 
 
 def declared_settings(connector: ConnectorConfig) -> list[ConnectorSetting]:
-    """Настройки из smartesp.json проекта коннектора без защищённых ключей; нет файла — пусто."""
-    manifest = _manifest(connector)
-    allowed = [s for s in manifest.settings if not protected_key(s.key)]
-    if len(allowed) != len(manifest.settings):
-        _log.warning(
-            "Коннектор %s: ключи PATH, PYTHON*, DYLD_* и т. п. в %s пропущены", connector.id, MANIFEST_NAME
-        )
+    """Настройки из smartesp.json проекта коннектора, только с годными ключами (settable_key).
+
+    Негодный ключ пропускается (в интерфейс не попадает) с предупреждением — одним на ключ.
+    """
+    allowed: list[ConnectorSetting] = []
+    for setting in _manifest(connector).settings:
+        if settable_key(connector.id, setting.key):
+            allowed.append(setting)
+        elif (connector.id, setting.key) not in _warned:
+            _warned.add((connector.id, setting.key))
+            _log.warning(
+                "Коннектор %s: ключ %s в %s пропущен — нужен свой префикс %s и не системный ключ",
+                connector.id,
+                setting.key,
+                MANIFEST_NAME,
+                key_prefix(connector.id),
+            )
     return allowed
 
 

@@ -53,12 +53,27 @@ export function valueError(setting: ConnectorSetting, value: string): string {
   return ''
 }
 
-/** Только изменённые значения: неизменённый секрет («•••») назад не уходит. */
+/** Начальное значение поля: секрет — пустое поле (ввод нового), список — как есть. */
+export function initialValue(setting: ConnectorSetting): string {
+  return setting.type === 'secret' ? '' : (setting.value ?? '')
+}
+
+/** Значение из ядра в той форме, в какой его соберёт форма (список — заново записанный). */
+function baseline(setting: ConnectorSetting): string {
+  const value = setting.value ?? ''
+  return setting.type === 'list' ? formatFolders(parseFolders(value)) : value
+}
+
+/**
+ * Только изменённые значения. Секрет — пустое поле значит «не менять» (маска «•••» назад не
+ * уходит, стереть секрет можно только в config.yaml); список сравнивается в записанной форме.
+ */
 export function changedEnv(settings: ConnectorSetting[], values: Record<string, string>): Record<string, string> {
   const env: Record<string, string> = {}
   for (const s of settings) {
     const value = values[s.key] ?? ''
-    if (value !== (s.value ?? '')) env[s.key] = value
+    const changed = s.type === 'secret' ? value !== '' : value !== baseline(s)
+    if (changed) env[s.key] = value
   }
   return env
 }

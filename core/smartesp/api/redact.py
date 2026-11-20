@@ -35,7 +35,8 @@ class HideToken(logging.Filter):
         return True
 
 
-_SECRET_KEY = re.compile(r"TOKEN|KEY|SECRET|PASSWORD", re.IGNORECASE)
+# то же правило — config/manifest.py (SECRET_NAME, MASK); равенство проверяет тест
+SECRET_KEY = re.compile(r"TOKEN|KEY|SECRET|PASSWORD", re.IGNORECASE)
 MASKED = "•••"
 
 
@@ -71,7 +72,7 @@ def _masked(item: object, declared: Mapping[str, Set[str]]) -> object:
         return item
     own = declared.get(str(cast(dict[str, object], item).get("id")), set[str]())
     hidden = {
-        key: MASKED if (_SECRET_KEY.search(str(key)) or key in own) and value else value
+        key: MASKED if (SECRET_KEY.search(str(key)) or key in own) and value else value
         for key, value in cast(dict[object, object], env).items()
     }
     return {**cast(dict[str, object], item), "env": hidden}

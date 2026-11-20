@@ -8,17 +8,19 @@ remove, сброс списка, необъявленный ключ) — тол
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
 
 from .connectors import ConnectorConfig
-from .manifest import MASK, ConnectorSetting, declared_settings, protected_key
+from .manifest import MASK, ConnectorSetting, declared_settings, settable_key
 
 API_FIELDS = frozenset({"id", "enabled", "env"})
 API_ONLY_TEXT = "Команду коннектора и необъявленные настройки меняют только в config.yaml"
 MAX_VALUE = 500  # символов в значении настройки
-_BAD_CHARS = ("\x00", "\n", "\r")
+# управляющие (C0/C1, в том числе NUL, \t, \n, \r, NEL) и разделители строк: YAML меняет их при чтении
+_BAD_CATEGORIES = ("Cc", "Zl", "Zp")
 
 
 def check_api_entries(entries: object, connectors: Sequence[ConnectorConfig]) -> list[object]:
@@ -52,7 +54,7 @@ def _checked_env(cid: str, env: object, declared: Mapping[str, ConnectorSetting]
     result: dict[str, str | None] = {}
     for key, value in cast(dict[object, object], env).items():
         setting = declared.get(key) if isinstance(key, str) else None
-        if setting is None or protected_key(setting.key):
+        if setting is None or not settable_key(cid, setting.key):
             raise ValueError(f"Настройку {key} коннектора {cid} меняют только в config.yaml")
         if value is None:
             result[setting.key] = None
@@ -71,7 +73,7 @@ def check_value(setting: ConnectorSetting, value: object) -> str:
         raise ValueError(f"{key}: значение должно быть строкой")
     if len(value) > MAX_VALUE:
         raise ValueError(f"{key}: не длиннее {MAX_VALUE} символов")
-    if any(c in value for c in _BAD_CHARS):
+    if any(unicodedata.category(c) in _BAD_CATEGORIES for c in value):
         raise ValueError(f"{key}: значение в одну строку")
     if setting.type == "flag" and value not in ("", "1"):
         raise ValueError(f"{key}: флаг — «1» или пусто")

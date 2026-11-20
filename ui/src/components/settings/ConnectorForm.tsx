@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import type { ConnectorSetting } from '../../state/model'
 import type { FolderRow } from './connectorValues'
-import { changedEnv, formatFolders, parseFolders, valueError } from './connectorValues'
+import { changedEnv, formatFolders, initialValue, parseFolders, valueError } from './connectorValues'
 import FolderList from './FolderList'
 
 type Props = {
@@ -14,6 +14,12 @@ type Props = {
 }
 
 type FieldProps = { setting: ConnectorSetting; value: string; disabled: boolean; onChange: (v: string) => void }
+
+/** Подсказка в пустом поле: заданный секрет не показывается — вводят новый. */
+function placeholderOf(setting: ConnectorSetting): string {
+  if (setting.type === 'secret') return setting.value ? 'задано — введите новое' : 'не задано'
+  return setting.type === 'path' ? '/Users/…' : ''
+}
 
 /** Поле одной настройки: флаг — переключатель, секрет — скрытый ввод, остальное — строка. */
 function SettingField({ setting, value, disabled, onChange }: FieldProps) {
@@ -40,7 +46,7 @@ function SettingField({ setting, value, disabled, onChange }: FieldProps) {
         type={setting.type === 'secret' ? 'password' : 'text'}
         autoComplete="off"
         spellCheck={false}
-        placeholder={setting.type === 'path' ? '/Users/…' : ''}
+        placeholder={placeholderOf(setting)}
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
@@ -78,17 +84,17 @@ function SettingRow({ setting: s, values, lists, disabled, onValue, onRows }: Ro
 const listsOf = (settings: ConnectorSetting[]) =>
   Object.fromEntries(settings.filter((s) => s.type === 'list').map((s) => [s.key, parseFolders(s.value ?? '')]))
 
-/** Первая ошибка значений с подписью поля; '' — всё годится. */
-function firstError(settings: ConnectorSetting[], values: Record<string, string>): string {
-  for (const s of settings) {
-    const error = valueError(s, values[s.key] ?? '')
+/** Первая ошибка изменённых значений с подписью поля; '' — всё годится. */
+function firstError(settings: ConnectorSetting[], env: Record<string, string>): string {
+  for (const s of settings.filter((x) => x.key in env)) {
+    const error = valueError(s, env[s.key] ?? '')
     if (error) return `${s.title}: ${error}`
   }
   return ''
 }
 
 export default function ConnectorForm({ settings, disabled, onSave }: Props) {
-  const [values, setValues] = useState(() => Object.fromEntries(settings.map((s) => [s.key, s.value ?? ''])))
+  const [values, setValues] = useState(() => Object.fromEntries(settings.map((s) => [s.key, initialValue(s)])))
   const [lists, setLists] = useState<Record<string, FolderRow[]>>(() => listsOf(settings))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -97,7 +103,7 @@ export default function ConnectorForm({ settings, disabled, onSave }: Props) {
   const env = changedEnv(settings, current)
   const locked = disabled || saving
   const save = async () => {
-    const problem = firstError(settings, current)
+    const problem = firstError(settings, env)
     setError(problem)
     if (problem) return
     setSaving(true)

@@ -130,6 +130,8 @@ describe('ConnectorSettings', () => {
     const { actions } = setup('claude_tasks')
     expect(screen.getByLabelText('Папки для задач: имя 1')).toHaveValue('дом')
     expect(screen.getByLabelText('Пин')).toHaveAttribute('type', 'password')
+    expect(screen.getByLabelText('Пин')).toHaveValue('') // маска не в поле: ввод не склеится с «•••»
+    expect(screen.getByLabelText('Пин')).toHaveAttribute('placeholder', 'задано — введите новое')
     await userEvent.click(screen.getByRole('button', { name: '+ папка' }))
     await userEvent.type(screen.getByLabelText('Папки для задач: имя 2'), 'работа')
     await userEvent.type(screen.getByLabelText('Папки для задач: путь 2'), 'relative')

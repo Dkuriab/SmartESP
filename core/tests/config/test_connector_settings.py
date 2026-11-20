@@ -1,13 +1,24 @@
 """Настройки коннектора из его smartesp.json: объявление, показ, правка через API."""
 
 import json
+import logging
 from pathlib import Path
 
 import pytest
 import yaml
 
-from smartesp.config import Config, ConfigFile, ConnectorConfig
-from smartesp.config.manifest import MASK, declared_settings, manifest_note, protected_key, settings_view
+from smartesp.api import redact
+from smartesp.config import Config, ConfigFile, ConnectorConfig, manifest
+from smartesp.config.connectors import DEFAULT_CONNECTORS
+from smartesp.config.manifest import (
+    MASK,
+    SECRET_NAME,
+    declared_settings,
+    manifest_note,
+    protected_key,
+    settable_key,
+    settings_view,
+)
 
 
 def project(tmp_path: Path, settings: object) -> Path:
@@ -17,9 +28,9 @@ def project(tmp_path: Path, settings: object) -> Path:
     return folder
 
 
-def connector(folder: Path, env: dict[str, str] | None = None) -> ConnectorConfig:
+def connector(folder: Path, env: dict[str, str] | None = None, cid: str = "my") -> ConnectorConfig:
     args = ["run", "--project", str(folder), "my-mcp"]
-    return ConnectorConfig(id="my", name="Моё", command="uv", args=args, env=env or {})
+    return ConnectorConfig(id=cid, name="Моё", command="uv", args=args, env=env or {})
 
 
 def store_with(tmp_path: Path, folder: Path, env: dict[str, str] | None = None) -> ConfigFile:
@@ -39,11 +50,12 @@ def env_of(store: ConfigFile, cid: str = "my") -> dict[str, str]:
     return next(c.env for c in store.config.connectors if c.id == cid)
 
 
-CITY = {"key": "CITY", "title": "Город", "type": "text", "hint": "например, Москва"}
-TOKEN = {"key": "API_TOKEN", "title": "Ключ", "type": "secret"}
-FOLDERS = {"key": "FOLDERS", "title": "Папки", "type": "list"}
-ROOT = {"key": "ROOT", "title": "Корень", "type": "path"}
-FLAG = {"key": "ON", "title": "Включить", "type": "flag"}
+REPO = Path(__file__).resolve().parents[3]
+CITY = {"key": "MY_CITY", "title": "Город", "type": "text", "hint": "например, Москва"}
+TOKEN = {"key": "MY_API_TOKEN", "title": "Ключ", "type": "secret"}
+FOLDERS = {"key": "MY_FOLDERS", "title": "Папки", "type": "list"}
+ROOT = {"key": "MY_ROOT", "title": "Корень", "type": "path"}
+FLAG = {"key": "MY_ON", "title": "Включить", "type": "flag"}
 
 
 # ---- объявление ----
@@ -53,8 +65,8 @@ def test_manifest_read_from_project_folder(tmp_path: Path) -> None:
     folder = project(tmp_path, [CITY, TOKEN])
     declared = declared_settings(connector(folder))
     assert [(s.key, s.title, s.type, s.hint) for s in declared] == [
-        ("CITY", "Город", "text", "например, Москва"),
-        ("API_TOKEN", "Ключ", "secret", ""),
+        ("MY_CITY", "Город", "text", "например, Москва"),
+        ("MY_API_TOKEN", "Ключ", "secret", ""),
     ]
 
 
@@ -89,21 +101,106 @@ def test_connector_without_project_declares_nothing() -> None:
 def test_protected_keys_never_declared(tmp_path: Path, key: str) -> None:
     assert protected_key(key)
     folder = project(tmp_path, [{"key": key, "title": "Зло", "type": "text"}, CITY])
-    assert [s.key for s in declared_settings(connector(folder))] == ["CITY"]
+    assert [s.key for s in declared_settings(connector(folder))] == ["MY_CITY"]
 
 
-@pytest.mark.parametrize("key", ["UV_INDEX_URL", "SMARTESP_CONNECTOR_DATA", "BASH_ENV", "ENV", "path"])
+@pytest.mark.parametrize(
+    "key",
+    [
+        "UV_INDEX_URL",
+        "SMARTESP_CONNECTOR_DATA",
+        "BASH_ENV",
+        "ENV",
+        "path",
+        "SHELLOPTS",
+        "BASHOPTS",
+        "PS4",
+        "BASH_FUNC_x",
+        "NODE_OPTIONS",
+        "SSL_CERT_FILE",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+        "HTTPS_PROXY",
+        "http_proxy",
+        "all_proxy",
+        "XDG_CONFIG_HOME",
+        "GIT_SSH_COMMAND",
+        "PERL5OPT",
+        "PERLLIB",
+        "RUBYOPT",
+        "PIP_INDEX_URL",
+        "LANG",
+        "LC_ALL",
+        "TMPDIR",
+        "ANTHROPIC_BASE_URL",
+    ],
+)
 def test_more_protected_keys(key: str) -> None:
     assert protected_key(key)
 
 
+@pytest.mark.parametrize(
+    ("cid", "key", "ok"),
+    [
+        ("weather", "WEATHER_PLACE", True),
+        ("weather", "PLACE", False),  # без своего префикса
+        ("weather", "weather_place", False),  # только заглавные
+        ("weather", "FOOD_OFF", False),  # чужой префикс
+        ("weather", "WEATHER", False),  # префикс — с «_»
+        ("mac_media", "MAC_MEDIA_DEVICE", True),
+        ("my-conn", "MY_CONN_X", True),
+        ("web", "WEB_LIMIT", True),
+        ("node", "NODE_OPTIONS", False),  # префикс свой, но ключ под запретом
+        ("bash", "BASH_ENV", False),
+    ],
+)
+def test_settable_key_needs_own_prefix(cid: str, key: str, ok: bool) -> None:
+    assert settable_key(cid, key) is ok
+
+
+def test_manifest_keys_outside_prefix_ignored_with_one_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(manifest, "_warned", set())
+    evil = [{"key": k, "title": "Зло"} for k in ("PS4", "NODE_OPTIONS", "PLACE", "my_city", "WEATHER_PLACE")]
+    folder = project(tmp_path, [*evil, CITY])
+    with caplog.at_level(logging.WARNING):
+        assert [s.key for s in declared_settings(connector(folder))] == ["MY_CITY"]
+        declared_settings(connector(folder))  # повторное чтение журнал не засоряет
+    assert len([r for r in caplog.records if "пропущен" in r.getMessage()]) == len(evil)  # по разу на ключ
+    store = store_with(tmp_path, folder)
+    for key in ("PS4", "NODE_OPTIONS", "PLACE"):
+        with pytest.raises(ValueError, match="config.yaml"):
+            store.merge({"connectors": [{"id": "my", "env": {key: "x"}}]})
+
+
+def test_node_connector_cannot_expose_node_options(tmp_path: Path) -> None:
+    folder = project(tmp_path, [{"key": "NODE_OPTIONS", "title": "x"}, {"key": "NODE_LIMIT", "title": "y"}])
+    assert declared_settings(connector(folder, cid="node")) == []  # NODE_* — под запретом целиком
+
+
+@pytest.mark.parametrize("cid", [cid for cid, *_ in DEFAULT_CONNECTORS])
+def test_our_manifests_follow_prefix_rule(cid: str) -> None:
+    path = REPO / "connectors" / cid / "smartesp.json"
+    raw = json.loads(path.read_text(encoding="utf-8")).get("settings", []) if path.exists() else []
+    entry = next(c for c in Config().connectors if c.id == cid)
+    assert [s.key for s in declared_settings(entry)] == [item["key"] for item in raw]  # ничего не отброшено
+    assert all(settable_key(cid, item["key"]) for item in raw)
+
+
+def test_secret_rule_same_as_config_masking() -> None:
+    # одно правило в двух модулях (api не импортирует config): маска и имена секретов совпадают
+    assert MASK == redact.MASKED
+    assert SECRET_NAME.pattern == redact.SECRET_KEY.pattern
+
+
 def test_view_has_values_and_masks_secrets(tmp_path: Path) -> None:
     folder = project(tmp_path, [CITY, TOKEN, ROOT])
-    view = settings_view(connector(folder, {"CITY": "Тверь", "API_TOKEN": "s3cret"}))
+    view = settings_view(connector(folder, {"MY_CITY": "Тверь", "MY_API_TOKEN": "s3cret"}))
     assert view == [
-        {"key": "CITY", "title": "Город", "type": "text", "hint": "например, Москва", "value": "Тверь"},
-        {"key": "API_TOKEN", "title": "Ключ", "type": "secret", "hint": "", "value": MASK},
-        {"key": "ROOT", "title": "Корень", "type": "path", "hint": "", "value": ""},
+        {"key": "MY_CITY", "title": "Город", "type": "text", "hint": "например, Москва", "value": "Тверь"},
+        {"key": "MY_API_TOKEN", "title": "Ключ", "type": "secret", "hint": "", "value": MASK},
+        {"key": "MY_ROOT", "title": "Корень", "type": "path", "hint": "", "value": ""},
     ]
 
 
@@ -118,10 +215,10 @@ def test_empty_secret_is_not_masked(tmp_path: Path) -> None:
 
 
 def test_store_lists_settings_by_connector(tmp_path: Path) -> None:
-    store = store_with(tmp_path, project(tmp_path, [CITY]), {"CITY": "Тверь"})
+    store = store_with(tmp_path, project(tmp_path, [CITY]), {"MY_CITY": "Тверь"})
     settings = store.connector_settings()
     assert settings["my"] == {
-        "settings": settings_view(connector(tmp_path / "conn", {"CITY": "Тверь"})),
+        "settings": settings_view(connector(tmp_path / "conn", {"MY_CITY": "Тверь"})),
         "note": "",
         "example": "",
     }
@@ -134,22 +231,22 @@ def test_store_lists_settings_by_connector(tmp_path: Path) -> None:
 
 def test_declared_key_is_saved_and_kept(tmp_path: Path) -> None:
     store = store_with(tmp_path, project(tmp_path, [CITY]))
-    store.save(store.merge({"connectors": [{"id": "my", "env": {"CITY": "Москва"}}]}))
-    assert env_of(store) == {"CITY": "Москва"}
+    store.save(store.merge({"connectors": [{"id": "my", "env": {"MY_CITY": "Москва"}}]}))
+    assert env_of(store) == {"MY_CITY": "Москва"}
     store.save(store.merge({"connectors": [{"id": "my", "enabled": False}]}))
-    assert env_of(store) == {"CITY": "Москва"}
+    assert env_of(store) == {"MY_CITY": "Москва"}
 
 
 def test_enabled_and_env_together(tmp_path: Path) -> None:
     store = store_with(tmp_path, project(tmp_path, [CITY]))
-    config = store.merge({"connectors": [{"id": "my", "enabled": False, "env": {"CITY": "Тверь"}}]})
+    config = store.merge({"connectors": [{"id": "my", "enabled": False, "env": {"MY_CITY": "Тверь"}}]})
     mine = next(c for c in config.connectors if c.id == "my")
-    assert (mine.enabled, mine.env) == (False, {"CITY": "Тверь"})
+    assert (mine.enabled, mine.env) == (False, {"MY_CITY": "Тверь"})
 
 
 def test_null_resets_declared_key(tmp_path: Path) -> None:
-    store = store_with(tmp_path, project(tmp_path, [CITY]), {"CITY": "Тверь"})
-    store.save(store.merge({"connectors": [{"id": "my", "env": {"CITY": None}}]}))
+    store = store_with(tmp_path, project(tmp_path, [CITY]), {"MY_CITY": "Тверь"})
+    store.save(store.merge({"connectors": [{"id": "my", "env": {"MY_CITY": None}}]}))
     assert env_of(store) == {}
 
 
@@ -168,14 +265,18 @@ def test_weather_place_via_api(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "env",
     [
-        {"OTHER": "x"},  # не объявлен
+        {"MY_OTHER": "x"},  # не объявлен
         {"PATH": "/tmp"},
-        {"CITY": 5},
-        {"CITY": "a" * 501},
-        {"CITY": "a\nb"},
-        {"CITY": "a\rb"},
-        {"CITY": "a\x00b"},
-        ["CITY"],
+        {"MY_CITY": 5},
+        {"MY_CITY": "a" * 501},
+        {"MY_CITY": "a\nb"},
+        {"MY_CITY": "a\rb"},
+        {"MY_CITY": "a\x00b"},
+        {"MY_CITY": "a\x85b"},  # NEL: YAML читает его обратно иначе
+        {"MY_CITY": "a\u2028b"},
+        {"MY_CITY": "a\tb"},
+        {"MY_CITY": "a\x1bb"},
+        ["MY_CITY"],
     ],
 )
 def test_bad_env_rejected(tmp_path: Path, env: object) -> None:
@@ -193,24 +294,24 @@ def test_malicious_manifest_cannot_unlock_path(tmp_path: Path) -> None:
 
 
 def test_unchanged_secret_mask_keeps_value(tmp_path: Path) -> None:
-    store = store_with(tmp_path, project(tmp_path, [TOKEN, CITY]), {"API_TOKEN": "s3cret"})
-    store.save(store.merge({"connectors": [{"id": "my", "env": {"API_TOKEN": MASK, "CITY": "Тверь"}}]}))
-    assert env_of(store) == {"API_TOKEN": "s3cret", "CITY": "Тверь"}
-    store.save(store.merge({"connectors": [{"id": "my", "env": {"API_TOKEN": "new"}}]}))
-    assert env_of(store)["API_TOKEN"] == "new"
+    store = store_with(tmp_path, project(tmp_path, [TOKEN, CITY]), {"MY_API_TOKEN": "s3cret"})
+    store.save(store.merge({"connectors": [{"id": "my", "env": {"MY_API_TOKEN": MASK, "MY_CITY": "Тверь"}}]}))
+    assert env_of(store) == {"MY_API_TOKEN": "s3cret", "MY_CITY": "Тверь"}
+    store.save(store.merge({"connectors": [{"id": "my", "env": {"MY_API_TOKEN": "new"}}]}))
+    assert env_of(store)["MY_API_TOKEN"] == "new"
 
 
 @pytest.mark.parametrize("value", ["", "/Users/me/x", "~", "~/notes"])
 def test_path_ok(tmp_path: Path, value: str) -> None:
     store = store_with(tmp_path, project(tmp_path, [ROOT]))
-    store.merge({"connectors": [{"id": "my", "env": {"ROOT": value}}]})
+    store.merge({"connectors": [{"id": "my", "env": {"MY_ROOT": value}}]})
 
 
 @pytest.mark.parametrize("value", ["relative/dir", "{repo}/x", "~other/x"])
 def test_path_must_be_absolute(tmp_path: Path, value: str) -> None:
     store = store_with(tmp_path, project(tmp_path, [ROOT]))
-    with pytest.raises(ValueError, match="ROOT"):
-        store.merge({"connectors": [{"id": "my", "env": {"ROOT": value}}]})
+    with pytest.raises(ValueError, match="MY_ROOT"):
+        store.merge({"connectors": [{"id": "my", "env": {"MY_ROOT": value}}]})
 
 
 def test_folder_list_ok(tmp_path: Path) -> None:
@@ -218,8 +319,8 @@ def test_folder_list_ok(tmp_path: Path) -> None:
     (tmp_path / "b").mkdir()
     store = store_with(tmp_path, project(tmp_path, [FOLDERS]))
     value = f"песочница={tmp_path / 'a'}; работа = {tmp_path / 'b'};"
-    store.merge({"connectors": [{"id": "my", "env": {"FOLDERS": value}}]})
-    store.merge({"connectors": [{"id": "my", "env": {"FOLDERS": ""}}]})
+    store.merge({"connectors": [{"id": "my", "env": {"MY_FOLDERS": value}}]})
+    store.merge({"connectors": [{"id": "my", "env": {"MY_FOLDERS": ""}}]})
 
 
 @pytest.mark.parametrize(
@@ -238,18 +339,18 @@ def test_folder_list_rejected(tmp_path: Path, value: str) -> None:
     (tmp_path / "a").mkdir()
     (tmp_path / "file.txt").write_text("x", encoding="utf-8")
     store = store_with(tmp_path, project(tmp_path, [FOLDERS]))
-    with pytest.raises(ValueError, match="FOLDERS"):
-        store.merge({"connectors": [{"id": "my", "env": {"FOLDERS": value.format(tmp=tmp_path)}}]})
+    with pytest.raises(ValueError, match="MY_FOLDERS"):
+        store.merge({"connectors": [{"id": "my", "env": {"MY_FOLDERS": value.format(tmp=tmp_path)}}]})
 
 
 @pytest.mark.parametrize(("value", "ok"), [("1", True), ("", True), ("0", False), ("yes", False)])
 def test_flag_values(tmp_path: Path, value: str, ok: bool) -> None:
     store = store_with(tmp_path, project(tmp_path, [FLAG]))
-    patch = {"connectors": [{"id": "my", "env": {"ON": value}}]}
+    patch = {"connectors": [{"id": "my", "env": {"MY_ON": value}}]}
     if ok:
         store.merge(patch)
     else:
-        with pytest.raises(ValueError, match="ON"):
+        with pytest.raises(ValueError, match="MY_ON"):
             store.merge(patch)
 
 
