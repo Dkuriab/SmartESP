@@ -18,15 +18,46 @@ import re
 FIRST_SENTENCE_CHARS = 20
 _BOUNDARY = re.compile(r"[.!?…](?=\s)|\n")
 
-_VERBS = "постав|запис|включ|выключ|добав|узна|провер|запуст|установ|сохран|отправ|удал|отмет"
-# просьба о действии: повелительное («включи», «поставьте») или «можешь/надо …» с неопределённой формой
-_IMPERATIVE = re.compile(
-    r"\b(?:включи|выключи|поставь|запиши|добавь|запусти|установи|сохрани|отправь|удали|отметь|"
-    r"напомни|заведи|проверь|узнай|сделай|убери|закажи|открой|закрой)(?:те)?\b",
+# действия по дому и помощника (закрытый список): семейство → (повелительное, «-шь», неопределённая
+# форма, краткое причастие или ""). Узнай/проверь/расскажи — вопросы о знании, не действие
+_ACTIONS: dict[str, tuple[str, str, str, str]] = {
+    "включ": ("включи|включай", "включишь", "включить", "включ[её]н"),
+    "выключ": ("выключи|выключай", "выключишь", "выключить", "выключ[её]н"),
+    "постав": ("поставь|ставь", "поставишь", "поставить", "поставлен"),
+    "установ": ("установи", "установишь", "установить", "установлен"),
+    "запуст": ("запусти|запускай", "запустишь", "запустить", "запущен"),
+    "останов": ("останови", "остановишь", "остановить", "остановлен"),
+    "запис": ("запиши|записывай", "запишешь", "записать", "записан"),
+    "добав": ("добавь|добавляй", "добавишь", "добавить", "добавлен"),
+    "удал": ("удали|удаляй", "удалишь", "удалить", "удал[её]н"),
+    "убр": ("убери|убирай", "уберёшь|уберешь", "убрать", "убран"),
+    "напомн": ("напомни|напоминай", "напомнишь", "напомнить", ""),
+    "откр": ("открой|открывай", "откроешь", "открыть", "открыт"),
+    "закр": ("закрой|закрывай", "закроешь", "закрыть", "закрыт"),
+    "убав": ("убавь", "убавишь", "убавить", ""),
+    "прибав": ("прибавь", "прибавишь", "прибавить", ""),
+    "переключ": ("переключи|переключай", "переключишь", "переключить", "переключ[её]н"),
+    "зажг": ("зажги", "зажжёшь|зажжешь", "зажечь", "зажж[её]н"),
+    "погас": ("погаси", "погасишь", "погасить", "погаш[её]н"),
+}
+_ASKED = {
+    family: re.compile(rf"\b(?:(?:{imp})(?:те)?|{fut})\b", re.IGNORECASE)
+    for family, (imp, fut, _inf, _part) in _ACTIONS.items()
+}
+_INFINITIVES = {
+    family: re.compile(rf"\b{inf}\b", re.IGNORECASE) for family, (_i, _f, inf, _p) in _ACTIONS.items()
+}
+_PARTICIPLES = {
+    family: re.compile(rf"\b(?:{part})[аоы]?\b", re.IGNORECASE)
+    for family, (_i, _f, _inf, part) in _ACTIONS.items()
+    if part
+}
+# «можешь включить», «могла бы поставить», «надо записать» — но не «можно ли …», «нужно ли …»
+_MODAL = re.compile(
+    r"\b(?:можешь|можете|можно|нужно|надо|хочу|пожалуйста|мог(?:ла|ли)?\s+бы|хотел[аи]?\s+бы)\b(?!\s+ли\b)",
     re.IGNORECASE,
 )
-_POLITE = re.compile(r"\b(?:можешь|можете|можно|нужно|надо|пожалуйста|хочу)\b", re.IGNORECASE)
-_INFINITIVE = re.compile(rf"\b(?:{_VERBS})\w*ть\b", re.IGNORECASE)
+_QUOTED = re.compile(r"«[^»]*»|\"[^\"]*\"|„[^“]*“")
 
 # голос помощника: прошедшее единственного числа, настоящее первого лица, «сейчас» + будущее
 _PAST = re.compile(
@@ -38,12 +69,10 @@ _PRESENT = re.compile(
     r"\b(?:включаю|выключаю|ставлю|записываю|добавляю|запускаю|устанавливаю|сохраняю)\b", re.IGNORECASE
 )
 _SOON = re.compile(r"\b(?:включу|выключу|поставлю|запишу|добавлю|запущу|установлю|сохраню)\b", re.IGNORECASE)
-# состояние: краткое причастие («включён», «поставлен», «записана»)
-_STATE = re.compile(
-    r"\b(?:поставлен|записан|включ[её]н|выключ[её]н|добавлен|установлен|запущен|сохран[её]н)[аоы]?\b",
-    re.IGNORECASE,
+# рассказ о прошлом или возможном: «был запущен», «может быть установлен», год «1957», «в 2009 году»
+_HISTORIC = re.compile(
+    r"\b(?:был[аои]?|будет|будут|быть)\b|\b(?:1\d{3}|20\d{2})\b|\bгод[ау]?\b|\bвек[еа]?\b", re.IGNORECASE
 )
-_HISTORIC = re.compile(r"\b(?:был[аои]?|будет|будут)\b|\b\d{3,4}\b|\bгод[ау]?\b|\bвек[еа]?\b", re.IGNORECASE)
 # слова, после которых глагол — всё ещё голос помощника («Хорошо, я уже поставила…»)
 _LEAD = frozenset(
     "я уже только что сейчас хорошо готово ок окей понял поняла понятно да итак так вот всё все ага "
@@ -70,11 +99,21 @@ def first_sentence(text: str) -> str | None:
     return None
 
 
+def requested_actions(question: str) -> frozenset[str]:
+    """Семейства действий, о которых просит человек: «Включи свет», «Включишь свет?», «Можешь
+    поставить таймер?», «Включить свет». Цитаты («как сказать «включи»?») не считаются."""
+    text = _QUOTED.sub(" ", question)
+    found = {family for family, pattern in _ASKED.items() if pattern.search(text)}
+    for family, pattern in _INFINITIVES.items():
+        match = pattern.search(text)
+        if match and (pattern.match(text.lstrip()) or _MODAL.search(text[: match.start()])):
+            found.add(family)  # неопределённая форма в начале или после «можешь/надо…»
+    return frozenset(found)
+
+
 def asks_action(question: str) -> bool:
-    """True, если человек просит действие: «Включи свет», «Можешь поставить таймер?»."""
-    if _IMPERATIVE.search(question):
-        return True
-    return bool(_POLITE.search(question) and _INFINITIVE.search(question))
+    """True, если человек просит действие из закрытого списка (не вопрос о знании)."""
+    return bool(requested_actions(question))
 
 
 def false_claim(sentence: str, question: str, after_tools: bool = False) -> bool:
@@ -82,16 +121,19 @@ def false_claim(sentence: str, question: str, after_tools: bool = False) -> bool
 
     after_tools — прошлый ход был с вызовом инструмента: «Да, …» и «уже …» тогда — подтверждение.
     """
-    if not asks_action(question) or not claims_action(sentence):
+    families = requested_actions(question)
+    if not families or not claims_action(sentence, families):
         return False
     return not (after_tools and _CONFIRM.search(sentence))
 
 
-def claims_action(sentence: str) -> bool:
+def claims_action(sentence: str, families: frozenset[str] | None = None) -> bool:
     """True, если предложение голосом помощника утверждает, что действие сделано или делается.
 
     Вопрос («…?»), отрицание («не включила»), условное («записала бы»), чужое лицо
     («ты поставил») и рассказ о прошлом («был запущен в 1957 году») — не утверждение.
+    Краткое причастие («Свет включён») — только у семейств families (просьба этого хода;
+    None — любое семейство).
     """
     sentence = _STYLE_TAG.sub("", sentence, count=1)
     if sentence.rstrip(" \t\n\"'»)").endswith("?"):
@@ -104,7 +146,8 @@ def claims_action(sentence: str) -> bool:
         return True
     if _HISTORIC.search(sentence):
         return False
-    return any(not _hedged(sentence, m.start(), m.end()) for m in _STATE.finditer(sentence))
+    states = [p for f, p in _PARTICIPLES.items() if families is None or f in families]
+    return any(not _hedged(sentence, m.start(), m.end()) for p in states for m in p.finditer(sentence))
 
 
 def spells_tool_call(text: str, names: frozenset[str]) -> bool:
