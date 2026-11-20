@@ -20,6 +20,11 @@ class Entry:
     due: datetime
     person: str | None
 
+    @property
+    def task_id(self) -> str:
+        """Постоянный id записи для задачи «В работе» ядра: вид, человек, имя и время."""
+        return f"{self.kind}:{self.person or ''}:{self.name}:{self.due.isoformat()}"
+
     def to_json(self) -> dict[str, Any]:
         """Словарь для файла (время — ISO с часовым поясом)."""
         return {"kind": self.kind, "name": self.name, "due": self.due.isoformat(), "person": self.person}

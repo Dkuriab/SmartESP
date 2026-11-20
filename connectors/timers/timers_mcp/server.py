@@ -18,6 +18,7 @@ from timers_mcp import phrases
 from timers_mcp.announcer import Announcer
 from timers_mcp.board import CANCEL_ALL, Board
 from timers_mcp.clock import Clock, SystemClock
+from timers_mcp.entry import Entry
 from timers_mcp.store import Store, person_folder
 from timers_mcp.times import parse_reminder_time
 
@@ -52,12 +53,19 @@ def _person(ctx: Context) -> str | None:
     return person
 
 
+async def report(announcer: Announcer, entry: Entry, status: str) -> None:
+    """Задача «В работе» ядра: идущая запись (срок — время срабатывания), сработала или отменена."""
+    eta = entry.due.isoformat()
+    await announcer.task(entry.task_id, phrases.task_title(entry), status, eta, entry.person)
+
+
 async def _watch(board: Board, announcer: Announcer, clock: Clock) -> None:
     """Раз в секунду забирает сработавшие записи и объявляет их."""
     while True:
         now = clock.now()
         try:
             for entry in board.pop_due(now):
+                await report(announcer, entry, "done")
                 await announcer.announce(phrases.fired_text(entry), entry.person)
         except Exception:
             # Сбой одного прохода (например, запись файла) не должен ронять коннектор.
@@ -75,6 +83,8 @@ def build_server(data_dir: Path, clock: Clock) -> MCPServer[Any]:
         now = clock.now()
         for entry in board.load(now):
             await announcer.announce(phrases.missed_text(entry, now.tzinfo), entry.person)
+        for entry in board.all():  # идущие — ядру в «В работе» (после перезапуска тоже)
+            await report(announcer, entry, "running")
         async with anyio.create_task_group() as tg:
             tg.start_soon(_watch, board, announcer, clock)
             try:
@@ -88,11 +98,11 @@ def build_server(data_dir: Path, clock: Clock) -> MCPServer[Any]:
         lifespan=lifespan,
         middleware=[announcer],
     )
-    _add_tools(server, board, clock)
+    _add_tools(server, board, clock, announcer)
     return server
 
 
-def _add_tools(server: MCPServer[Any], board: Board, clock: Clock) -> None:
+def _add_tools(server: MCPServer[Any], board: Board, clock: Clock, announcer: Announcer) -> None:
     """Регистрирует инструменты. Они `async def`: синхронные SDK запускает в потоке, а так
     `Board` меняется только в цикле событий, как и в `_watch`, — без гонок."""
 
@@ -108,6 +118,7 @@ def _add_tools(server: MCPServer[Any], board: Board, clock: Clock) -> None:
         if not 0 < minutes <= MAX_MINUTES:
             raise ToolError("Таймер можно поставить от нескольких секунд до недели.")
         entry = board.start_timer(_person(ctx), minutes * 60, name, clock.now())
+        await report(announcer, entry, "running")
         return phrases.started_text(entry, minutes * 60)
 
     @server.tool(
@@ -125,7 +136,9 @@ def _add_tools(server: MCPServer[Any], board: Board, clock: Clock) -> None:
             due = parse_reminder_time(time, now, clock.local)
         except ValueError as exc:
             raise ToolError(str(exc)) from None
-        return phrases.reminder_set_text(board.add_reminder(_person(ctx), due, text), now)
+        entry = board.add_reminder(_person(ctx), due, text)
+        await report(announcer, entry, "running")
+        return phrases.reminder_set_text(entry, now)
 
     @server.tool(structured_output=False, description="Какие таймеры и напоминания идут и сколько осталось.")
     async def timers(ctx: Context) -> str:
@@ -139,6 +152,8 @@ def _add_tools(server: MCPServer[Any], board: Board, clock: Clock) -> None:
         name: Annotated[str, Field(description="Имя таймера или текст напоминания; «все» — все")],
     ) -> str:
         removed = board.cancel(_person(ctx), name)
+        for entry in removed:
+            await report(announcer, entry, "cancelled")
         return phrases.cancelled_text(name.strip(), removed, name.strip().casefold() == CANCEL_ALL)
 
 

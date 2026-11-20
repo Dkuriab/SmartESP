@@ -62,6 +62,7 @@ def build_server(
         timeout_s=settings.timeout_s,
         max_running=max_running,
         now=now,
+        report=lambda r: announcer.task(r.id, r.name, r.status, r.person, r.summary or r.error),
     )
 
     @asynccontextmanager

@@ -35,6 +35,10 @@ class Board:
         """Ставит напоминание на момент `due`."""
         return self._add("reminder", text.strip(), due, person)
 
+    def all(self) -> list[Entry]:
+        """Все записи всех людей по времени срабатывания."""
+        return sorted(self._entries, key=lambda e: e.due)
+
     def active(self, person: str | None) -> list[Entry]:
         """Записи человека по времени срабатывания."""
         key = person_folder(person)

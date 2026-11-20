@@ -67,6 +67,11 @@ def _timer_title(name: str) -> str:
     return "Таймер" if name == DEFAULT_NAME else f"Таймер «{name}»"
 
 
+def task_title(entry: Entry) -> str:
+    """Название задачи «В работе»: «Таймер «картошка»», «Напоминание: позвонить маме»."""
+    return _timer_title(entry.name) if entry.kind == "timer" else f"Напоминание: {entry.name}"
+
+
 def started_text(entry: Entry, seconds: float) -> str:
     """Ответ на постановку таймера."""
     return f"{_timer_title(entry.name)} на {duration(seconds, accusative=True)}."

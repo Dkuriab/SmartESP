@@ -22,6 +22,7 @@ INTERRUPTED_STOP = "прервана остановкой коннектора"
 INTERNAL_FAILURE = "сбой коннектора"
 
 Announce = Callable[[str, str | None], Awaitable[None]]
+Report = Callable[[TaskRecord], Awaitable[None]]  # задача «В работе» ядра: началась, изменилась
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,8 @@ class TaskError(Exception):
 
 
 class Manager:
-    """Ведёт задачи всех людей; `announce(text, person)` — объявление о конце задачи."""
+    """Ведёт задачи всех людей; `announce(text, person)` — объявление о конце задачи;
+    `report(record)` — задача «В работе» ядра (запуск, конец, отмена)."""
 
     def __init__(
         self,
@@ -42,6 +44,7 @@ class Manager:
         timeout_s: float,
         max_running: int,
         now: Callable[[], datetime],
+        report: Report | None = None,
     ) -> None:
         self._store = store
         self._runner = runner
@@ -51,6 +54,8 @@ class Manager:
         self._now = now
         self._records: dict[str, list[TaskRecord]] = {}
         self._running: dict[str, asyncio.Task[None]] = {}
+        self._report = report
+        self._reports: set[asyncio.Task[None]] = set()  # отправки из синхронных start и cancel
 
     def load(self) -> None:
         """Читает журнал; задачи, оставшиеся «идущими» с прошлого запуска, — прерваны."""
@@ -74,6 +79,7 @@ class Manager:
         records.append(record)
         self._save(person)
         self._running[record.id] = asyncio.create_task(self._run(record, path))
+        self._report_soon(record)
         return record
 
     def recent(self, person: str | None, count: int) -> list[TaskRecord]:
@@ -107,6 +113,7 @@ class Manager:
         self._close(record, "cancelled")
         self._save(record.person)
         task.cancel()
+        self._report_soon(record)
         return record, True
 
     async def aclose(self) -> None:
@@ -120,6 +127,21 @@ class Manager:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _report_soon(self, record: TaskRecord) -> None:
+        """Сообщает ядру о задаче в фоне (из синхронного кода инструмента)."""
+        task = asyncio.create_task(self._send_report(record))
+        self._reports.add(task)
+        task.add_done_callback(self._reports.discard)
+
+    async def _send_report(self, record: TaskRecord) -> None:
+        """Сообщает ядру о задаче; сбой — только в журнал."""
+        if self._report is None:
+            return
+        try:
+            await self._report(record)
+        except Exception:
+            logger.exception("не удалось сообщить о задаче %s", record.id)
 
     def _close(self, record: TaskRecord, status: Status, error: str = "") -> None:
         record.status = status
@@ -162,6 +184,7 @@ class Manager:
         except OSError:
             # Объявить важнее, чем записать: сбой диска только в журнал коннектора.
             logger.exception("не удалось записать итог задачи %s", record.id)
+        await self._send_report(record)
         try:
             await self._announce(text, record.person)
         except Exception:

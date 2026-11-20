@@ -80,6 +80,7 @@ class Session:
     def __init__(self, client: Client, inbox: MemoryObjectReceiveStream[dict[str, Any]]) -> None:
         self.client = client
         self._inbox = inbox
+        self.tasks: list[dict[str, Any]] = []  # задачи «В работе», по порядку прихода
 
     async def call(self, tool: str, person: str | None = None, **args: Any) -> str:
         """Вызывает инструмент и возвращает текст ответа (и ошибки тоже)."""
@@ -109,12 +110,20 @@ async def connect(server: MCPServer[Any]) -> AsyncGenerator[Session]:
     """Подключает клиента в памяти (рукопожатие, как по stdio) и ловит объявления."""
     send, receive = anyio.create_memory_object_stream[dict[str, Any]](100)
 
+    tasks: list[dict[str, Any]] = []
+
     async def on_log(params: LoggingMessageNotificationParams) -> None:
-        if params.logger == "smartesp":
+        if params.logger != "smartesp":
+            return
+        if isinstance(params.data, dict) and params.data.get("type") == "task":
+            tasks.append(params.data)
+        else:
             await send.send(params.data)
 
     async with send, receive, Client(server, mode="legacy", logging_callback=on_log) as client:
-        yield Session(client, receive)
+        session = Session(client, receive)
+        session.tasks = tasks
+        yield session
 
 
 @pytest.fixture
