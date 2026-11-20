@@ -12,6 +12,9 @@ export type Model = Schemas['ModelOut']
 export type Turn = Schemas['TurnOut']
 export type Device = Schemas['DeviceOut']
 export type Connector = Schemas['ConnectorOut']
+/** Коннектор из GET /connectors: ещё и объявленные им настройки. */
+export type ConnectorDetail = Schemas['ConnectorDetailOut']
+export type ConnectorSetting = Schemas['ConnectorSettingOut']
 
 export type Connection = 'connecting' | 'online' | 'offline' | 'unauthorized'
 
@@ -34,6 +37,8 @@ export type CoreState = {
   config: Config | null
   voices: Voice[] | null
   models: Model[] | null
+  /** Коннекторы с настройками (GET /connectors); null — не загружены. */
+  connectors: ConnectorDetail[] | null
   /** Ходы от новых к старым, не больше MAX_TURNS. */
   turns: Turn[]
   selected: Selection | null
@@ -74,6 +79,7 @@ export type Loaded =
   | { resource: 'voices'; data: Voice[] }
   | { resource: 'models'; data: Model[] }
   | { resource: 'turns'; data: Turn[] }
+  | { resource: 'connectors'; data: ConnectorDetail[] }
 
 export type Action =
   /** requestedAt — когда ушёл запрос (мс); нужен для status. */
@@ -109,6 +115,7 @@ export function initialState(connection: Connection = 'connecting'): CoreState {
     config: null,
     voices: null,
     models: null,
+    connectors: null,
     turns: [],
     selected: null,
     selectedTurnId: null,

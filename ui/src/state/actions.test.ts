@@ -148,6 +148,19 @@ describe('actions', () => {
     expect(dispatched).toContainEqual(expect.objectContaining({ type: 'changeSent', description: 'Калькулятор: выключен' }))
   })
 
+  it('saveConnectorEnv шлёт env одного коннектора; ошибку возвращает текстом, без уведомления', async () => {
+    const { client, actions, dispatched } = setup()
+    client.PATCH.mockResolvedValueOnce(ok(accepted))
+    await expect(actions.saveConnectorEnv('weather', { WEATHER_PLACE: 'Тверь' }, 'Погода: настройки')).resolves.toBe('')
+    expect((client.PATCH.mock.calls[0]?.[1] as { body: unknown }).body).toEqual({
+      connectors: [{ id: 'weather', env: { WEATHER_PLACE: 'Тверь' } }],
+    })
+    expect(dispatched).toContainEqual(expect.objectContaining({ type: 'changeSent', description: 'Погода: настройки' }))
+    client.PATCH.mockResolvedValueOnce(fail({ change_id: 2, status: 'invalid', error: 'X: папки нет' }, 422))
+    await expect(actions.saveConnectorEnv('weather', { X: '/no' }, 'Погода: настройки')).resolves.toBe('X: папки нет')
+    expect(dispatched.some((a) => a.type === 'notice')).toBe(false)
+  })
+
   it('previewVoice отдаёт Blob', async () => {
     const { client, actions } = setup()
     const blob = new Blob(['wav'])

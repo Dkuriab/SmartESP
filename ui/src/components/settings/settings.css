@@ -343,3 +343,40 @@
   color: var(--muted);
   font-size: 12px;
 }
+
+/* Настройки коннектора: поля во всю ширину, список папок. */
+.val.wide {
+  width: 100%;
+  text-align: left;
+}
+
+.setting-hint {
+  margin: 0 0 6px;
+}
+
+.folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.folder-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.folder-row .folder-name {
+  width: 30%;
+  text-align: left;
+}
+
+.folder-row .folder-path {
+  flex: 1;
+  width: auto;
+  text-align: left;
+}
+
+.folder-list > .chip {
+  align-self: flex-start;
+}

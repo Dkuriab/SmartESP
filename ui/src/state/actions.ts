@@ -30,6 +30,11 @@ export type CoreActions = ExecutorActions &
   setStages(list: StageEntry[]): Promise<void>
   /** Записи connectors по id (ядро сливает их с настройками); description — что меняется. */
   setConnectors(list: Array<Record<string, unknown>>, description: string): Promise<void>
+  /**
+   * Объявленные настройки (env) одного коннектора; ядро принимает только объявленные им ключи.
+   * Возвращает текст ошибки ('' — правка принята): его показывают у формы, а не уведомлением.
+   */
+  saveConnectorEnv(id: string, env: Record<string, string>, description: string): Promise<string>
   restart(): Promise<void>
   /** Адреса для входа из сети; ошибка — пустой список. */
   loadAccess(): Promise<string[]>
@@ -88,6 +93,14 @@ export function createActions(deps: ActionDeps): CoreActions {
     await sendPatch(body, description)
   }
 
+  async function saveConnectorEnv(id: string, env: Record<string, string>, description: string): Promise<string> {
+    const body = { connectors: [{ id, env }] }
+    const outcome = await send(dispatch, () => client.PATCH('/api/v1/config', { body }))
+    if (!outcome.ok) return outcome.text || 'Нет доступа'
+    dispatch({ type: 'changeSent', changeId: outcome.data.change_id, description, at: now() })
+    return ''
+  }
+
   async function previewVoice(kind: string, voice: string, style: string): Promise<Blob> {
     const outcome = await sendNotify(dispatch, () =>
       client.POST('/api/v1/voices/preview', { body: { kind, voice, style }, parseAs: 'blob' }),
@@ -107,6 +120,7 @@ export function createActions(deps: ActionDeps): CoreActions {
     ...createFileActions(client, dispatch),
     ...(deps.coreTab ?? createCoreActions(client, dispatch, deps.token)),
     patchConfig: patch,
+    saveConnectorEnv,
     previewVoice,
     loadAccess,
     async downloadVoice(kind, voice) {

@@ -35,6 +35,8 @@ function applyLoaded(state: CoreState, loaded: Loaded, requestedAt?: number): Co
       return { ...state, voices: loaded.data }
     case 'models':
       return { ...state, models: loaded.data }
+    case 'connectors':
+      return { ...state, connectors: loaded.data }
   }
 }
 

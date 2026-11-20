@@ -44,4 +44,14 @@ describe('createLoader', () => {
     await flush()
     expect(dispatched).toEqual([{ type: 'loaded', resource: 'models', data: [], requestedAt: 1 }])
   })
+
+  it('коннекторы с настройками — из GET /connectors', async () => {
+    const { GET, dispatched, load, resolvers } = setup()
+    load(['connectors'])
+    expect(GET).toHaveBeenCalledWith('/api/v1/connectors')
+    const data = [{ id: 'weather', name: 'Погода', state: 'ready', tools: [], settings: [] }]
+    resolvers[0]?.({ data, response: { status: 200 } })
+    await flush()
+    expect(dispatched).toEqual([{ type: 'loaded', resource: 'connectors', data, requestedAt: 1 }])
+  })
 })

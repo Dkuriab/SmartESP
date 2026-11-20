@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CoreState } from '../../state/model'
 import { makeActions, makeConfig, makeState, makeStatus } from '../fixtures'
@@ -10,6 +10,30 @@ const connectors = [
   { id: 'claude_tasks', name: 'Задачи Клоду', command: 'uv', env: { CLAUDE_TASK_FOLDERS: '' }, enabled: false },
 ]
 
+const text = (key: string, title: string, value: string, hint = '') => ({ key, title, type: 'text' as const, hint, value })
+const details = [
+  {
+    id: 'weather',
+    name: 'Погода',
+    state: 'failed' as const,
+    tools: [],
+    error: '',
+    settings: [text('WEATHER_PLACE', 'Город', '', 'например, Москва')],
+  },
+  {
+    id: 'claude_tasks',
+    name: 'Задачи Клоду',
+    state: 'disabled' as const,
+    tools: [],
+    error: '',
+    settings: [
+      { key: 'CLAUDE_TASK_FOLDERS', title: 'Папки для задач', type: 'list' as const, hint: '', value: 'дом=/tmp/h' },
+      { key: 'OFF', title: 'Open Food Facts', type: 'flag' as const, hint: '', value: '' },
+      { key: 'PIN', title: 'Пин', type: 'secret' as const, hint: '', value: '•••' },
+    ],
+  },
+]
+
 function setup(id: string, over: Partial<CoreState> = {}) {
   const actions = makeActions()
   const status = makeStatus({
@@ -19,7 +43,8 @@ function setup(id: string, over: Partial<CoreState> = {}) {
       { id: 'claude_tasks', name: 'Задачи Клоду', state: 'disabled', tools: [], error: '' },
     ],
   })
-  const state = makeState({ config: makeConfig({ connectors }), status, selected: { kind: 'connector', id }, ...over })
+  const selected = { kind: 'connector' as const, id }
+  const state = makeState({ config: makeConfig({ connectors }), status, connectors: details, selected, ...over })
   render(<SettingsPanel state={state} actions={actions} />)
   return { actions }
 }
@@ -39,8 +64,8 @@ describe('ConnectorSettings', () => {
     expect(screen.getByText('работает: calc_mul')).toBeInTheDocument()
   })
 
-  it('упавший: текст ошибки; окружение с секретом скрыто', () => {
-    setup('weather')
+  it('упавший: текст ошибки; необъявленное окружение — только показ, секрет скрыт', () => {
+    setup('weather', { connectors: null })
     expect(screen.getByText('Коннектор упал')).toBeInTheDocument()
     expect(screen.getByText('WEATHER_PLACE')).toBeInTheDocument()
     expect(screen.getByText('не задано')).toBeInTheDocument()
@@ -51,7 +76,7 @@ describe('ConnectorSettings', () => {
 
   it('включение шлёт весь список с enabled нужного коннектора', async () => {
     const { actions } = setup('claude_tasks')
-    const toggle = screen.getByRole('switch')
+    const toggle = screen.getByRole('switch', { name: 'Включён' })
     expect(toggle).not.toBeChecked()
     await userEvent.click(toggle)
     expect(actions.setConnectors).toHaveBeenCalledWith([{ id: 'claude_tasks', enabled: true }], 'Задачи Клоду: включён')
@@ -66,5 +91,52 @@ describe('ConnectorSettings', () => {
   it('неизвестный коннектор — подсказка', () => {
     setup('ghost')
     expect(screen.getByText('Выберите блок на схеме или в списке')).toBeInTheDocument()
+  })
+
+  it('объявленная настройка — поле формы с подсказкой; сохранение шлёт изменённое', async () => {
+    const { actions } = setup('weather')
+    expect(screen.queryByText('WEATHER_PLACE')).not.toBeInTheDocument() // в форме, не в окружении
+    expect(screen.getByText('например, Москва')).toBeInTheDocument()
+    const save = screen.getByRole('button', { name: 'Сохранить' })
+    expect(save).toBeDisabled() // ничего не изменено
+    await userEvent.type(screen.getByLabelText('Город'), 'Тверь')
+    await userEvent.click(save)
+    expect(actions.saveConnectorEnv).toHaveBeenCalledWith('weather', { WEATHER_PLACE: 'Тверь' }, 'Погода: настройки')
+  })
+
+  it('ошибка ядра — у формы', async () => {
+    const { actions } = setup('weather')
+    vi.mocked(actions.saveConnectorEnv).mockResolvedValue('WEATHER_PLACE: значение в одну строку')
+    await userEvent.type(screen.getByLabelText('Город'), 'Тверь')
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('WEATHER_PLACE: значение в одну строку'))
+  })
+
+  it('список папок, флаг и секрет; неверный путь не уходит', async () => {
+    const { actions } = setup('claude_tasks')
+    expect(screen.getByLabelText('Папки для задач: имя 1')).toHaveValue('дом')
+    expect(screen.getByLabelText('Пин')).toHaveAttribute('type', 'password')
+    await userEvent.click(screen.getByRole('button', { name: '+ папка' }))
+    await userEvent.type(screen.getByLabelText('Папки для задач: имя 2'), 'работа')
+    await userEvent.type(screen.getByLabelText('Папки для задач: путь 2'), 'relative')
+    await userEvent.click(screen.getByRole('switch', { name: 'Open Food Facts' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('Папки для задач: Путь «relative» должен начинаться с / или ~/')
+    expect(actions.saveConnectorEnv).not.toHaveBeenCalled()
+    await userEvent.clear(screen.getByLabelText('Папки для задач: путь 2'))
+    await userEvent.type(screen.getByLabelText('Папки для задач: путь 2'), '~/w')
+    await userEvent.click(screen.getByRole('button', { name: 'Убрать папку 1' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    expect(actions.saveConnectorEnv).toHaveBeenCalledWith(
+      'claude_tasks',
+      { CLAUDE_TASK_FOLDERS: 'работа=~/w', OFF: '1' },
+      'Задачи Клоду: настройки',
+    )
+  })
+
+  it('пока правка применяется — форма заблокирована', () => {
+    setup('weather', { pending: { 1: 'Обработчики' } })
+    expect(screen.getByLabelText('Город')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Сохранить' })).toBeDisabled()
   })
 })

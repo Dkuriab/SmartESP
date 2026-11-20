@@ -80,6 +80,7 @@ export function makeActions(): CoreActions {
     stopFile: vi.fn(),
     setStages: vi.fn(),
     setConnectors: vi.fn(),
+    saveConnectorEnv: vi.fn().mockResolvedValue(''),
     addExecutor: vi.fn().mockResolvedValue(null),
     updateExecutor: vi.fn(),
     removeExecutor: vi.fn(),

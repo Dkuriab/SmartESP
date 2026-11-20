@@ -133,6 +133,15 @@ describe('reduce: колонки', () => {
   })
 })
 
+describe('reduce: коннекторы', () => {
+  it('loaded connectors кладёт список с настройками', () => {
+    const setting = { key: 'WEATHER_PLACE', title: 'Город', type: 'text' as const, hint: '', value: 'Тверь' }
+    const data = [{ id: 'weather', name: 'Погода', state: 'ready' as const, tools: [], error: '', settings: [setting] }]
+    expect(initialState().connectors).toBeNull()
+    expect(reduce(initialState(), { type: 'loaded', resource: 'connectors', data }).connectors).toEqual(data)
+  })
+})
+
 describe('reduce: голоса', () => {
   const ready = (ok: boolean, error: string | null = null) =>
     ev('voice_ready', { kind: 'vosk', voice: 'big', ok, error })

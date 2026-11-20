@@ -7,9 +7,9 @@ import { send } from './request'
 
 export type Resource = Loaded['resource']
 
-export const ALL_RESOURCES: Resource[] = ['status', 'config', 'voices', 'models', 'turns']
+export const ALL_RESOURCES: Resource[] = ['status', 'config', 'voices', 'models', 'turns', 'connectors']
 /** Что перечитать после change_applied и voice_ready. */
-export const AFTER_CHANGE: Resource[] = ['config', 'status', 'voices']
+export const AFTER_CHANGE: Resource[] = ['config', 'status', 'voices', 'connectors']
 /** Ollama недоступна — /models отвечает этим кодом. */
 const OLLAMA_DOWN = 502
 
@@ -36,6 +36,10 @@ async function fetchResource(client: Client, dispatch: Dispatch, resource: Resou
       const outcome = await get(() => client.GET('/api/v1/models'))
       if (outcome.ok) return { resource, data: outcome.data }
       return outcome.status === OLLAMA_DOWN ? { resource, data: [] } : null
+    }
+    case 'connectors': {
+      const data = pick(await get(() => client.GET('/api/v1/connectors')))
+      return data && { resource, data }
     }
     case 'turns': {
       const query = { limit: MAX_TURNS }
