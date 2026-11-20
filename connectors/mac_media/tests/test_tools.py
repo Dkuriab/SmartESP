@@ -195,10 +195,19 @@ async def test_output_devices_empty() -> None:
     )
 
 
-async def test_output_set_partial_case_insensitive() -> None:
+async def test_output_set_exact_case_insensitive() -> None:
     system = FakeSystem()
-    assert await call(system, "output_set", {"name": "jbl"}) == (False, "Звук теперь через JBL Flip 5.")
+    assert await call(system, "output_set", {"name": "jbl flip 5"}) == (
+        False,
+        "Звук теперь через JBL Flip 5.",
+    )
     assert system.current_output == "JBL Flip 5"
+
+
+async def test_output_set_partial_name_asks_and_does_not_switch() -> None:
+    system = FakeSystem()
+    assert await call(system, "output_set", {"name": "jbl"}) == (False, "Уточни: это JBL Flip 5?")
+    assert system.current_output == "Динамики MacBook Pro"
 
 
 async def test_output_set_exact_wins_over_partial() -> None:
@@ -223,7 +232,7 @@ async def test_output_set_unknown() -> None:
 
 async def test_output_set_already_current() -> None:
     system = FakeSystem()
-    assert await call(system, "output_set", {"name": "динамики"}) == (
+    assert await call(system, "output_set", {"name": "динамики macbook pro"}) == (
         False,
         "Звук и так идёт через Динамики MacBook Pro.",
     )

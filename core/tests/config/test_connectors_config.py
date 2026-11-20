@@ -21,7 +21,8 @@ def test_defaults_are_our_connectors() -> None:
         script = f"{c.id.replace('_', '-')}-mcp"
         assert c.command == "uv"
         assert c.args == ["run", "--project", f"{{repo}}/connectors/{c.id}", script]
-        assert c.enabled == (c.id != "claude_tasks")  # задачам Клоду нужны папки владельца
+        # задачам Клоду нужны папки владельца; mac_media владелец включает сам
+        assert c.enabled == (c.id not in ("claude_tasks", "mac_media"))
         assert c.name
         project = Path(c.expanded().args[2])
         assert project == REPO / "connectors" / c.id

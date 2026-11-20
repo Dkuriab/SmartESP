@@ -46,13 +46,13 @@ def _key(text: str) -> str:
     return " ".join(text.casefold().replace("ё", "е").split())
 
 
-def match_device(devices: list[str], name: str) -> list[str]:
-    """Подходящие устройства: точное совпадение без регистра, иначе все с name внутри."""
+def match_device(devices: list[str], name: str) -> tuple[str | None, list[str]]:
+    """Точное совпадение без регистра (или None) и устройства, у которых name — лишь часть имени."""
     wanted = _key(name)
-    exact = [device for device in devices if _key(device) == wanted]
-    if exact:
-        return exact[:1]
-    return [device for device in devices if wanted and wanted in _key(device)]
+    exact = next((device for device in devices if _key(device) == wanted), None)
+    if exact is not None:
+        return exact, []
+    return None, [device for device in devices if wanted and wanted in _key(device)]
 
 
 class MediaService:
@@ -132,16 +132,21 @@ class MediaService:
         return f"Устройства вывода: {', '.join(names)}."
 
     async def output_set(self, name: str) -> str:
-        """Переключает вывод на устройство по имени или его части."""
+        """Переключает вывод только на устройство с точным именем (без регистра и «ё»).
+
+        По части имени не переключает, а переспрашивает «Уточни: …?»: модель зовёт инструмент и
+        без просьбы («включи свет на кухне» → «кухня»), а звук не должен уходить на чужое устройство.
+        """
         budget = self._budget()
         devices = await budget.run(self._system.output_devices)
-        matches = match_device(devices, name)
-        if not matches:
+        device, similar = match_device(devices, name)
+        if device is None and not similar:
             listed = ", ".join(devices) if devices else "ничего"
             raise MediaError(f"Не нашла устройство «{name.strip()}». Есть: {listed}.")
-        if len(matches) > 1:
-            return f"Уточни: {', '.join(matches[:-1])} или {matches[-1]}?"
-        device = matches[0]
+        if device is None:
+            if len(similar) == 1:
+                return f"Уточни: это {similar[0]}?"
+            return f"Уточни: {', '.join(similar[:-1])} или {similar[-1]}?"
         if device == await budget.run(self._system.default_output):
             return f"Звук и так идёт через {device}."
         await budget.run(lambda: self._system.set_default_output(device))
