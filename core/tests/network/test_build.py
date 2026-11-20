@@ -206,3 +206,21 @@ async def test_plain_variant_keeps_tools_rule_but_not_delegate_rule() -> None:
     await build_network("dispatcher", items, [], made, Capabilities(), FakeToolBox([tool_spec("t")]))
     full, plain = [e.prompt for m, e in made.made if m == "dispatcher"]
     assert "delegate" in full and "delegate" not in plain and plain.endswith(TOOLS_RULE)
+
+
+async def test_executors_learn_whether_their_model_can_think() -> None:
+    items = specs(when="сложное")
+    made = made_for(items)
+    capabilities = Capabilities({"big": frozenset({"completion", "tools", "thinking"})})
+    network = await build_network("dispatcher", items, [], made, capabilities)
+    entry = network.members["dispatcher"]
+    assert isinstance(entry.plain, FakeOllama)
+    assert made.by_id["dispatcher"].thinking == [False] and entry.plain.thinking == [False]
+    assert made.by_id["big"].thinking == [True]
+
+
+async def test_unknown_capabilities_leave_thinking_alone() -> None:
+    items = specs(when="сложное")
+    made = made_for(items)
+    await build_network("dispatcher", items, [], made, Capabilities({"small": frozenset()}))
+    assert made.by_id["dispatcher"].thinking == []

@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Iterable, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
 from contextlib import aclosing
 from typing import Any
 
@@ -22,6 +22,8 @@ REQUEST_TIMEOUT_S = 120.0
 # пауза между кусками и предел запоздавшего ответа (600 с от начала хода). Клиент не должен
 # обрывать ответ раньше них.
 STREAM_READ_TIMEOUT_S = 660.0
+THINKING = "thinking"  # возможность модели Ollama рассуждать (show → capabilities)
+_warned: set[str] = set()  # модели, о чьём неумении рассуждать уже предупредили
 # модели, у которых рассуждение не выключается (think=false они игнорируют и думают на среднем
 # уровне), зато есть уровни low/medium/high: им передаём уровень, «off» — самый низкий
 _LEVELED_FAMILIES = ("gpt-oss",)
@@ -109,6 +111,7 @@ class OllamaExecutor:
         reasoning — уровень рассуждения перед ответом (см. think_value).
         """
         self.id = id
+        self._reasoning = reasoning
         self._think = think_value(model, reasoning)
         self._model = model
         self._system_prompt = system_prompt
@@ -134,6 +137,30 @@ class OllamaExecutor:
         if self._model in set(names):
             await self.unload(timeout_s)
 
+    def use_thinking(self, supported: bool) -> None:
+        """Сообщает, умеет ли модель рассуждать (возможность thinking); не умеет — think=False."""
+        if not supported:
+            self._without_thinking("у неё нет возможности thinking")
+
+    def _without_thinking(self, why: str) -> None:
+        """Дальше без рассуждения; о модели с заданным уровнем — одно предупреждение на процесс."""
+        self._think = False
+        if self._reasoning != "off" and self._model not in _warned:
+            _warned.add(self._model)
+            _log.warning(
+                "Модель «%s» не умеет рассуждать (%s): уровень «%s» не применяется, отвечает без рассуждения",
+                self._model,
+                why,
+                self._reasoning,
+            )
+
+    def _think_rejected(self, exc: ollama.ResponseError) -> bool:
+        """True, если Ollama отклонила think (400 «… does not support thinking»): дальше без него."""
+        if self._think is False or exc.status_code != 400 or "think" not in str(exc.error).lower():
+            return False
+        self._without_thinking(f"Ollama: {exc.error}")
+        return True
+
     def _wrap_error(self, exc: Exception) -> ExecutorError:
         """Превращает ошибку ollama/сети в понятную ExecutorError."""
         if isinstance(exc, ollama.ResponseError):
@@ -156,36 +183,63 @@ class OllamaExecutor:
         """
         payload = [{"role": "system", "content": self._system_prompt}]
         payload += [_message_payload(m) for m in messages]
+        extra: dict[str, Any] = {"tools": [_tool_payload(t) for t in tools]} if tools else {}
         try:
-            extra: dict[str, Any] = {"tools": [_tool_payload(t) for t in tools]} if tools else {}
-            stream = await self._chat_client.chat(
-                model=self._model,
-                messages=payload,
-                stream=True,
-                think=self._think,
-                keep_alive=self._keep_alive,
-                **extra,
-            )
-            # aclosing закрывает HTTP-поток и при раннем выходе (barge-in)
-            async with aclosing(stream):
-                async for chunk in stream:
-                    text = _chunk_text(chunk)
-                    if text:
-                        yield ReplyPart(text)
-                    for call in _chunk_tool_calls(chunk):
-                        yield ReplyPart(tool_call=call)
+            gave = False
+            try:
+                async with aclosing(self._chat(payload, extra)) as parts:
+                    async for part in parts:
+                        gave = True
+                        yield part
+            except ollama.ResponseError as exc:
+                if gave or not self._think_rejected(exc):
+                    raise
+                async with aclosing(self._chat(payload, extra)) as parts:  # один повтор, уже без think
+                    async for part in parts:
+                        yield part
         except (httpx.HTTPError, ConnectionError, ollama.ResponseError) as exc:
             raise self._wrap_error(exc) from exc
+
+    async def _chat(self, payload: list[dict[str, Any]], extra: dict[str, Any]) -> AsyncGenerator[ReplyPart]:
+        """Один запрос /api/chat потоком: непустые куски текста и вызовы инструментов."""
+        stream = await self._chat_client.chat(
+            model=self._model,
+            messages=payload,
+            stream=True,
+            think=self._think,
+            keep_alive=self._keep_alive,
+            **extra,
+        )
+        # aclosing закрывает HTTP-поток и при раннем выходе (barge-in)
+        async with aclosing(stream):
+            async for chunk in stream:
+                text = _chunk_text(chunk)
+                if text:
+                    yield ReplyPart(text)
+                for call in _chunk_tool_calls(chunk):
+                    yield ReplyPart(tool_call=call)
 
     async def warm_up(self) -> None:
-        """Загружает модель в память пустым запросом (без генерации текста).
+        """Загружает модель в память пустым запросом (без генерации текста), с тем же think, что ход.
 
-        Кидает ExecutorError, если Ollama недоступна или модели нет.
+        Отклонённый think — как в ходе: один повтор без него. Кидает ExecutorError, если Ollama
+        недоступна или модели нет.
         """
         try:
-            await self._client.generate(model=self._model, prompt="", keep_alive=self._keep_alive)
+            try:
+                await self._generate_empty()
+            except ollama.ResponseError as exc:
+                if not self._think_rejected(exc):
+                    raise
+                await self._generate_empty()
         except (httpx.HTTPError, ConnectionError, ollama.ResponseError) as exc:
             raise self._wrap_error(exc) from exc
+
+    async def _generate_empty(self) -> None:
+        """Пустой generate: только загрузка модели."""
+        await self._client.generate(
+            model=self._model, prompt="", keep_alive=self._keep_alive, think=self._think
+        )
 
     async def unload(self, timeout_s: float = 1.0) -> None:
         """Выгружает модель из памяти (keep_alive=0), ждёт не дольше timeout_s секунд.

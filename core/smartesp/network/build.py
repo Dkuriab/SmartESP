@@ -6,12 +6,13 @@ import asyncio
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 
-from smartesp.contracts import Executor, Stage, ToolBox, ToolObserver, UsesModels
+from smartesp.contracts import ChoosesThinking, Executor, Stage, ToolBox, ToolObserver, UsesModels
 
 from .network import ExecutorNetwork, Member
 from .rules import TOOLS_RULE, Target, delegate_rule
 
 TOOLS = "tools"  # возможность модели вызывать инструменты
+THINKING = "thinking"  # возможность модели рассуждать
 Capabilities = Callable[[str], Awaitable[frozenset[str]]]  # модель → её возможности
 
 
@@ -118,6 +119,7 @@ async def build_network(
     toolbox — инструменты коннекторов: участники, чья модель умеет инструменты,
     получают toolbox.specs() (снимок на момент сборки) вместе с delegate.
     on_tool — получает начало и конец каждого вызова инструмента (для живой подсветки).
+    Исполнители, умеющие ChoosesThinking, узнают, есть ли у модели thinking (если известно).
     """
     found = await _capabilities_by_model(specs, capabilities)
     tools = tuple(toolbox.specs()) if toolbox is not None else ()
@@ -132,9 +134,19 @@ async def build_network(
             else None
         )
         own_tools = tools if tools_ok else ()
+        _tell_thinking(found[spec.model], executor, plain)
         members[spec.id] = Member(executor, spec.name, targets, tools_ok, plain, own_tools)
     unknown = frozenset(model for model, caps in found.items() if not caps)
     return ExecutorNetwork(entry_id, members, unknown=unknown, toolbox=toolbox, on_tool=on_tool)
+
+
+def _tell_thinking(caps: frozenset[str], *executors: Executor | None) -> None:
+    """Сообщает исполнителям, умеет ли модель рассуждать; возможности неизвестны — молчит."""
+    if not caps:
+        return
+    for executor in executors:
+        if isinstance(executor, ChoosesThinking):
+            executor.use_thinking(THINKING in caps)
 
 
 class NetworkPrompts:

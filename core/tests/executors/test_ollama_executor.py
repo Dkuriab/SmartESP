@@ -1,6 +1,7 @@
 """Тесты OllamaExecutor."""
 
 import asyncio
+import logging
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -255,3 +256,88 @@ async def test_thinking_text_is_never_yielded() -> None:
     ex = OllamaExecutor("gpt-oss:20b", "Ты помощник.", "30m", c, reasoning="low")
     parts = [p async for p in ex.run([ChatMessage("user", "привет")])]
     assert [p.text for p in parts] == ["Готово."]
+
+
+# ---- модель без рассуждения не ломает ходы (ревью W3-6, C1) ----
+
+
+class NoThinkingClient(FakeClient):
+    """Как Ollama с моделью без «thinking»: think, отличный от false, — 400 при чтении потока."""
+
+    def __init__(self, parts: list[str]) -> None:
+        super().__init__(parts)
+        self.chats: list[dict[str, Any]] = []
+        self.generates: list[dict[str, Any]] = []
+
+    async def chat(self, **kwargs: Any) -> AsyncIterator[dict[str, Any]]:
+        self.chats.append(kwargs)
+        self.chat_kwargs = kwargs
+        if kwargs.get("think") not in (False, None):
+            return self._reject()
+        return self._stream()
+
+    async def _reject(self) -> AsyncIterator[dict[str, Any]]:
+        raise ollama.ResponseError('{"error":"\\"gemma3\\" does not support thinking"}', 400)
+        yield {}  # pragma: no cover — генератор
+
+    async def generate(self, **kwargs: Any) -> None:
+        self.generates.append(kwargs)
+        if kwargs.get("think") not in (False, None):
+            raise ollama.ResponseError('"gemma3" does not support thinking', 400)
+
+
+async def test_rejected_think_is_retried_without_it_and_remembered(caplog: pytest.LogCaptureFixture) -> None:
+    c = NoThinkingClient(["Привет."])
+    ex = OllamaExecutor("gemma3-reject", "Ты помощник.", "30m", c, reasoning="low")
+    with caplog.at_level(logging.WARNING):
+        assert await collect(ex) == ["Привет."]
+        assert await collect(ex) == ["Привет."]
+    assert [k["think"] for k in c.chats] == [True, False, False]  # повтор один раз, дальше сразу без
+    assert sum("рассужд" in r.getMessage() for r in caplog.records) == 1
+
+
+async def test_other_errors_are_not_retried() -> None:
+    c = FakeClient(error=ollama.ResponseError("model not found", 404))
+    with pytest.raises(ExecutorError):
+        await collect(OllamaExecutor("gemma3", "Ты помощник.", "30m", c, reasoning="low"))
+
+
+async def test_known_missing_thinking_sends_false_and_warns_once(caplog: pytest.LogCaptureFixture) -> None:
+    c = FakeClient(["x"])
+    ex = OllamaExecutor("llama3:8b-once", "Ты помощник.", "30m", c, reasoning="high")
+    plain = OllamaExecutor("llama3:8b-once", "Ты.", "30m", c, reasoning="high")
+    with caplog.at_level(logging.WARNING):
+        ex.use_thinking(False)
+        plain.use_thinking(False)  # тот же модель — второго предупреждения нет
+    await collect(ex)
+    assert c.chat_kwargs["think"] is False
+    assert sum("рассужд" in r.getMessage() for r in caplog.records) == 1
+
+
+async def test_supported_thinking_keeps_level_and_off_needs_no_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    c = FakeClient(["x"])
+    ex = OllamaExecutor("gpt-oss:20b", "Ты помощник.", "30m", c, reasoning="low")
+    with caplog.at_level(logging.WARNING):
+        ex.use_thinking(True)
+        OllamaExecutor("gemma3-off", "Ты.", "30m", c).use_thinking(False)  # off — и так без рассуждения
+    await collect(ex)
+    assert c.chat_kwargs["think"] == "low" and caplog.records == []
+
+
+async def test_warm_up_uses_turn_think_and_degrades_like_turns() -> None:
+    c = NoThinkingClient(["x"])
+    ex = OllamaExecutor("gemma3", "Ты помощник.", "30m", c, reasoning="medium")
+    await ex.warm_up()
+    assert [g["think"] for g in c.generates] == [True, False]
+    assert await collect(ex) == ["x"] and [k["think"] for k in c.chats] == [False]
+    gpt = FakeClient()
+    await OllamaExecutor("gpt-oss:20b", "Ты.", "30m", gpt, reasoning="low").warm_up()
+    assert gpt.generate_kwargs["think"] == "low"
+
+
+def test_executor_can_learn_thinking_capability() -> None:
+    from smartesp.contracts import ChoosesThinking
+
+    assert isinstance(make(FakeClient()), ChoosesThinking)

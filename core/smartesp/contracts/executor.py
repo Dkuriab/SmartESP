@@ -123,3 +123,12 @@ class UsesModels(Protocol):
     async def unload_models(self, names: Iterable[str], timeout_s: float = 1.0) -> None:
         """Выгружает названные модели, ждёт не дольше timeout_s секунд; не бросает исключений."""
         ...
+
+
+@runtime_checkable
+class ChoosesThinking(Protocol):
+    """Необязательная способность исполнителя: узнать, умеет ли его модель рассуждать."""
+
+    def use_thinking(self, supported: bool) -> None:
+        """supported — у модели есть возможность thinking; нет — исполнитель отвечает без рассуждения."""
+        ...

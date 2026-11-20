@@ -73,6 +73,10 @@ class FakeOllama(FakeExecutor):
         self.warm_error = warm_error
         self.warmed = 0
         self.unloaded: list[float] = []  # таймауты вызовов unload
+        self.thinking: list[bool] = []  # что сообщили через use_thinking
+
+    def use_thinking(self, supported: bool) -> None:
+        self.thinking.append(supported)
 
     async def warm_up(self) -> None:
         if self.warm_gate is not None:

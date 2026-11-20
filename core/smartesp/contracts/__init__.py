@@ -8,6 +8,7 @@ from .events import CoreEvent, EventFeed, EventSink, Subscription
 from .executor import (
     DELEGATE_TOOL,
     ChatMessage,
+    ChoosesThinking,
     Executor,
     ExecutorError,
     Handoff,
@@ -39,6 +40,7 @@ __all__ = [
     "AudioUndecodable",
     "ChangeResult",
     "ChatMessage",
+    "ChoosesThinking",
     "ConfigStore",
     "ConnectorState",
     "ConnectorStateName",
