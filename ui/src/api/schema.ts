@@ -719,6 +719,8 @@ export interface components {
              * @default []
              */
             tools: components["schemas"]["ToolUseOut"][];
+            /** Guard */
+            guard?: ("retried" | "fallback") | null;
             /**
              * Origin
              * @default wake

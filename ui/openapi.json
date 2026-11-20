@@ -1729,6 +1729,21 @@
             "title": "Tools",
             "default": []
           },
+          "guard": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "retried",
+                  "fallback"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guard"
+          },
           "origin": {
             "type": "string",
             "enum": [
