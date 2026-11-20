@@ -96,7 +96,8 @@ export function reduce(state: CoreState, action: Action): CoreState {
     case 'event':
       return applyEvent(state, action.event)
     case 'connection':
-      return { ...state, connection: action.connection }
+      // без связи окончания работы не придут: подсветка «думает…» иначе осталась бы навсегда
+      return { ...state, connection: action.connection, live: action.connection === 'online' ? state.live : NO_LIVE }
     case 'select':
       return { ...state, selected: action.selected }
     case 'selectTurn':
