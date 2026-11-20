@@ -27,6 +27,8 @@
    ```bash
    ollama pull gpt-oss:20b
    ```
+   Обновляетесь с версии, где диспетчером была Gemma, — см. «Обновление с прежних версий» в
+   [`core/README.md`](core/README.md).
 4. Ядро (`uv sync` в первый раз долгий — ставится torch):
    ```bash
    uv python install 3.12
