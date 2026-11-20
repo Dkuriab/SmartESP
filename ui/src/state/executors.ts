@@ -1,4 +1,5 @@
 // Правка списка исполнителей: чистые функции над executors из настроек.
+import type { Reasoning } from '../schema/blocks'
 import { asList } from '../schema/blocks'
 
 /** Промпт нового исполнителя: отвечать голосом (тот же, что у «Большой модели» по умолчанию в ядре). */
@@ -9,13 +10,20 @@ export const VOICE_PROMPT =
 export type Executor = Record<string, unknown>
 
 /** Правка исполнителя: только заданные поля (undefined не затирает). */
-export type ExecutorPatch = { name?: string; model?: string; description?: string; systemPrompt?: string }
+export type ExecutorPatch = {
+  name?: string
+  model?: string
+  description?: string
+  systemPrompt?: string
+  reasoning?: Reasoning
+}
 
 const FIELDS: Record<keyof ExecutorPatch, string> = {
   name: 'name',
   model: 'model',
   description: 'description',
   systemPrompt: 'system_prompt',
+  reasoning: 'reasoning',
 }
 
 /** Ссылки исполнителя в форме config.yaml. */

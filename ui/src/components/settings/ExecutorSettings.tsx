@@ -1,4 +1,4 @@
-// Настройки исполнителя: имя, модель, описание, промпт, связи «Может передавать:»,
+// Настройки исполнителя: имя, модель, рассуждение, описание, промпт, связи «Может передавать:»,
 // итоговый промпт и «Удалить» (с подтверждением на месте). Входной (диспетчер) — частный случай: удалить нельзя.
 import { useState } from 'react'
 import type { ExecutorItem } from '../../schema/blocks'
@@ -6,7 +6,7 @@ import { executorUnavailable, isApplying, listExecutors, modelWithoutTools } fro
 import type { CoreActions } from '../../state/actions'
 import type { ExecutorPatch } from '../../state/executors'
 import type { CoreState } from '../../state/model'
-import { APPLYING, CommitField, FinalPrompt, ModelField, PromptField } from './ExecutorFields'
+import { APPLYING, CommitField, FinalPrompt, ModelField, PromptField, ReasoningField } from './ExecutorFields'
 import LinkRows from './LinkRows'
 import SpeechSettings from './SpeechSettings'
 
@@ -59,6 +59,7 @@ export default function ExecutorSettings({ state, actions, executor: e }: Props)
       {!reachable && <div className="set-note warn">Ollama недоступна</div>}
       {reachable && executorUnavailable(state, e.id) && <div className="set-note warn">модель недоступна</div>}
       {applying && <div className="set-note">{APPLYING}</div>}
+      <ReasoningField current={e.reasoning} disabled={applying} onPick={(reasoning) => update({ reasoning })} />
       <CommitField key={`desc:${e.description}`} label="Описание" value={e.description} placeholder="Когда ко мне обращаться" disabled={applying} onCommit={(description) => update({ description })} />
       <PromptField key={e.systemPrompt} current={e.systemPrompt} applying={applying} onSave={(systemPrompt) => update({ systemPrompt })} />
       <LinkRows executor={e} others={others} disabled={applying} noTools={noTools} onLink={(to, on, when) => void actions.setLink(e.id, to, on, when)} />

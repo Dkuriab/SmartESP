@@ -33,6 +33,12 @@ describe('listExecutors', () => {
     expect(items.map((e) => e.id)).toEqual(['dispatcher', 'big'])
     expect(items[0]?.links).toEqual([{ to: 'big', when: 'сложное', active: true }])
     expect(items[0]?.systemPrompt).toBe('')
+    expect(items[0]?.reasoning).toBe('off') // нет в настройках — как в ядре
+  })
+
+  it('reasoning из настроек; неизвестное значение — off', () => {
+    const items = listExecutors(makeState({ config: cfg([{ ...entry, reasoning: 'high' }, { ...big, reasoning: 'max' }]) }))
+    expect(items.map((e) => e.reasoning)).toEqual(['high', 'off'])
   })
 
   it('active: по when или по описанию цели', () => {
@@ -106,5 +112,11 @@ describe('executor actions', () => {
     const { actions, sent } = setup(cfg([entry, big]))
     await actions.updateExecutor('big', { systemPrompt: 'пром', name: undefined })
     expect(sent()[1]).toMatchObject({ name: 'Большая', system_prompt: 'пром' })
+  })
+
+  it('updateExecutor шлёт уровень рассуждения', async () => {
+    const { actions, sent } = setup(cfg([entry, big]))
+    await actions.updateExecutor('dispatcher', { reasoning: 'low' })
+    expect(sent()[0]).toMatchObject({ id: 'dispatcher', reasoning: 'low' })
   })
 })

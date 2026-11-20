@@ -1,6 +1,8 @@
 // Поля настроек исполнителя: строка с сохранением по Enter/потере фокуса, модель,
-// промпт с «Сохранить», итоговый промпт.
+// рассуждение, промпт с «Сохранить», итоговый промпт.
 import { useState } from 'react'
+import type { Reasoning } from '../../schema/blocks'
+import { REASONING_LEVELS } from '../../schema/blocks'
 import type { Model } from '../../state/model'
 
 export const APPLYING = 'Применяется…'
@@ -64,6 +66,26 @@ export function ModelField({ current, models, disabled, onPick }: ModelProps) {
         {models.map((m) => (
           <option key={m.name} value={m.name}>
             {modelLabel(m)}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+const REASONING_TITLES: Record<Reasoning, string> = { off: 'Нет', low: 'Низкое', medium: 'Среднее', high: 'Высокое' }
+
+type ReasoningProps = { current: Reasoning; disabled: boolean; onPick: (reasoning: Reasoning) => void }
+
+/** Сколько модель думает перед ответом: дольше думает — позже начинает говорить. */
+export function ReasoningField({ current, disabled, onPick }: ReasoningProps) {
+  return (
+    <label className="field">
+      <span className="lbl">Рассуждение</span>
+      <select className="val" value={current} disabled={disabled} onChange={(e) => onPick(e.target.value as Reasoning)}>
+        {REASONING_LEVELS.map((level) => (
+          <option key={level} value={level}>
+            {REASONING_TITLES[level]}
           </option>
         ))}
       </select>

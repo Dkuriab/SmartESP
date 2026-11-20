@@ -87,6 +87,20 @@ describe('ExecutorSettings: поля', () => {
     expect(actions.updateExecutor).toHaveBeenCalledWith('dispatcher', { model: 'gemma3' })
   })
 
+  it('«Рассуждение»: по умолчанию «Нет», выбор шлёт updateExecutor', async () => {
+    const { actions } = setup()
+    const select = screen.getByLabelText('Рассуждение')
+    expect(select).toHaveValue('off')
+    expect(screen.getAllByRole('option', { name: /^(Нет|Низкое|Среднее|Высокое)$/ })).toHaveLength(4)
+    await userEvent.selectOptions(select, 'low')
+    expect(actions.updateExecutor).toHaveBeenCalledWith('dispatcher', { reasoning: 'low' })
+  })
+
+  it('«Рассуждение» показывает уровень из настроек', () => {
+    setup('big', { config: config([dispatcher, { ...big, reasoning: 'medium' }, small]) })
+    expect(screen.getByLabelText('Рассуждение')).toHaveValue('medium')
+  })
+
   it('Ollama недоступна — выбор заблокирован с подписью, текущая модель видна', () => {
     setup('dispatcher', { models: [], status: makeStatus({ ollama: { reachable: false, loaded: [] } }) })
     expect(screen.getByLabelText('Модель')).toBeDisabled()

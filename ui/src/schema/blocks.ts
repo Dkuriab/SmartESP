@@ -3,6 +3,12 @@
 import type { StageEntry } from '../state/actions'
 import type { CoreState, Device } from '../state/model'
 
+/** Уровень рассуждения модели перед ответом (как reasoning в ядре). */
+export type Reasoning = 'off' | 'low' | 'medium' | 'high'
+
+/** Уровни по порядку; первый — по умолчанию. */
+export const REASONING_LEVELS: readonly Reasoning[] = ['off', 'low', 'medium', 'high']
+
 /** Известные обработчики: выключенный показывается серым и без связей. */
 export const KNOWN_STAGES = [
   { kind: 'whisper_detect', title: 'Шёпот', icon: '🤫', description: 'замечает, что вопрос сказан шёпотом (видно в ленте)' },
@@ -98,8 +104,14 @@ export type ExecutorItem = {
   model: string
   description: string
   systemPrompt: string
+  reasoning: Reasoning
   entry: boolean
   links: LinkItem[]
+}
+
+/** Уровень рассуждения из настроек; нет или неизвестен — off (как в ядре). */
+function reasoningOf(value: unknown): Reasoning {
+  return REASONING_LEVELS.find((level) => level === value) ?? 'off'
 }
 
 /** Исполнители из настроек, входной первым. */
@@ -113,6 +125,7 @@ export function listExecutors(state: CoreState): ExecutorItem[] {
     model: str(e.model),
     description: str(e.description),
     systemPrompt: str(e.system_prompt),
+    reasoning: reasoningOf(e.reasoning),
     entry: e.entry === true,
     links: asList(e.delegates).map((d) => {
       const to = str(d.to)
