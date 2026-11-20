@@ -34,6 +34,7 @@ _CONDITIONAL = re.compile(r"^\s+бы\b", re.IGNORECASE)  # «записала б
 # вызов текстом: JSON с ключами вызова, служебные метки модели «<|…»
 _JSON_CALL = re.compile(r'\{\s*"(?:name|function|tool_calls?|arguments|parameters|executor|task)"\s*:')
 _SPECIAL_TOKEN = re.compile(r"<\|")
+_STRUCTURE = re.compile(r'\s*(?:\{|\[\s*[{"])')
 
 
 def first_sentence(text: str) -> str | None:
@@ -69,8 +70,8 @@ def spells_tool_call(text: str, names: frozenset[str]) -> bool:
 
 
 def opens_structure(text: str) -> bool:
-    """True, если ответ начинается как JSON («{» или «[») — его читаем дальше первого предложения."""
-    return text.lstrip().startswith(("{", "["))
+    """True, если ответ начинается как JSON («{», «[{», «["», не метка «[style:…]») — читаем дальше."""
+    return _STRUCTURE.match(text) is not None
 
 
 def _hedged(sentence: str, start: int, end: int) -> bool:

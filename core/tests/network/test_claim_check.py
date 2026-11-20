@@ -2,7 +2,7 @@
 
 import pytest
 
-from smartesp.network.claim_check import claims_action, first_sentence, spells_tool_call
+from smartesp.network.claim_check import claims_action, first_sentence, opens_structure, spells_tool_call
 
 NAMES = frozenset({"timer_start", "delegate", "list_show"})
 
@@ -88,3 +88,8 @@ def test_first_sentence_is_cut_like_conversation() -> None:
     assert first_sentence("Поставила таймер. ") is None  # короче 20 символов — ждём следующее
     assert first_sentence("Хорошо. Поставила таймер. Ещё") == "Хорошо. Поставила таймер."  # короткое склеено
     assert first_sentence("Записываю\n") == "Записываю"  # перевод строки режет всегда
+
+
+def test_structure_is_json_not_a_style_tag() -> None:
+    assert opens_structure(' {"name"') and opens_structure('[{"name"') and opens_structure('["x"')
+    assert not opens_structure("[style:quiet] Привет") and not opens_structure("Привет")
