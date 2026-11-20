@@ -32,7 +32,7 @@ import SmartEspKit
             let button = NSButton(title: action.title, target: self, action: #selector(press(_:)))
             button.tag = index
             button.bezelStyle = .push
-            if index == 0 { button.keyEquivalent = "\r" }
+            if action.isDefaultButton { button.keyEquivalent = "\r" }
             buttons.addArrangedSubview(button)
         }
         buttons.isHidden = controls.isEmpty

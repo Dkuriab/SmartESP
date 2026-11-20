@@ -20,6 +20,10 @@ public enum ControlAction: Equatable, Sendable, CaseIterable {
         case .startOllama: "Запустить Ollama"
         }
     }
+
+    /// Нажимается ли кнопка клавишей Return: только безопасное «Запустить ядро»,
+    /// чтобы Return на заглушке не остановил ядро.
+    public var isDefaultButton: Bool { self == .startCore }
 }
 
 /// Какие кнопки пульта доступны.

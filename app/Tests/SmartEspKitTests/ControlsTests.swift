@@ -6,6 +6,11 @@ import Testing
     private let running = CoreState.running(port: 8765, phase: "ready", devices: (0, 0), ollama: true)
     private let external = CoreState.external(port: 8765, phase: "ready", devices: (0, 0), ollama: true)
 
+    @Test func onlyStartCoreIsTheReturnKeyDefault() {
+        // в .starting первой кнопкой стоит «Остановить ядро»: Return не должен её нажимать
+        #expect(ControlAction.allCases.filter(\.isDefaultButton) == [.startCore])
+    }
+
     @Test func stoppedOffersStart() {
         #expect(controlActions(state: .stopped, ollama: .up) == [.startCore])
         #expect(controlActions(state: .failed("x"), ollama: .up) == [.startCore])
