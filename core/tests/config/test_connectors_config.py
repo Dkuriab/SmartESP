@@ -82,9 +82,8 @@ def test_bad_connectors_rejected(connectors: list[dict[str, object]], fragment: 
 def test_patch_disables_connector(tmp_path: Path) -> None:
     store = ConfigFile(tmp_path / "config.yaml")
     store.load()
-    connectors = [c.model_dump() for c in Config().connectors]
-    connectors[0]["enabled"] = False
-    merged = store.merge({"connectors": connectors})
+    first = Config().connectors[0].id
+    merged = store.merge({"connectors": [{"id": first, "enabled": False}]})
     assert not merged.connectors[0].enabled
     with pytest.raises(ValueError, match="connectors"):
         store.merge({"connectors": [{"id": "a", "name": "A", "command": "x", "typo": 1}]})

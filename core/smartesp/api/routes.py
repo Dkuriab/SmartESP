@@ -26,6 +26,7 @@ from .core_routes import add_core_routes
 from .log_buffer import LogBuffer
 from .logs import add_logs_route
 from .play import add_play_routes
+from .redact import mask_connector_secrets
 from .schemas import (
     AccessOut,
     ChangeOut,
@@ -82,7 +83,7 @@ def _add_resource_routes(secured: APIRouter, core: CorePort) -> None:
 
     @secured.get("/config")
     def get_config() -> ConfigOut:
-        return ConfigOut.model_validate(core.config())
+        return ConfigOut.model_validate(mask_connector_secrets(core.config()))
 
     @secured.patch(
         "/config",

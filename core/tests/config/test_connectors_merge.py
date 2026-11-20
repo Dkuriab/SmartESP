@@ -77,27 +77,35 @@ def test_patches_merge_with_earlier_owner_entries(tmp_path: Path) -> None:
     assert stored(tmp_path / "config.yaml") == [{"id": "weather", "env": {"WEATHER_PLACE": "Москва"}}]
 
 
-def test_patch_with_full_list_stores_only_differences(tmp_path: Path) -> None:
-    store = store_with(tmp_path)
-    full = [c.model_dump() for c in Config().connectors]
-    full[0]["enabled"] = False
-    store.save(store.merge({"connectors": full}))
-    assert stored(tmp_path / "config.yaml") == [{"id": full[0]["id"], "enabled": False}]
+@pytest.mark.parametrize(
+    "entries",
+    [
+        [{"id": "calc", "command": "/bin/sh", "args": ["-c", "echo"]}],
+        [{"id": "calc", "args": ["-c", "echo"]}],
+        [{"id": "weather", "env": {"WEATHER_PLACE": "Москва"}}],
+        [{"id": "calc", "name": "Счёт"}],
+        [{"id": "food", "remove": True}],
+        [{"id": "my", "name": "Моё", "command": "/bin/my"}],
+        [{"id": "my", "enabled": True}],  # новый id — даже без команды
+        [c.model_dump() for c in Config().connectors],  # полный список с командами
+        ["calc"],
+        None,  # сброс списка стёр бы окружение и коннекторы владельца
+    ],
+)
+def test_api_patch_may_only_toggle_known_connectors(tmp_path: Path, entries: object) -> None:
+    store = store_with(tmp_path, "connectors:\n  - {id: weather, env: {WEATHER_PLACE: Тверь}}\n")
+    before = (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="меняют только в config.yaml"):
+        store.merge({"connectors": entries})
+    assert (tmp_path / "config.yaml").read_text(encoding="utf-8") == before
 
 
-def test_patch_remove_and_add_own_connector(tmp_path: Path) -> None:
-    store = store_with(tmp_path)
-    mine = {"id": "my", "name": "Моё", "command": "/bin/my", "args": [], "env": {}, "enabled": True}
-    store.save(store.merge({"connectors": [{"id": "food", "remove": True}, mine]}))
-    assert stored(tmp_path / "config.yaml") == [mine, {"id": "food", "remove": True}]
-    assert "food" not in by_id(store.config) and "my" in by_id(store.config)
-
-
-def test_null_resets_connectors_to_defaults(tmp_path: Path) -> None:
-    store = store_with(tmp_path, "connectors:\n  - {id: calc, enabled: false}\n")
-    store.save(store.merge({"connectors": None}))
-    assert stored(tmp_path / "config.yaml") is None
-    assert by_id(store.config) == by_id(Config())
+def test_api_patch_toggles_owner_added_connector(tmp_path: Path) -> None:
+    mine = "connectors:\n  - {id: my, name: Моё, command: /bin/my}\n"
+    store = store_with(tmp_path, mine)
+    store.save(store.merge({"connectors": [{"id": "my", "enabled": False}]}))
+    assert by_id(store.config)["my"]["enabled"] is False
+    assert by_id(store.config)["my"]["command"] == "/bin/my"
 
 
 def test_legacy_full_list_keeps_working_and_shrinks_on_save(tmp_path: Path) -> None:

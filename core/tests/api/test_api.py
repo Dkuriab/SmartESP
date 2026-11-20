@@ -64,6 +64,24 @@ async def test_config_and_patch(client: httpx.AsyncClient, core: FakeCore) -> No
     assert core.patches == [{"tts": {"kind": "silero"}}]
 
 
+async def test_config_masks_secret_env_of_connectors(
+    client: httpx.AsyncClient, core: FakeCore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    env = {"API_KEY": "k1", "bot_token": "t1", "Password": "p", "MY_SECRET": "", "WEATHER_PLACE": "Тверь"}
+    full = {**core.config(), "effective": {"connectors": [{"id": "w", "env": env}, {"id": "c"}]}}
+    monkeypatch.setattr(core, "config", lambda: full)
+    shown = (await client.get(f"{P}/config", headers=HEADERS)).json()["effective"]["connectors"]
+    assert shown[0]["env"] == {
+        "API_KEY": "•••",
+        "bot_token": "•••",
+        "Password": "•••",
+        "MY_SECRET": "",  # пустое — не задано, скрывать нечего
+        "WEATHER_PLACE": "Тверь",
+    }
+    assert shown[1] == {"id": "c"}
+    assert env["API_KEY"] == "k1"  # настройки ядра не тронуты
+
+
 @pytest.mark.parametrize(("status", "code"), [("restart_required", 200), ("invalid", 422), ("stopping", 503)])
 async def test_patch_status_codes(client: httpx.AsyncClient, core: FakeCore, status: str, code: int) -> None:
     core.patch_status = status

@@ -117,24 +117,47 @@ async def test_connectors_start_in_background_and_reach_the_network(tmp_path: Pa
 
 async def test_editing_connectors_applies_live_and_rebuilds_network(tmp_path: Path) -> None:
     kinds = fake_kinds(lambda c: FakeOllama(["Да."], c.model))
-    core = make_core(tmp_path, kinds, config_yaml(connector("t")), ollama=TOOLS_OLLAMA)
+    yaml_text = config_yaml(connector("t"), connector("u", enabled=False))
+    core = make_core(tmp_path, kinds, yaml_text, ollama=TOOLS_OLLAMA)
     start(core)
     await eventually(lambda: "echo" in entry_tools(core), timeout=WAIT_S)
     pid = int((tmp_path / "connectors" / "t" / "pid").read_text())
     applied = core.bus.subscribe()
 
-    result = await core.core.patch_config({"connectors": [connector("t", enabled=False)]})
+    result = await core.core.patch_config({"connectors": [{"id": "t", "enabled": False}]})
     assert result.status == "accepted"
     assert (await next_change(applied))["ok"]
     await eventually(lambda: entry_tools(core) == [], timeout=WAIT_S)
-    assert [(s.id, s.state) for s in core.tools.states()] == [("t", "disabled")]
+    assert [(s.id, s.state) for s in core.tools.states()] == [("t", "disabled"), ("u", "disabled")]
     assert not alive(pid)
     assert core.core.config()["effective"]["connectors"][0]["enabled"] is False
 
-    await core.core.patch_config({"connectors": [connector("t"), connector("u")]})
+    await core.core.patch_config({"connectors": [{"id": "t", "enabled": True}, {"id": "u", "enabled": True}]})
     assert (await next_change(applied))["ok"]
     await eventually(lambda: {"echo", "u_echo"} <= set(entry_tools(core)), timeout=WAIT_S)
     await applied.aclose()
+    await stop(core)
+    await finish(core)
+
+
+async def test_api_cannot_set_connector_command_or_add_one(tmp_path: Path) -> None:
+    kinds = fake_kinds(lambda c: FakeOllama(["Да."], c.model))
+    core = make_core(tmp_path, kinds, config_yaml(connector("t", enabled=False)))
+    start(core)
+    await eventually(lambda: core.core.state == "ready", timeout=5)
+    before = (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    marker = tmp_path / "pwned"
+    shell = {"command": "/bin/sh", "args": ["-c", f"touch {marker}"]}
+    attempts = ([{"id": "t", **shell}], [{"id": "x", "name": "x", **shell}], [{"id": "t", "env": {}}])
+    async with client(core) as http:
+        for entries in attempts:
+            response = await http.patch("/api/v1/config", json={"connectors": entries}, headers=HEADERS)
+            assert response.status_code == 422
+            assert "меняют только в config.yaml" in response.json()["error"]
+    await asyncio.sleep(0.3)
+    assert (tmp_path / "config.yaml").read_text(encoding="utf-8") == before
+    assert [(s.id, s.state) for s in core.tools.states()] == [("t", "disabled")]
+    assert not marker.exists()
     await stop(core)
     await finish(core)
 
