@@ -11,26 +11,38 @@ describe('Refit', () => {
   })
   afterEach(() => vi.useRealTimers())
 
-  it('новое число узлов — схема подгоняется заново', () => {
-    const view = render(<Refit count={3} />)
+  it('новый набор узлов — схема подгоняется заново', () => {
+    const view = render(<Refit fitKey="3" width={800} height={600} />)
+    vi.runAllTimers()
     fitView.mockClear()
-    view.rerender(<Refit count={3} />)
+    view.rerender(<Refit fitKey="3" width={800} height={600} />)
+    vi.runAllTimers()
     expect(fitView).not.toHaveBeenCalled()
-    view.rerender(<Refit count={4} />)
+    view.rerender(<Refit fitKey="4" width={800} height={600} />)
     expect(fitView).toHaveBeenCalledTimes(1)
   })
 
-  it('изменение размера окна — одна подгонка после паузы', () => {
-    const view = render(<Refit count={3} />)
+  it('изменение размера области — одна подгонка после паузы', () => {
+    const view = render(<Refit fitKey="3" width={800} height={600} />)
+    vi.runAllTimers()
     fitView.mockClear()
-    for (let i = 0; i < 5; i++) window.dispatchEvent(new Event('resize'))
+    for (let w = 801; w < 806; w++) view.rerender(<Refit fitKey="3" width={w} height={600} />)
     vi.advanceTimersByTime(100)
     expect(fitView).not.toHaveBeenCalled()
     vi.advanceTimersByTime(100)
     expect(fitView).toHaveBeenCalledTimes(1)
-    window.dispatchEvent(new Event('resize'))
+    view.rerender(<Refit fitKey="3" width={900} height={600} />)
     view.unmount()
     vi.advanceTimersByTime(1000)
+    expect(fitView).toHaveBeenCalledTimes(1)
+  })
+
+  it('регрессия «схема пропадает»: при нулевом размере не подгоняет, подгоняет, когда место появилось', () => {
+    const view = render(<Refit fitKey="3" width={0} height={0} />)
+    view.rerender(<Refit fitKey="4" width={800} height={0} />)
+    vi.runAllTimers()
+    expect(fitView).not.toHaveBeenCalled()
+    view.rerender(<Refit fitKey="4" width={800} height={600} />)
     expect(fitView).toHaveBeenCalledTimes(1)
   })
 })

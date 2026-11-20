@@ -56,8 +56,50 @@
   color: var(--muted);
   white-space: normal;
 }
-.schema .react-flow {
+/* Общий фон: у схемы нет своего поля — сквозь неё виден холст интерфейса в точку.
+   React Flow 13 в тёмной схеме (color-scheme: dark) красит поле в #141414 — снимаем. */
+.schema-flow {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.schema .react-flow,
+.schema .react-flow__background,
+.schema .react-flow__pane {
   background: transparent;
+}
+.schema .react-flow__node:focus-visible {
+  outline: none;
+}
+.schema .react-flow__node:focus-visible > .node {
+  box-shadow: 0 0 0 2px var(--accent-text);
+}
+.schema .react-flow__node.dragging > .node {
+  cursor: grabbing;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+/* «Расставить заново»: маленькая плавающая кнопка в стиле панелей, в углу схемы. */
+.schema-reset {
+  position: absolute;
+  left: 8px;
+  top: 0;
+  z-index: 5;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.schema-reset:hover {
+  color: var(--text);
+  background: var(--panel2);
+}
+.schema-reset:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
 }
 .schema .react-flow__handle {
   opacity: 0;
@@ -104,10 +146,18 @@
   color: var(--green);
 }
 /* Работает прямо сейчас: пульсирующее зелёное кольцо и подпись под узлом.
-   Отдельно от пути выбранного хода (синий): оба могут быть сразу. */
+   Путь хода, выбранного в ленте, — синий (lit), без движения; оба могут быть сразу.
+   Кончилась работа (держится не меньше 1,2 с) — fading: зелёное плавно гаснет. */
 .node.live {
   border-color: var(--green);
   animation: node-pulse 1.6s ease-in-out infinite;
+}
+.node.fading {
+  animation: node-fade 0.6s ease-out forwards;
+}
+.node.fading .node-live,
+.schema .react-flow__edge.fading path {
+  animation: glow-out 0.6s ease-out forwards;
 }
 .node-live {
   position: absolute;
@@ -131,11 +181,31 @@
     box-shadow: 0 0 0 7px var(--green-glow-end), 0 0 18px 2px var(--green-glow);
   }
 }
-/* Без движения: постоянное кольцо вместо пульса. */
+/* Из зелёного к обычному виду узла (синему, если он на пути выбранного хода). */
+@keyframes node-fade {
+  from {
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px var(--green-glow);
+  }
+}
+@keyframes glow-out {
+  to {
+    opacity: 0;
+  }
+}
+/* Без движения: постоянное кольцо вместо пульса; гаснущее снимается сразу, без анимации
+   (минимальные 1,2 с всё равно держатся). */
 @media (prefers-reduced-motion: reduce) {
   .node.live {
     animation: none;
     box-shadow: 0 0 0 3px var(--green-glow);
+  }
+  .node.fading {
+    animation: none;
+  }
+  .node.fading .node-live,
+  .schema .react-flow__edge.fading {
+    display: none;
   }
   .schema .react-flow__edge.animated path {
     animation: none;
