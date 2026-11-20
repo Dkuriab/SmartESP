@@ -59,7 +59,7 @@ export default function ExecutorSettings({ state, actions, executor: e }: Props)
       {!reachable && <div className="set-note warn">Ollama недоступна</div>}
       {reachable && executorUnavailable(state, e.id) && <div className="set-note warn">модель недоступна</div>}
       {applying && <div className="set-note">{APPLYING}</div>}
-      <ReasoningField current={e.reasoning} disabled={applying} onPick={(reasoning) => update({ reasoning })} />
+      <ReasoningField current={e.reasoning} model={e.model} disabled={applying} onPick={(reasoning) => update({ reasoning })} />
       <CommitField key={`desc:${e.description}`} label="Описание" value={e.description} placeholder="Когда ко мне обращаться" disabled={applying} onCommit={(description) => update({ description })} />
       <PromptField key={e.systemPrompt} current={e.systemPrompt} applying={applying} onSave={(systemPrompt) => update({ systemPrompt })} />
       <LinkRows executor={e} others={others} disabled={applying} noTools={noTools} onLink={(to, on, when) => void actions.setLink(e.id, to, on, when)} />

@@ -75,21 +75,34 @@ export function ModelField({ current, models, disabled, onPick }: ModelProps) {
 
 const REASONING_TITLES: Record<Reasoning, string> = { off: 'Нет', low: 'Низкое', medium: 'Среднее', high: 'Высокое' }
 
-type ReasoningProps = { current: Reasoning; disabled: boolean; onPick: (reasoning: Reasoning) => void }
+type ReasoningProps = { current: Reasoning; model: string; disabled: boolean; onPick: (reasoning: Reasoning) => void }
+
+/** Подсказка к уровню: у gpt-oss рассуждение не выключается; другие модели могут его не уметь. */
+export function reasoningHint(model: string, reasoning: Reasoning): string | null {
+  // список моделей не говорит, умеет ли модель рассуждать: подсказка общая, решает ядро
+  const gptOss = model.toLowerCase().includes('gpt-oss')
+  if (gptOss && reasoning === 'off') return 'у gpt-oss рассуждение не выключается: «Нет» — это «Низкое»'
+  if (!gptOss && reasoning !== 'off') return 'эта модель может не поддерживать рассуждение — тогда ядро ответит без него'
+  return null
+}
 
 /** Сколько модель думает перед ответом: дольше думает — позже начинает говорить. */
-export function ReasoningField({ current, disabled, onPick }: ReasoningProps) {
+export function ReasoningField({ current, model, disabled, onPick }: ReasoningProps) {
+  const hint = reasoningHint(model, current)
   return (
-    <label className="field">
-      <span className="lbl">Рассуждение</span>
-      <select className="val" value={current} disabled={disabled} onChange={(e) => onPick(e.target.value as Reasoning)}>
-        {REASONING_LEVELS.map((level) => (
-          <option key={level} value={level}>
-            {REASONING_TITLES[level]}
-          </option>
-        ))}
-      </select>
-    </label>
+    <>
+      <label className="field">
+        <span className="lbl">Рассуждение</span>
+        <select className="val" value={current} disabled={disabled} onChange={(e) => onPick(e.target.value as Reasoning)}>
+          {REASONING_LEVELS.map((level) => (
+            <option key={level} value={level}>
+              {REASONING_TITLES[level]}
+            </option>
+          ))}
+        </select>
+      </label>
+      {hint && <div className="set-note">{hint}</div>}
+    </>
   )
 }
 

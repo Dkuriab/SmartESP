@@ -101,6 +101,22 @@ describe('ExecutorSettings: поля', () => {
     expect(screen.getByLabelText('Рассуждение')).toHaveValue('medium')
   })
 
+  it('подсказка: модель не gpt-oss с уровнем может не уметь рассуждать', () => {
+    setup('big', { config: config([dispatcher, { ...big, reasoning: 'low' }, small]) })
+    expect(screen.getByText(/может не поддерживать рассуждение/)).toBeInTheDocument()
+  })
+
+  it('подсказка: у gpt-oss «Нет» — это «Низкое»; без уровня у другой модели подсказки нет', () => {
+    setup('dispatcher', { config: config([{ ...dispatcher, model: 'gpt-oss:20b' }, big, small]) })
+    expect(screen.getByText(/рассуждение не выключается/)).toBeInTheDocument()
+    expect(screen.queryByText(/может не поддерживать/)).not.toBeInTheDocument()
+  })
+
+  it('без уровня у обычной модели подсказки нет', () => {
+    setup('big')
+    expect(screen.queryByText(/рассуждени.* (не выключается|может не поддерживать)/)).not.toBeInTheDocument()
+  })
+
   it('Ollama недоступна — выбор заблокирован с подписью, текущая модель видна', () => {
     setup('dispatcher', { models: [], status: makeStatus({ ollama: { reachable: false, loaded: [] } }) })
     expect(screen.getByLabelText('Модель')).toBeDisabled()
