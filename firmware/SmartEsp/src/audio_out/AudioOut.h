@@ -6,6 +6,7 @@
 // по нему voice_frontend вычитает звук колонки из микрофона (эхоподавление).
 
 #include <Arduino.h>
+#include <atomic>
 #include "ESP_I2S.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/stream_buffer.h"
@@ -38,8 +39,14 @@ class AudioOut {
   // Громкость 0..1 (по умолчанию 0.5).
   void setVolume(float volume);
 
-  // true, пока в очереди есть звук или звучит тон.
+  // true, пока в очереди есть звук, последний кусок очереди ещё пишется в I2S
+  // или звучит тон.
   bool isPlaying() const;
+
+  // Сколько байт звука из очереди (PCM write(), не тоны) отдано в I2S с запуска.
+  // Счётчик переполняется по кругу. Безопасно вызывать из другой задачи.
+  // Читать после isPlaying(): если тот вернул false, весь доигранный звук уже учтён.
+  uint32_t playedBytes() const;
 
   // Образец для эхоподавления: ровно samples отсчётов, нули там, где тишина.
   // Безопасно вызывать из другой задачи (audio_in). Возвращает samples.
@@ -61,10 +68,11 @@ class AudioOut {
   volatile bool stopRequest_ = false;
   volatile bool toneActive_ = false;
   volatile uint32_t lastWriteMs_ = 0;
+  std::atomic<uint32_t> playedBytes_{0};  // пишет только задача воспроизведения
+  std::atomic<bool> queueStarted_{false}; // очередь играет (пишет только задача)
   uint32_t lastOverflowLogMs_ = 0;
 
   // Состояние задачи воспроизведения (меняется только в ней).
   Tone tone_ = Tone::Wake;
   size_t tonePos_ = 0;  // сколько отсчётов образца уже отдано
-  bool queueStarted_ = false;
 };
