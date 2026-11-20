@@ -20,7 +20,7 @@ from typing import Literal
 from smartesp.contracts import ChatMessage, GuardTag, ReplyPart, ToolObserver, ToolUse
 
 from .claim_check import asks_action, false_claim, first_sentence, opens_structure, spells_tool_call
-from .dialog import after_tools, closing, question, speakable
+from .dialog import after_tools, closing, request, speakable
 
 _log = logging.getLogger(__name__)
 
@@ -47,10 +47,11 @@ async def guarded(
     """Куски ответа участника source под страховкой честности.
 
     start — прогон участника с сообщениями messages; names — имена его инструментов (для поиска
-    вызова текстом); base — исходные сообщения хода: из них вопрос человека (утверждения ищутся
-    только на просьбу действия) и был ли инструмент в прошлом ходе.
+    вызова текстом); base — исходные сообщения хода: из них просьба человека (утверждения ищутся
+    только на просьбу действия; ответ на уточнение — вместе с прошлой просьбой) и был ли
+    инструмент в прошлом ходе.
     """
-    asked = question(base)
+    asked = request(base)
     check = _Check(names, asked, after_tools(base))
     first = _Attempt(start, messages, check)
     async with closing(first.parts()) as parts:

@@ -4,7 +4,7 @@ from network_helpers import call, collect, network
 
 from fakes.fake_executor import FakeExecutor
 from smartesp.contracts import ChatMessage, ToolCall
-from smartesp.network.dialog import flatten
+from smartesp.network.dialog import after_tools, flatten, request
 
 NOTE_CALL = ChatMessage("assistant", "", tool_calls=(ToolCall("list_add", {"items": ["хлеб"]}),))
 NOTE_RESULT = ChatMessage("tool", "Добавила: хлеб.", tool_name="list_add")
@@ -69,3 +69,27 @@ async def test_target_with_tools_sees_tool_calls_of_history() -> None:
     big = FakeExecutor(["Хлеб."])
     await collect(network(FakeExecutor([call()]), big), ASKED)
     assert big.calls[0][1:3] == [NOTE_CALL, NOTE_RESULT]
+
+
+def _turn(user: str, answer: str, tool: str = "") -> list[ChatMessage]:
+    calls = (ToolCall(tool, {}),) if tool else ()
+    exchange = [ChatMessage("assistant", "", tool_calls=calls), ChatMessage("tool", "ок", tool_name=tool)]
+    return [ChatMessage("user", user), *(exchange if tool else []), ChatMessage("assistant", answer)]
+
+
+def test_after_tools_counts_connector_calls_but_not_delegate() -> None:
+    now = [ChatMessage("user", "Включи музыку")]
+    assert after_tools([*_turn("Поставь таймер", "Готово.", "timer_start"), *now])
+    assert not after_tools([*_turn("Почему пал Рим?", "Рим пал…", "delegate"), *now])
+    assert not after_tools([*_turn("Привет", "Привет!"), *now])
+    assert not after_tools(now)
+
+
+def test_short_answer_to_a_clarification_carries_the_previous_request() -> None:
+    history = _turn("Запиши обед: гречка 150 грамм", "Уточни: гречка сухая или варёная?", "food_log")
+    assert request([*history, ChatMessage("user", "Варёная")]) == "Запиши обед: гречка 150 грамм\nВарёная"
+    long = "А вообще расскажи мне про гречку подробнее"
+    assert request([*history, ChatMessage("user", long)]) == long  # не короткий ответ — новая тема
+    plain = _turn("Запиши обед", "Записала.", "food_log")
+    assert request([*plain, ChatMessage("user", "Спасибо")]) == "Спасибо"  # не было уточнения
+    assert request([*history, ChatMessage("user", "")]) == ""  # пустой вопрос остаётся пустым

@@ -42,12 +42,29 @@ def question(messages: list[ChatMessage]) -> str:
     return "\n".join(lines).strip()
 
 
+FOLLOW_UP_WORDS = 4  # ответ на уточнение помощника: не длиннее стольких слов
+
+
 def after_tools(messages: list[ChatMessage]) -> bool:
-    """True, если в прошлом ходе (между двумя последними сообщениями user) вызывали инструмент."""
+    """True, если в прошлом ходе (между двумя последними сообщениями user) вызывали инструмент
+    коннектора (передача delegate — не действие)."""
     users = [i for i, m in enumerate(messages) if m.role == "user"]
     if len(users) < 2:
         return False
-    return any(m.role == "tool" or m.tool_calls for m in messages[users[-2] + 1 : users[-1]])
+    return any(_connector_message(m) for m in messages[users[-2] + 1 : users[-1]])
+
+
+def request(messages: list[ChatMessage]) -> str:
+    """Просьба хода: вопрос человека, а если это короткий ответ на уточнение помощника
+    («сухая или варёная?» → «Варёная») — прошлая реплика человека и этот ответ."""
+    asked = question(messages)
+    users = [i for i, m in enumerate(messages) if m.role == "user"]
+    if not asked or len(users) < 2 or len(asked.split()) > FOLLOW_UP_WORDS:
+        return asked
+    said = [m.content for m in messages[users[-2] + 1 : users[-1]] if m.role == "assistant" and m.content]
+    if not said or not said[-1].rstrip(" \t\n\"'»)").endswith("?"):
+        return asked
+    return f"{question(messages[: users[-2] + 1])}\n{asked}"
 
 
 def _connector_message(message: ChatMessage) -> bool:

@@ -248,3 +248,16 @@ async def test_caller_tool_counts_as_a_call() -> None:
     parts = [p async for p in network.run(LIGHT, [caller])]
     assert [p.tool_call.name for p in parts if p.tool_call] == ["reply_photo"]
     assert said(parts) == "Включаю камеру прямо сейчас. " and len(model.calls) == 1
+
+
+async def test_false_claim_after_a_clarification_is_caught() -> None:
+    history = [
+        ChatMessage("user", "Запиши обед: гречка 150 грамм"),
+        ChatMessage("assistant", "", tool_calls=(ToolCall("food_log", {"text": "гречка 150"}),)),
+        ChatMessage("tool", "Уточни: гречка сухая или варёная?", tool_name="food_log"),
+        ChatMessage("assistant", "Уточни: гречка сухая или варёная?"),
+        ChatMessage("user", "Варёная"),
+    ]
+    model = Scripted(["Записала гречку на обед."], ["Не получилось записать: нужен инструмент питания."])
+    parts = await run(net(model), history)
+    assert guards(parts) == ["retried"] and len(model.calls) == 2
