@@ -143,3 +143,44 @@ section:first-child > .sec {
 .side-add {
   margin: 6px 12px 0;
 }
+
+/* «В работе»: задачи в фоне; законченная угасает. */
+.tasks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.task {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 12px;
+  transition: opacity 1s ease;
+}
+
+.task-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.task-sub {
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task.failed .task-sub:last-child {
+  color: var(--red-text);
+}
+
+.task.done .task-sub:last-child {
+  color: var(--green);
+}
+
+.task.fade {
+  opacity: 0.3;
+}

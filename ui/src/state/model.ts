@@ -15,6 +15,8 @@ export type Connector = Schemas['ConnectorOut']
 /** Коннектор из GET /connectors: ещё и объявленные им настройки. */
 export type ConnectorDetail = Schemas['ConnectorDetailOut']
 export type ConnectorSetting = Schemas['ConnectorSettingOut']
+/** Задача «В работе»: что ядро или коннектор делает в фоне. */
+export type Task = Schemas['TaskOut']
 
 export type Connection = 'connecting' | 'online' | 'offline' | 'unauthorized'
 
@@ -54,6 +56,8 @@ export type CoreState = {
   live: Live
   /** Файлы на колонках: device_id → фаза; нет ключа — файл не играет. */
   files: Record<string, FilePhase>
+  /** «В работе»: идущие и недавно законченные задачи (GET /tasks и события task_*). */
+  tasks: Task[]
   // --- служебное, компоненты не читают ---
   /**
    * turn_id ходов, полученных при текущем подключении (событием или загрузкой).
@@ -80,6 +84,7 @@ export type Loaded =
   | { resource: 'models'; data: Model[] }
   | { resource: 'turns'; data: Turn[] }
   | { resource: 'connectors'; data: ConnectorDetail[] }
+  | { resource: 'tasks'; data: Task[] }
 
 export type Action =
   /** requestedAt — когда ушёл запрос (мс); нужен для status. */
@@ -125,6 +130,7 @@ export function initialState(connection: Connection = 'connecting'): CoreState {
     restarting: false,
     live: NO_LIVE,
     files: {},
+    tasks: [],
     currentTurnIds: [],
     pendingSince: {},
     voiceFailures: {},

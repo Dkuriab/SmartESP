@@ -1,4 +1,4 @@
-// Левая панель: колонки, обработчики, исполнители, голос и коннекторы; клик выбирает блок.
+// Левая панель: «В работе», колонки, обработчики, исполнители, голос и коннекторы; клик выбирает блок.
 // Работающее сейчас отмечено пульсирующей точкой с подписью (на узком экране схема мелкая);
 // короткая работа отмечена не меньше 1,2 с.
 import type { ReactNode } from 'react'
@@ -7,6 +7,7 @@ import { connectorToggle, connectorsLocked, listConnectors } from '../../schema/
 import type { CoreActions } from '../../state/actions'
 import type { CoreState, Selection } from '../../state/model'
 import AccessInfo from '../common/AccessInfo'
+import TaskList from './TaskList'
 import { steadyLive, useLiveGlow } from '../schema/useLiveGlow'
 import './side.css'
 
@@ -130,8 +131,10 @@ export default function SideList(props: Props) {
   // точки работы держатся не меньше 1,2 с — как живая подсветка схемы
   const glow = useLiveGlow(state.live, state.connection === 'online')
   const working = { ...props, state: { ...state, live: steadyLive(glow) } }
+  const connectorName = (id: string) => listConnectors(state).find((c) => c.id === id)?.name
   return (
     <>
+      <TaskList tasks={state.tasks} connectorName={connectorName} />
       <Devices {...props} />
       <Stages {...props} />
       <Executors {...working} />

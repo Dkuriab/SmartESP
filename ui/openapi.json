@@ -726,6 +726,38 @@
         }
       }
     },
+    "/api/v1/tasks": {
+      "get": {
+        "summary": "Get Tasks",
+        "operationId": "get_tasks_api_v1_tasks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TaskOut"
+                  },
+                  "type": "array",
+                  "title": "Response Get Tasks Api V1 Tasks Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/core": {
       "get": {
         "summary": "Get Core",
@@ -1588,6 +1620,93 @@
         "title": "StopOut",
         "description": "Остановка файла: stopped=False — файл не играл."
       },
+      "TaskOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "started_at": {
+            "type": "number",
+            "title": "Started At"
+          },
+          "eta": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eta"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "device_id": {
+            "type": "string",
+            "title": "Device Id",
+            "default": ""
+          },
+          "device_name": {
+            "type": "string",
+            "title": "Device Name",
+            "default": ""
+          },
+          "person": {
+            "type": "string",
+            "title": "Person",
+            "default": ""
+          },
+          "result": {
+            "type": "string",
+            "title": "Result",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "source",
+          "id",
+          "title",
+          "status",
+          "started_at"
+        ],
+        "title": "TaskOut",
+        "description": "Задача «В работе»; те же поля — в данных событий task_*. Времена — секунды Unix."
+      },
       "ToolUseOut": {
         "properties": {
           "executor": {
@@ -1773,6 +1892,21 @@
             ],
             "title": "Kind",
             "default": "turn"
+          },
+          "interruption": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "paused",
+                  "resumed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interruption"
           }
         },
         "type": "object",

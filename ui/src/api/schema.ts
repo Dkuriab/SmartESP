@@ -210,6 +210,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Tasks */
+        get: operations["get_tasks_api_v1_tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/core": {
         parameters: {
             query?: never;
@@ -659,6 +676,51 @@ export interface components {
             stopped: boolean;
         };
         /**
+         * TaskOut
+         * @description Задача «В работе»; те же поля — в данных событий task_*. Времена — секунды Unix.
+         */
+        TaskOut: {
+            /** Key */
+            key: string;
+            /** Source */
+            source: string;
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "done" | "failed" | "cancelled";
+            /** Started At */
+            started_at: number;
+            /** Eta */
+            eta?: number | null;
+            /** Finished At */
+            finished_at?: number | null;
+            /**
+             * Device Id
+             * @default
+             */
+            device_id: string;
+            /**
+             * Device Name
+             * @default
+             */
+            device_name: string;
+            /**
+             * Person
+             * @default
+             */
+            person: string;
+            /**
+             * Result
+             * @default
+             */
+            result: string;
+        };
+        /**
          * ToolUseOut
          * @description Вызов инструмента в ходе: кто вызвал, коннектор ("" — неизвестен), инструмент, удался ли.
          */
@@ -743,6 +805,8 @@ export interface components {
              * @enum {string}
              */
             kind: "turn" | "announcement";
+            /** Interruption */
+            interruption?: ("paused" | "resumed") | null;
         };
         /**
          * UnloadIn
@@ -1441,6 +1505,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_tasks_api_v1_tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
                 };
             };
         };

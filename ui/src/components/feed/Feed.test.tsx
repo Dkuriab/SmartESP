@@ -19,6 +19,12 @@ describe('Feed', () => {
     expect(rows[1]).toHaveTextContent('вопрос 1')
   })
 
+  it('мягкое прерывание: «прервано результатом» и «продолжение»', () => {
+    setup([makeTurn(2, { interruption: 'resumed' }), makeTurn(1, { interruption: 'paused', status: 'interrupted' })])
+    expect(screen.getByText('прервано результатом')).toBeInTheDocument()
+    expect(screen.getByText('продолжение')).toBeInTheDocument()
+  })
+
   it('пустая лента — подсказка', () => {
     setup([])
     expect(screen.getByText('Пока нет фраз')).toBeInTheDocument()

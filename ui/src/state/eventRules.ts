@@ -4,6 +4,7 @@ import type { CoreState, Device, Status, Turn } from './model'
 import { MAX_APPLIED } from './model'
 import { applyFileEvent } from './files'
 import { applyLive } from './live'
+import { applyTaskEvent } from './tasks'
 import { addTurn } from './turns'
 
 type Data = Record<string, unknown>
@@ -124,6 +125,10 @@ export function applyEvent(state: CoreState, e: CoreEvent): CoreState {
     case 'playback_started':
     case 'playback_finished':
       return applyFileEvent(state, e)
+    case 'task_started':
+    case 'task_updated':
+    case 'task_finished':
+      return applyTaskEvent(state, e)
     default:
       return state
   }
