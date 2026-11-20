@@ -31,6 +31,8 @@ DEFAULT_CONNECTORS: tuple[tuple[str, str, dict[str, str], bool], ...] = (
     ("mac_media", "Музыка и звук Mac", {}, False),
     # выключен, пока владелец не впишет разрешённые папки: «имя=путь;имя=путь»
     ("claude_tasks", "Задачи Клоду", {"CLAUDE_TASK_FOLDERS": ""}, False),
+    # поиск DuckDuckGo и чтение страниц (без локальных адресов); настроек нет
+    ("web", "Интернет", {}, True),
 )
 REMOVE = "remove"  # ключ записи владельца: убрать коннектор
 

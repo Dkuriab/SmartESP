@@ -15,7 +15,7 @@ REPO = Path(__file__).resolve().parents[3]  # core/tests/config → корень
 
 def test_defaults_are_our_connectors() -> None:
     connectors = Config().connectors
-    ids = ["notes", "calc", "timers", "weather", "food", "mac_media", "claude_tasks"]
+    ids = ["notes", "calc", "timers", "weather", "food", "mac_media", "claude_tasks", "web"]
     assert [c.id for c in connectors] == ids
     for c in connectors:
         script = f"{c.id.replace('_', '-')}-mcp"
