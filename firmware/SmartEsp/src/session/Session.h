@@ -6,6 +6,8 @@
 // «внимание» и ожидание reply_start), listen (из Idle сразу слушать вопрос; ход серверный).
 // Любой вход в Idle выдаёт SetActiveTurn(0): «текущий ход 0» значит «колонка свободна».
 // Если announce/listen пришли не в Idle — отвечаем событием busy с их номером хода, thinking-тон в Waiting продлевает ожидание ответа.
+// Пока говорим (Speaking), раз в playedReportMs шлём played{turn, bytes} — сколько байт
+// звука ответа уже доиграно с начала хода; последнее played — перед playback_done.
 // Чистая логика: не трогает железо и сеть, только выдаёт «действия»,
 // которые SmartEsp.ino передаёт модулям. Время передаётся снаружи,
 // поэтому модуль тестируется на ноутбуке (tools/host_tests).
@@ -20,6 +22,7 @@ struct SessionConfig {
   uint32_t noSpeechTimeoutMs = 5000;  // после слова так и не заговорили
   uint32_t maxUtteranceMs = 10000;    // максимум длины вопроса от слова
   uint32_t replyTimeoutMs = 15000;    // ответ так и не начался
+  uint32_t playedReportMs = 500;      // как часто сообщать played во время ответа
 };
 
 class Session {
@@ -38,6 +41,11 @@ class Session {
   // Играет ли динамик (очередь или тон). Вызывать каждый loop.
   void setPlaybackActive(bool active);
 
+  // Сколько байт звука ответа динамик доиграл с запуска (счётчик audio_out,
+  // переполнение по кругу допустимо). Вызывать каждый loop перед setPlaybackActive:
+  // последнее played перед playback_done берёт значение отсюда.
+  void setPlayedBytes(uint32_t total);
+
   // Следующее действие (по порядку), если есть.
   bool pollAction(Action& action);
 
@@ -50,6 +58,7 @@ class Session {
   void abandonTurn();
   void enter(SessionState next);
   void checkPlaybackDone();
+  void pushPlayed();
 
   void push(const Action& action);
   void pushSimple(ActionType type);
@@ -68,6 +77,9 @@ class Session {
   bool replyEnded_ = false;
   bool connected_ = false;
   bool playbackActive_ = false;
+  uint32_t playedTotal_ = 0;       // последний счётчик audio_out
+  uint32_t playedBase_ = 0;        // счётчик в момент начала ответа (входа в Speaking)
+  uint32_t playedReportedMs_ = 0;  // когда последний раз слали played
 
   static constexpr uint32_t ACTION_QUEUE = 16;
   Action actions_[ACTION_QUEUE] = {};

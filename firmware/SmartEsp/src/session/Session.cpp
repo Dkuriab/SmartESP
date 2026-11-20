@@ -26,6 +26,9 @@ void Session::loop(uint32_t nowMs) {
       break;
     case SessionState::Speaking:
       checkPlaybackDone();
+      if (state_ == SessionState::Speaking && nowMs_ - playedReportedMs_ >= config_.playedReportMs) {
+        pushPlayed();
+      }
       break;
     case SessionState::Idle:
       break;
@@ -182,6 +185,10 @@ void Session::setPlaybackActive(bool active) {
   }
 }
 
+void Session::setPlayedBytes(uint32_t total) {
+  playedTotal_ = total;
+}
+
 bool Session::pollAction(Action& action) {
   if (actionCount_ == 0) {
     return false;
@@ -234,14 +241,28 @@ void Session::enter(SessionState next) {
   stateSinceMs_ = nowMs_;
   speechStarted_ = false;
   replyEnded_ = false;
+  if (next == SessionState::Speaking) {
+    // Отсчёт played — с начала ответа: всё, что динамик играл раньше, не этого хода.
+    playedBase_ = playedTotal_;
+    playedReportedMs_ = nowMs_;
+  }
 }
 
 void Session::checkPlaybackDone() {
   if (replyEnded_ && !playbackActive_) {
+    pushPlayed();   // итог: сколько ответа доиграно целиком
     abandonTurn();  // до события: к приходу следующего announce шлюз звука уже свободен
     pushEvent(ClientEventType::PlaybackDone);
     enter(SessionState::Idle);
   }
+}
+
+void Session::pushPlayed() {
+  Action action{};
+  action.type = ActionType::SendEvent;
+  action.event = ClientEvent{ClientEventType::Played, turn_, UtteranceEndReason::Vad, 0.0f, playedTotal_ - playedBase_};
+  push(action);
+  playedReportedMs_ = nowMs_;
 }
 
 void Session::push(const Action& action) {
