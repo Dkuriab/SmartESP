@@ -8,6 +8,7 @@ import yaml
 from smartesp.config import Config, load_config
 from smartesp.config.store import ConfigFile
 
+GEMMA = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
 WHEN = "сложные вопросы: рассуждения, расчёты, подробные объяснения, знания, которых может не быть у тебя"
 
 
@@ -75,8 +76,27 @@ def test_new_keys_known_in_patch(tmp_path: Path) -> None:
         store.merge({"executors": [bad, _ex("b")]})
 
 
+def test_default_dispatcher_is_gpt_oss_with_low_reasoning() -> None:
+    dispatcher, big = Config().executors
+    assert (dispatcher.model, dispatcher.reasoning) == ("gpt-oss:20b", "low")
+    assert big.reasoning == "off"
+
+
 def test_reasoning_defaults_to_off_and_rejects_unknown_level() -> None:
     config = Config.model_validate({"executors": [_ex("a", entry=True)]})
     assert config.executors[0].reasoning == "off"
     with pytest.raises(ValueError, match="reasoning"):
         Config.model_validate({"executors": [{**_ex("a", entry=True), "reasoning": "max"}]})
+
+
+def test_owner_model_choice_is_kept_and_untouched_default_changes(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    owner = [e.model_dump() for e in Config().executors]
+    owner[0] = {k: v for k, v in owner[0].items() if k != "reasoning"}
+    owner[0]["model"] = GEMMA
+    path.write_text(yaml.safe_dump({"version": 4, "executors": owner}, allow_unicode=True), "utf-8")
+    dispatcher = load_config(path).entry_executor()
+    assert (dispatcher.model, dispatcher.reasoning) == (GEMMA, "off")
+    untouched = tmp_path / "other.yaml"
+    untouched.write_text("version: 4\n", "utf-8")
+    assert load_config(untouched).entry_executor().model == "gpt-oss:20b"

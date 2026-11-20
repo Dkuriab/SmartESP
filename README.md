@@ -23,9 +23,9 @@
    brew install uv
    brew install --cask ollama   # затем один раз открыть приложение Ollama
    ```
-3. Модель для ответов (~6 ГБ):
+3. Модель для ответов (~13 ГБ):
    ```bash
-   ollama pull fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive
+   ollama pull gpt-oss:20b
    ```
 4. Ядро (`uv sync` в первый раз долгий — ставится torch):
    ```bash

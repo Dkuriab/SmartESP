@@ -18,7 +18,9 @@ DEFAULT_SYSTEM_PROMPT = (
 # 2 — в config.yaml только изменения владельца; 3 — умолчание tts стало silero;
 # 4 — в сохранённый список stages добавлен обработчик clock (по умолчанию включён)
 CONFIG_VERSION = 4
-DEFAULT_MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
+# замер волны 3: честнее всех и первый текст p90 < 1 с — только с рассуждением «low»
+DEFAULT_MODEL = "gpt-oss:20b"
+DEFAULT_REASONING: Reasoning = "low"
 BIG_WHEN = "сложные вопросы: рассуждения, расчёты, подробные объяснения, знания, которых может не быть у тебя"
 BIG_SYSTEM_PROMPT = (
     "Ты отвечаешь голосом через колонку: по-русски, без разметки и списков, связно, до 6–8 предложений."
@@ -113,6 +115,7 @@ def _default_executors() -> list[ExecutorConfig]:
             id="dispatcher",
             name="Диспетчер",
             model=DEFAULT_MODEL,
+            reasoning=DEFAULT_REASONING,
             entry=True,
             system_prompt=DEFAULT_SYSTEM_PROMPT,
             delegates=[DelegateLink(to="big", when=BIG_WHEN)],
