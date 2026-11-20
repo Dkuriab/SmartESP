@@ -6,6 +6,7 @@ import type { Edge, Node, NodeMouseHandler } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { useMemo, useState } from 'react'
 import { buildGraph } from '../../schema/buildGraph'
+import { createClickGuard } from './clickGuard'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState, Selection } from '../../state/model'
 import { nodeTypes } from './nodes'
@@ -23,6 +24,8 @@ const edgeTypes = { default: LinkEdge, smoothstep: LinkEdge }
 const MIN_ZOOM = 0.2
 /** Узлы-подписи: не выбираются и не перетаскиваются. */
 const PASSIVE = new Set(['hint', 'label'])
+/** Сдвиг мыши, после которого нажатие — перетаскивание, а не клик (у React Flow — 1 px). */
+const DRAG_THRESHOLD = 4
 
 type EdgeFlags = { lit?: boolean; strong?: boolean; inactive?: boolean; live?: boolean; fading?: boolean }
 
@@ -53,8 +56,9 @@ export default function SchemaView({ state, actions }: Props) {
   const { selected } = state
   const shown = useMemo(() => nodes.map((n) => marked(n, selected)), [nodes, selected])
   const edges = useMemo(() => graph.edges.map(styled), [graph])
+  const [guard] = useState(() => createClickGuard())
   const onClick: NodeMouseHandler = (_, node) => {
-    if (PASSIVE.has(node.type ?? '')) return
+    if (PASSIVE.has(node.type ?? '') || !guard.allowsClick()) return
     actions.select({ kind: node.data.kind, id: node.data.id } as Selection)
   }
   const relayout = () => {
@@ -70,6 +74,8 @@ export default function SchemaView({ state, actions }: Props) {
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onNodeClick={onClick}
+        onNodeDragStop={guard.dragged}
+        nodeDragThreshold={DRAG_THRESHOLD}
         minZoom={MIN_ZOOM}
         nodesConnectable={false}
         selectNodesOnDrag={false}
