@@ -3,7 +3,7 @@ name = "web-mcp"
 version = "0.1.0"
 description = "MCP-коннектор SmartESP: интернет (поиск DuckDuckGo и чтение страниц)"
 requires-python = ">=3.12,<3.13"
-dependencies = ["mcp==2.3.0", "httpx==0.28.1", "httpcore==1.0.9", "selectolax==1.0.2"]
+dependencies = ["mcp==2.3.0", "httpx==0.28.1", "httpcore==1.0.9", "psutil==7.2.2", "selectolax==1.0.2"]
 
 [project.scripts]
 web-mcp = "web_mcp.server:main"

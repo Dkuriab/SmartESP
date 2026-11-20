@@ -1,22 +1,16 @@
-"""Защита домашней сети: web_read открывает только адреса интернета.
+"""Защита домашней сети, первая ступень: проверка ссылки и IP-адреса.
 
-Две ступени. check_url — до запроса и на каждом перенаправлении: схема http/https,
-имя не локальное (localhost, .local, без точки), IP в ссылке — не частный.
-GuardedBackend — при каждом подключении: имя разрешается через DNS, все адреса
-проверяются, подключение идёт к проверенному адресу. Так подмена DNS между
-проверкой и подключением (DNS rebinding) ничего не даёт.
+check_url — до запроса и на каждом перенаправлении: схема http/https, имя не
+локальное (localhost, .local, без точки), IP в ссылке — не частный. Вторая
+ступень — при подключении, после DNS (см. backend.GuardedBackend).
 """
 
-import asyncio
 import ipaddress
-import socket
-from collections.abc import Awaitable, Callable, Iterable
-from typing import cast
 
-import httpcore
 import httpx
 
-Resolver = Callable[[str, int], Awaitable[list[str]]]
+IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
 
 _LOCAL_SUFFIXES = (".localhost", ".local", ".home.arpa", ".internal", ".lan")
 
@@ -29,22 +23,44 @@ class BlockedAddress(Exception):
     """Адрес ведёт в домашнюю сеть или на сам компьютер."""
 
 
-def is_public_ip(text: str) -> bool:
-    """True — адрес из интернета; частные, локальные, служебные и мусор — False."""
+def parse_ip(text: str) -> IPAddress | None:
+    """IP-адрес из строки (зона «%en0» отбрасывается); не адрес — None."""
     try:
-        address = ipaddress.ip_address(text)
+        return ipaddress.ip_address(text.split("%", 1)[0])
     except ValueError:
-        return False
-    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
-        address = address.ipv4_mapped
+        return None
+
+
+def _embedded_ipv4(address: ipaddress.IPv6Address) -> list[ipaddress.IPv4Address]:
+    """IPv4 внутри IPv6: ::ffff:a.b.c.d, ::a.b.c.d, NAT64, 6to4, Teredo."""
+    found: list[ipaddress.IPv4Address] = []
+    if address.ipv4_mapped is not None:
+        found.append(address.ipv4_mapped)
+    if int(address) >> 32 == 0 or address in _NAT64:
+        found.append(ipaddress.IPv4Address(int(address) & 0xFFFFFFFF))
+    if address.sixtofour is not None:
+        found.append(address.sixtofour)
+    if address.teredo is not None:
+        found.extend(address.teredo)
+    return found
+
+
+def _is_global(address: IPAddress) -> bool:
     return address.is_global and not address.is_multicast
 
 
-def _is_ip(host: str) -> bool:
-    try:
-        ipaddress.ip_address(host)
-    except ValueError:
+def is_public_ip(text: str) -> bool:
+    """True — адрес из интернета; частные, локальные, служебные и мусор — False.
+
+    Для IPv6 со встроенным IPv4 (NAT64, 6to4, Teredo, mapped) проверяется и он.
+    """
+    address = parse_ip(text)
+    if address is None or not _is_global(address):
         return False
+    if isinstance(address, ipaddress.IPv6Address):
+        if address.is_site_local:
+            return False
+        return all(_is_global(inner) for inner in _embedded_ipv4(address))
     return True
 
 
@@ -57,82 +73,10 @@ def check_url(url: str) -> httpx.URL:
     if parsed.scheme not in ("http", "https") or not parsed.host:
         raise BadUrl(f"unsupported url: {url}")
     host = parsed.host.lower().rstrip(".")
-    if _is_ip(host):
+    if parse_ip(host) is not None:
         if not is_public_ip(host):
             raise BlockedAddress(host)
         return parsed
     if host == "localhost" or host.endswith(_LOCAL_SUFFIXES) or "." not in host:
         raise BlockedAddress(host)
     return parsed
-
-
-async def system_resolve(host: str, port: int) -> list[str]:
-    """Адреса имени через системный DNS (без повторов, в порядке ответа)."""
-    loop = asyncio.get_running_loop()
-    try:
-        infos = await loop.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    except OSError as error:
-        raise httpcore.ConnectError(f"cannot resolve {host}: {error}") from error
-    return list(dict.fromkeys(str(info[4][0]) for info in infos))
-
-
-class GuardedBackend(httpcore.AsyncNetworkBackend):
-    """Сетевой слой httpcore: разрешает имя, проверяет адреса и подключается к ним."""
-
-    def __init__(self, resolve: Resolver, inner: httpcore.AsyncNetworkBackend | None = None) -> None:
-        self._resolve = resolve
-        # в __init__ httpcore AnyIOBackend объявлен через try/except, pyright видит заглушку
-        default = cast(httpcore.AsyncNetworkBackend, httpcore.AnyIOBackend())
-        self._inner: httpcore.AsyncNetworkBackend = inner or default
-
-    async def connect_tcp(
-        self,
-        host: str,
-        port: int,
-        timeout: float | None = None,
-        local_address: str | None = None,
-        socket_options: Iterable[httpcore.SOCKET_OPTION] | None = None,
-    ) -> httpcore.AsyncNetworkStream:
-        addresses = await self._resolve(host, port)
-        if not addresses:
-            raise httpcore.ConnectError(f"no addresses for {host}")
-        for address in addresses:
-            if not is_public_ip(address):
-                raise BlockedAddress(f"{host} -> {address}")
-        error: Exception = httpcore.ConnectError(f"cannot connect to {host}")
-        for address in addresses:
-            try:
-                return await self._inner.connect_tcp(
-                    address, port, timeout=timeout, local_address=local_address, socket_options=socket_options
-                )
-            except (httpcore.ConnectError, httpcore.ConnectTimeout) as failure:
-                error = failure
-        raise error
-
-    async def connect_unix_socket(
-        self,
-        path: str,
-        timeout: float | None = None,
-        socket_options: Iterable[httpcore.SOCKET_OPTION] | None = None,
-    ) -> httpcore.AsyncNetworkStream:
-        raise BlockedAddress("unix socket")
-
-    async def sleep(self, seconds: float) -> None:
-        await self._inner.sleep(seconds)
-
-
-def make_guarded_transport(
-    resolve: Resolver | None = None, inner: httpcore.AsyncNetworkBackend | None = None
-) -> httpx.AsyncHTTPTransport:
-    """Транспорт httpx, который подключается только к адресам интернета.
-
-    Клиент с ним создаётся с trust_env=False: через прокси из окружения адрес
-    разрешал бы прокси, и проверка не работала бы.
-    """
-    transport = httpx.AsyncHTTPTransport(trust_env=False)
-    # httpx 0.28 не даёт задать сетевой слой снаружи — подменяем пул (версия зафиксирована)
-    transport._pool = httpcore.AsyncConnectionPool(  # pyright: ignore[reportPrivateUsage]
-        ssl_context=httpx.create_ssl_context(trust_env=False),
-        network_backend=GuardedBackend(resolve or system_resolve, inner),
-    )
-    return transport

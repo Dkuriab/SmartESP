@@ -6,13 +6,20 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import asdict
 
-import httpx
+import httpcore
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent
 
-from web_mcp.fetch import TIMEOUT, PageError, read_page
-from web_mcp.guard import make_guarded_transport
+from web_mcp.backend import (
+    AddressProvider,
+    GuardedBackend,
+    OwnAddresses,
+    Resolver,
+    interface_addresses,
+    system_resolve,
+)
+from web_mcp.fetch import TIMEOUT, PageError, first_url, read_page
 from web_mcp.limits import RateLimiter
 from web_mcp.search import SearchBlocked, SearchUnavailable, search
 from web_mcp.speech import page_answer, search_answer
@@ -23,9 +30,6 @@ READ_PER_MINUTE = 20
 # DuckDuckGo показал капчу — столько секунд не ходим в поиск
 BLOCK_PAUSE_SECONDS = 300.0
 MAX_QUERY_CHARS = 300
-USER_AGENT = "SmartEsp-web/0.1"
-# часть сайтов не отдаёт страницы неизвестным программам — представляемся как совместимый браузер
-READER_AGENT = "Mozilla/5.0 (compatible; SmartEsp-web/0.1)"
 
 SEARCH_UNAVAILABLE = "Поиск сейчас недоступен."
 SEARCH_PAUSED = "Поиск сейчас недоступен, попробуйте через несколько минут."
@@ -59,30 +63,36 @@ async def _guarded[T](action: Callable[[], Awaitable[T]]) -> T:
 
 
 class _Web:
-    """Клиенты и пределы частоты; транспорт и часы подменяются в тестах."""
+    """Сетевой слой с защитой и пределы частоты; DNS, сокеты и часы подменяются в тестах."""
 
     def __init__(
-        self, transport: httpx.AsyncBaseTransport | None, clock: Callable[[], float], timeout: float
+        self,
+        resolve: Resolver,
+        backend: httpcore.AsyncNetworkBackend | None,
+        own: OwnAddresses,
+        clock: Callable[[], float],
+        timeout: float,
     ) -> None:
-        self._transport = transport
+        self._resolve = resolve
+        self._backend = backend
+        self._own = own
         self._timeout = timeout
         self.searches = RateLimiter(SEARCH_PER_MINUTE, 60.0, clock)
         self.reads = RateLimiter(READ_PER_MINUTE, 60.0, clock)
+
+    def _pool(self) -> httpcore.AsyncConnectionPool:
+        """Пул соединений только через GuardedBackend: адреса проверяются при каждом подключении."""
+        guarded = GuardedBackend(self._resolve, self._backend, self._own)
+        return httpcore.AsyncConnectionPool(network_backend=guarded)
 
     async def search(self, query: str) -> CallToolResult:
         if self.searches.paused():
             raise ToolError(SEARCH_PAUSED)
         if not self.searches.allow():
             raise ToolError(TOO_OFTEN)
-        headers = {"User-Agent": USER_AGENT, "Accept-Language": "ru,en;q=0.5"}
         try:
-            async with (
-                asyncio.timeout(self._timeout),
-                httpx.AsyncClient(
-                    timeout=self._timeout, headers=headers, transport=self._transport
-                ) as client,
-            ):
-                results = await search(client, query)
+            async with asyncio.timeout(self._timeout), self._pool() as pool:
+                results = await search(pool, query, self._timeout)
         except SearchBlocked as error:
             log.warning("search blocked: %s", error)
             self.searches.pause(BLOCK_PAUSE_SECONDS)
@@ -95,18 +105,12 @@ class _Web:
         return CallToolResult(content=[TextContent(type="text", text=text)], structured_content=structured)
 
     async def read(self, url: str) -> str:
-        if not self.reads.allow():
-            raise ToolError(TOO_OFTEN)
-        transport = self._transport or make_guarded_transport()
-        headers = {"User-Agent": READER_AGENT, "Accept-Language": "ru,en;q=0.5"}
         try:
-            async with (
-                asyncio.timeout(self._timeout),
-                httpx.AsyncClient(
-                    timeout=self._timeout, headers=headers, transport=transport, trust_env=False
-                ) as client,
-            ):
-                page = await read_page(client, url)
+            checked = first_url(url)
+            if not self.reads.allow():
+                raise ToolError(TOO_OFTEN)
+            async with asyncio.timeout(self._timeout), self._pool() as pool:
+                page = await read_page(pool, checked, self._timeout)
         except PageError as error:
             log.warning("read %s failed: %s", url, error)
             raise ToolError(str(error)) from None
@@ -116,17 +120,20 @@ class _Web:
 
 
 def build_server(
-    transport: httpx.AsyncBaseTransport | None = None,
     *,
+    resolve: Resolver = system_resolve,
+    backend: httpcore.AsyncNetworkBackend | None = None,
+    own_addresses: AddressProvider = interface_addresses,
     clock: Callable[[], float] = time.monotonic,
     timeout: float = TIMEOUT_SECONDS,
 ) -> MCPServer:
-    """Собирает сервер с web_search и web_read. transport, clock, timeout — для тестов.
+    """Собирает сервер с web_search и web_read. Параметры — для тестов.
 
-    Без transport поиск идёт обычным клиентом, а чтение — через защищённый
-    транспорт: подключение только к адресам интернета (см. guard).
+    resolve — DNS, backend — сокеты под GuardedBackend (по умолчанию настоящие),
+    own_addresses — адреса самого компьютера (по умолчанию — интерфейсы).
+    Защита адресов работает всегда: подменяются только DNS и сокеты под ней.
     """
-    web = _Web(transport, clock, timeout)
+    web = _Web(resolve, backend, OwnAddresses(own_addresses, clock), clock, timeout)
     server = MCPServer("web")
 
     @server.tool(name="web_search", description=SEARCH_DESCRIPTION)

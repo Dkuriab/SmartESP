@@ -71,7 +71,10 @@ def decode(body: bytes, charset: str | None) -> str:
     for name in (charset, meta.group(1).decode("ascii", "ignore") if meta else None):
         codec = _codec(name)
         if codec:
-            return body.decode(codec, errors="replace")
+            try:
+                return body.decode(codec, errors="replace")
+            except LookupError:
+                continue  # не текстовый кодек (rot13, base64) — идём дальше
     try:
         # final=False: обрезанный по пределу размера хвост не считается ошибкой
         return codecs.getincrementaldecoder("utf-8")().decode(body, final=False)

@@ -1,20 +1,21 @@
-"""web_search через клиентскую сессию SDK в памяти; сеть — httpx.MockTransport."""
+"""web_search через клиентскую сессию SDK в памяти; интернет — подделка (tests/support.py)."""
 
+import gzip
 import os
 from pathlib import Path
+from urllib.parse import parse_qs
 
-import httpx
 import pytest
 from mcp import Client
 
-from tests.support import Clock, Net, call, page, text_of
+from tests.support import Answer, Clock, Internet, Seen, call, page, server_for, text_of
 from web_mcp.server import build_server
 
 DDG = (Path(__file__).parent / "fixtures" / "ddg_results.html").read_text(encoding="utf-8")
 
 
 async def test_tools_listed_in_russian() -> None:
-    async with Client(build_server(httpx.MockTransport(Net()))) as client:
+    async with Client(server_for(Internet())) as client:
         tools = (await client.list_tools()).tools
     assert {tool.name for tool in tools} == {"web_search", "web_read"}
     for tool in tools:
@@ -23,14 +24,25 @@ async def test_tools_listed_in_russian() -> None:
 
 
 async def test_search_posts_to_duckduckgo_in_russian_region() -> None:
-    net = Net({"https://html.duckduckgo.com/html/": page(DDG)})
+    net = Internet({"https://html.duckduckgo.com/html/": page(DDG)})
     result = await call(net, "web_search", {"query": "курс доллара"})
     assert not result.is_error
     request = net.requests[0]
     assert request.method == "POST"
-    form = httpx.QueryParams(request.content.decode())
-    assert form["q"] == "курс доллара"
-    assert form["kl"] == "ru-ru"
+    form = parse_qs(request.body.decode())
+    assert form == {"q": ["курс доллара"], "kl": ["ru-ru"]}
+    assert request.headers["content-type"] == "application/x-www-form-urlencoded"
+    assert request.headers["accept-encoding"] == "gzip, deflate"
+    # порядок как у httpx: с другим DuckDuckGo через раз отвечал капчей
+    assert list(request.headers) == [
+        "host",
+        "accept",
+        "accept-encoding",
+        "connection",
+        "user-agent",
+        "content-length",
+        "content-type",
+    ]
     assert request.headers["user-agent"].startswith("SmartEsp-web/")
     text = text_of(result)
     assert "cbr.ru: Центральный банк" in text
@@ -42,14 +54,16 @@ async def test_search_posts_to_duckduckgo_in_russian_region() -> None:
 
 
 async def test_search_nothing_found() -> None:
-    net = Net({"https://html.duckduckgo.com/html/": page("<html><body><div id='links'></div></body></html>")})
+    net = Internet(
+        {"https://html.duckduckgo.com/html/": page("<html><body><div id='links'></div></body></html>")}
+    )
     result = await call(net, "web_search", {"query": "абракадабра"})
     assert not result.is_error
     assert text_of(result) == "Ничего не нашлось по запросу «абракадабра»."
 
 
 async def test_search_empty_query() -> None:
-    net = Net()
+    net = Internet()
     result = await call(net, "web_search", {"query": "   "})
     assert result.is_error
     assert "что искать" in text_of(result)
@@ -58,9 +72,9 @@ async def test_search_empty_query() -> None:
 
 async def test_search_captcha_is_honest_and_pauses() -> None:
     captcha = '<form id="challenge-form" action="//duckduckgo.com/anomaly.js"></form>'
-    net = Net({"https://html.duckduckgo.com/html/": page(captcha, status=202)})
+    net = Internet({"https://html.duckduckgo.com/html/": page(captcha, status=202)})
     clock = Clock()
-    async with Client(build_server(httpx.MockTransport(net), clock=clock)) as client:
+    async with Client(server_for(net, clock)) as client:
         first = await client.call_tool("web_search", {"query": "новости"})
         second = await client.call_tool("web_search", {"query": "новости"})
         assert len(net.requests) == 1
@@ -73,19 +87,17 @@ async def test_search_captcha_is_honest_and_pauses() -> None:
 
 
 async def test_search_network_failure() -> None:
-    def offline(_: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("offline")
-
-    net = Net({"https://html.duckduckgo.com/html/": offline})
+    # имя поисковика не разрешается — как без сети
+    net = Internet(dns={"html.duckduckgo.com": []})
     result = await call(net, "web_search", {"query": "новости"})
     assert result.is_error
     assert "Поиск сейчас недоступен" in text_of(result)
 
 
 async def test_search_rate_limit() -> None:
-    net = Net({"https://html.duckduckgo.com/html/": page(DDG)})
+    net = Internet({"https://html.duckduckgo.com/html/": page(DDG)})
     clock = Clock()
-    async with Client(build_server(httpx.MockTransport(net), clock=clock)) as client:
+    async with Client(server_for(net, clock)) as client:
         results = [await client.call_tool("web_search", {"query": f"q{i}"}) for i in range(11)]
         clock.now += 61
         later = await client.call_tool("web_search", {"query": "ещё"})
@@ -94,6 +106,20 @@ async def test_search_rate_limit() -> None:
     assert "Слишком много запросов" in text_of(results[10])
     assert len(net.requests) == 11
     assert not later.is_error
+
+
+async def test_search_reads_gzip_reply() -> None:
+    def packed(_: Seen) -> Answer:
+        return Answer(
+            headers={"content-type": "text/html", "content-encoding": "gzip"},
+            body=gzip.compress(DDG.encode()),
+        )
+
+    result = await call(
+        Internet({"https://html.duckduckgo.com/html/": packed}), "web_search", {"query": "кот"}
+    )
+    assert not result.is_error
+    assert "cbr.ru:" in text_of(result)
 
 
 @pytest.mark.skipif(not os.environ.get("WEB_LIVE"), reason="WEB_LIVE не задан")

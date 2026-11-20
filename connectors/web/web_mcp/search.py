@@ -1,14 +1,21 @@
 """Поиск DuckDuckGo без ключа: HTML-выдача html.duckduckgo.com, регион — Россия."""
 
 from dataclasses import dataclass
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
+import httpcore
 import httpx
 from selectolax.lexbor import LexborHTMLParser, LexborNode
+
+from web_mcp.body import BadBody, UnsupportedEncoding
+from web_mcp.guard import BlockedAddress
+from web_mcp.net import NETWORK_ERRORS, request
 
 SEARCH_URL = "https://html.duckduckgo.com/html/"
 REGION = "ru-ru"
 MAX_RESULTS = 5
+MAX_BYTES = 1024 * 1024
+USER_AGENT = "SmartEsp-web/0.1"
 # признаки страницы-проверки «вы не робот?»
 _CAPTCHA_MARKS = ("anomaly-modal", "challenge-form", "bots use DuckDuckGo")
 
@@ -90,15 +97,46 @@ def parse_results(html: str, limit: int = MAX_RESULTS) -> list[SearchResult]:
     return results
 
 
-async def search(client: httpx.AsyncClient, query: str) -> list[SearchResult]:
+def _headers(length: int) -> dict[str, str]:
+    """Набор и порядок заголовков как у обычного HTTP-клиента (httpx).
+
+    С другим порядком (Content-Length после Content-Type, Accept-Language) DuckDuckGo
+    через раз отвечал капчей — проверено вживую, ноябрь 2026.
+    """
+    return {
+        "Accept": "*/*",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+        "User-Agent": USER_AGENT,
+        "Content-Length": str(length),
+        "Content-Type": "application/x-www-form-urlencoded",
+    }
+
+
+async def search(pool: httpcore.AsyncConnectionPool, query: str, timeout: float) -> list[SearchResult]:
     """Запрос к DuckDuckGo (POST, как форма на сайте). Сбой — SearchUnavailable/SearchBlocked."""
+    content = urlencode({"q": query, "kl": REGION}).encode()
     try:
-        response = await client.post(SEARCH_URL, data={"q": query, "kl": REGION})
-    except httpx.HTTPError as error:
-        raise SearchUnavailable(str(error)) from error
-    text = response.text
-    if looks_blocked(response.status_code, text):
-        raise SearchBlocked(f"status {response.status_code}")
-    if response.status_code != 200:
-        raise SearchUnavailable(f"status {response.status_code}")
+        reply = await request(
+            pool,
+            "POST",
+            httpx.URL(SEARCH_URL),
+            headers=_headers(len(content)),
+            timeout=timeout,
+            limit=MAX_BYTES,
+            content=content,
+        )
+    except (
+        httpcore.TimeoutException,
+        *NETWORK_ERRORS,
+        BlockedAddress,
+        UnsupportedEncoding,
+        BadBody,
+    ) as error:
+        raise SearchUnavailable(repr(error)) from error
+    text = reply.body.decode("utf-8", errors="replace")
+    if looks_blocked(reply.status, text):
+        raise SearchBlocked(f"status {reply.status}")
+    if reply.status != 200:
+        raise SearchUnavailable(f"status {reply.status}")
     return parse_results(text)

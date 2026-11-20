@@ -107,3 +107,8 @@ def test_link_lists_and_hidden_blocks_are_dropped() -> None:
     assert "крыт" not in text
     assert "Обычный пункт со ссылкой внутри текста" in text
     assert text.startswith("Кот — домашнее животное")
+
+
+def test_decode_ignores_non_text_codecs() -> None:
+    assert decode("Привет".encode(), "rot13") == "Привет"
+    assert decode('<meta charset="base64">Ёж'.encode(), None).endswith("Ёж")
