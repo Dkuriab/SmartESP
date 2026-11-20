@@ -75,7 +75,8 @@ async def test_hanging_executor_warm_up_does_not_block_ready(
 
 async def test_graceful_stop_lets_reply_finish_and_cancels_new_wake(tmp_path: Path) -> None:
     made: list[FakeOllama] = []
-    answer = ["Раз. ", "Два. ", "Три."]
+    # первое предложение — целое (≥ 20 символов): страховка честности отдаёт его сразу
+    answer = ["Раз, это первое предложение. ", "Два. ", "Три."]
     core = make_core(tmp_path, fake_kinds(ollama_factory(made, answer, delay=0.1)))
     start(core)
     await eventually(lambda: core.core.state == "ready")

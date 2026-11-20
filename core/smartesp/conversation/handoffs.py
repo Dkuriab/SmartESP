@@ -128,7 +128,10 @@ def _take(turn: Turn, part: ReplyPart) -> None:
     """Учитывает кусок в ходе: передачу, текст, время первого текста, ошибку.
 
     Фраза об ошибке (failure) начинает в ответе новый кусок и помечает ход ошибкой.
+    Метка страховки честности (guard) запоминается в ходе.
     """
+    if part.guard:
+        turn.guard = part.guard
     if part.handoff is not None:
         record_handoff(turn, part.handoff)
         return

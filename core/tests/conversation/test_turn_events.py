@@ -43,6 +43,7 @@ async def test_turn_events_sequence() -> None:
         "path": ["entry"],
         "delegations": [],
         "tools": [],
+        "guard": None,
         "origin": "wake",
         "source": "",
         "person": "",

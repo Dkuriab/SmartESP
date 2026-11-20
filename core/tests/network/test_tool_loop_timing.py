@@ -113,7 +113,8 @@ async def test_sentence_before_call_is_spoken_while_tool_runs() -> None:
     box = SlowToolBox(gate=gate)
     model = Model([ReplyPart("Записываю молоко в список."), CALL], [ReplyPart("Записала молоко в список.")])
     sentences = split_sentences(net(model, box).run(QUESTION))
-    assert await anext(sentences) == "Записываю молоко в список." and box.calls == []  # до вызова
+    # утверждение «Записываю» страховка честности отдаёт, как только инструмент начал работу
+    assert await anext(sentences) == "Записываю молоко в список." and not gate.is_set()
     rest = asyncio.ensure_future(anext(sentences))
     await asyncio.sleep(0.05)
     assert box.calls and not rest.done()  # инструмент думает, фраза до него уже ушла

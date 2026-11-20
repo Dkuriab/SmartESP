@@ -7,6 +7,7 @@ import logging
 from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from typing import Literal
 
 from smartesp.contracts import (
     ChatMessage,
@@ -17,13 +18,16 @@ from smartesp.contracts import (
     ToolCall,
     ToolObserver,
     ToolSpec,
+    ToolUse,
     UsesModels,
     WarmsUp,
 )
 
 from .dialog import closing, flatten, question, speakable, with_task
+from .guard import guarded
+from .members import member_tools, warm
 from .names import named_target
-from .rules import DELEGATE_TOOL, Target, delegate_tool
+from .rules import DELEGATE_TOOL, Target
 from .tool_loop import member_stream
 
 _log = logging.getLogger(__name__)
@@ -58,6 +62,7 @@ class _Outcome:
     text: list[str] = field(default_factory=list[str])
     called: bool = False  # был хоть один вызов delegate (верный или нет)
     handoff: Handoff | None = None
+    guard: Literal["", "retried", "fallback"] = ""  # метка страховки с куска вызова delegate
 
 
 class ExecutorNetwork:
@@ -77,6 +82,8 @@ class ExecutorNetwork:
       пока глубина передачи меньше max_depth; так же может передать дальше;
     - участник с tools_ok=False не получает никаких инструментов;
     - на глубине max_depth участник отвечает вариантом plain — без правила передачи;
+    - ответ входного проверяет страховка честности (guard.py): ложное «сделала» без инструмента,
+      пустой ответ, вызов текстом — один повторный прогон, затем честная фраза;
     - исключение цели — кусок «<Имя> сейчас не отвечает.» с failure;
       ExecutorError входного пробрасывается.
     """
@@ -134,15 +141,21 @@ class ExecutorNetwork:
         """
         member = self._members[member_id]
         offered = member.targets if member.tools_ok and depth < self._max_depth else ()
-        tools = _member_tools(member, offered, extra_tools)
+        tools = member_tools(member, offered, extra_tools)
         executor = member.executor
         if not offered:  # передать некому: ни правила, ни структуры вызовов delegate
             own = flatten(own, keep_tools=member.tools_ok)
             executor = member.plain or executor
         outcome = _Outcome()
-        stream = member_stream(
-            member_id, self._toolbox, executor.run, own, (tools, extra_tools), self._on_tool
-        )
+
+        def start(messages: list[ChatMessage], seen: ToolObserver | None = None) -> AsyncIterator[ReplyPart]:
+            observe = _both(seen, self._on_tool)
+            return member_stream(
+                member_id, self._toolbox, executor.run, messages, (tools, extra_tools), observe
+            )
+
+        names = frozenset(t.name for t in tools)  # у входного — страховка честности (guard.py)
+        stream = guarded(member_id, start, own, names, bool(question(base))) if depth == 0 else start(own)
         parts = self._own_parts(member_id, stream, offered, outcome)
         async with closing(parts):
             async for part in parts:
@@ -152,7 +165,7 @@ class ExecutorNetwork:
             handoff = self._auto_handoff(member_id, "".join(outcome.text), base, offered)
         if handoff is None:
             return
-        yield ReplyPart(handoff=handoff)
+        yield ReplyPart(handoff=handoff, guard=outcome.guard)
         target_parts = self._target_parts(handoff, base, depth + 1)
         async with closing(target_parts):
             async for part in target_parts:
@@ -173,7 +186,7 @@ class ExecutorNetwork:
             async for part in stream:
                 call = part.tool_call
                 if call is not None and call.name == DELEGATE_TOOL:
-                    outcome.called = True
+                    outcome.called, outcome.guard = True, part.guard or outcome.guard
                     outcome.handoff = self._handoff(source, call, offered)
                     if outcome.handoff is not None:
                         return  # closing закрывает поток: остаток ответа не нужен
@@ -246,7 +259,7 @@ class ExecutorNetwork:
             for member_id, member in self._members.items()
             if member_id != self.id and isinstance(member.executor, WarmsUp)
         }
-        results = await asyncio.gather(*(_warm(i, e, timeout_s) for i, e in warmable.items()))
+        results = await asyncio.gather(*(warm(i, e, timeout_s) for i, e in warmable.items()))
         return dict(zip(warmable, results, strict=True))
 
     def unknown_models(self) -> frozenset[str]:
@@ -273,26 +286,14 @@ class ExecutorNetwork:
         await asyncio.gather(*(executor.unload_models(mine, timeout_s) for executor, mine in jobs))
 
 
-def _member_tools(
-    member: Member, offered: tuple[Target, ...], extra_tools: tuple[ToolSpec, ...]
-) -> tuple[ToolSpec, ...]:
-    """Инструменты участника: без tools_ok — никаких; иначе extra_tools, свои и delegate, если есть цели."""
-    if not member.tools_ok:
-        return ()
-    own = (*extra_tools, *member.tools)
-    return (*own, delegate_tool(offered)) if offered else own
-
-
-async def _warm(member_id: str, executor: WarmsUp, timeout_s: float) -> str | None:
-    """Прогревает одного участника не дольше timeout_s; None — успех, иначе текст ошибки."""
-    try:
-        async with asyncio.timeout(timeout_s):
-            await executor.warm_up()
-    except TimeoutError:
-        error = f"не прогрелся за {timeout_s:g} с"
-    except Exception as exc:  # noqa: BLE001 — прогрев участника не должен ломать связку
-        error = str(exc) or type(exc).__name__
-    else:
+def _both(first: ToolObserver | None, second: ToolObserver | None) -> ToolObserver | None:
+    """Наблюдатель, сообщающий о вызове обоим (None — никого)."""
+    observers = [o for o in (first, second) if o is not None]
+    if not observers:
         return None
-    _log.warning("Исполнитель «%s» не прогрелся: %s", member_id, error)
-    return error
+
+    def observe(use: ToolUse) -> None:
+        for observer in observers:
+            observer(use)
+
+    return observe

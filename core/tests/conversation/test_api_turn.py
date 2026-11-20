@@ -17,11 +17,14 @@ from smartesp.contracts import (
     ChatMessage,
     ExecutorError,
     Question,
+    ReplyPart,
     ToolCall,
 )
 from smartesp.conversation import History, Orchestrator, asking
 from smartesp.conversation.asking import BUSY, FAILED_PHRASE, LATE_PHRASE, NOT_HEARD
 from smartesp.conversation.prompt import CONTEXT_HEAD
+from smartesp.network import ExecutorNetwork, Member
+from smartesp.network.guard import NO_TOOL_PHRASE
 
 CHANNEL = "[канал] Telegram: вопрос не с колонки, ответ прочитают текстом"
 VOICE = b"\x01\x00" * 1600
@@ -303,3 +306,27 @@ async def test_api_turn_keeps_tool_calls_in_history() -> None:
         ChatMessage("tool", "Уточни: сухая или варёная?", tool_name="food_log"),
         ChatMessage("assistant", "Сухая или варёная?"),
     ]
+
+
+async def test_guard_mark_goes_to_turn_finished() -> None:
+    sink = RecordingSink()
+    executor = FakeExecutor([ReplyPart("Нет доступа к освещению.", guard="retried")])
+    await Setup(executor, events=sink).orchestrator.ask(telegram("Включи свет"))
+    assert finished(sink)["guard"] == "retried"
+
+
+async def test_guard_is_none_when_it_did_not_fire() -> None:
+    sink = RecordingSink()
+    await Setup(FakeExecutor(["Привет!"]), events=sink).orchestrator.ask(telegram("Привет"))
+    assert finished(sink)["guard"] is None
+
+
+async def test_network_guard_fallback_reaches_answer_and_feed() -> None:
+    sink = RecordingSink()
+    liar = FakeExecutor(["Свет на кухне включён."])  # и на повторный прогон — то же
+    network = ExecutorNetwork("dispatcher", {"dispatcher": Member(liar, "Диспетчер", (), True)})
+    setup = Setup(network, events=sink)
+    answer = await setup.orchestrator.ask(telegram("Включи свет на кухне"))
+    assert answer.text == NO_TOOL_PHRASE and len(liar.calls) == 2
+    assert finished(sink)["guard"] == "fallback"
+    assert setup.history.messages()[-1] == ChatMessage("assistant", NO_TOOL_PHRASE)  # ложь не в истории

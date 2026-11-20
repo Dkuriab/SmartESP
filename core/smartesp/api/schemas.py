@@ -184,6 +184,8 @@ class TurnOut(BaseModel):
     path: list[str] = []  # id исполнителей хода по порядку
     delegations: list[DelegationOut] = []
     tools: list[ToolUseOut] = []  # законченные вызовы инструментов по порядку
+    # страховка честности: повторный прогон после ложного «сделала» или честная фраза вместо ответа
+    guard: Literal["retried", "fallback"] | None = None
     # слово, прослушивание после вопроса, ядро само, вопрос через API
     origin: Literal["wake", "listen", "core", "api"] = "wake"
     source: str = ""  # ход через API: откуда вопрос ("telegram"); иначе пусто

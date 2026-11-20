@@ -44,6 +44,8 @@ def heard_data(turn: Turn) -> dict[str, object]:
 def finished_data(turn: Turn) -> dict[str, object]:
     """Данные turn_finished: время, вопрос, пометки, ответ, путь, передачи и инструменты, итог, задержки.
 
+    guard — сработала страховка честности ("retried", "fallback") или None.
+
     origin — откуда ход (wake, listen, api); у хода через API ещё source и person, у колонки они пусты.
     """
     return {
@@ -57,6 +59,7 @@ def finished_data(turn: Turn) -> dict[str, object]:
         "path": list(turn.path),
         "delegations": [delegation_data(handoff) for handoff in turn.delegations],
         "tools": list(turn.tools),
+        "guard": turn.guard or None,
         "stt_ms": _ms(turn.stt_ms),
         "first_text_ms": _ms(turn.first_text_ms),
         "first_audio_ms": _ms(turn.first_audio_ms),

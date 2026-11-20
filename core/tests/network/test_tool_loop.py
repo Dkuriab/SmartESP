@@ -71,8 +71,9 @@ async def test_text_before_call_is_given_before_the_call() -> None:
     box = FakeToolBox([NOTE])
     entry = ScriptedExecutor(["Записываю.", tool()], ["Записал."])
     stream = net(entry, box=box).run(QUESTION)
+    # «Записываю» — утверждение: страховка честности держит его до начала вызова (guard.py)
     assert await anext(stream) == ReplyPart("Записываю.")
-    assert await anext(stream) == BREAK and box.calls == []  # граница — до вызова
+    assert await anext(stream) == BREAK  # граница — до ответа инструмента
     assert [p async for p in stream] == [ReplyPart("Записал.")]
     assert len(box.calls) == 1
 

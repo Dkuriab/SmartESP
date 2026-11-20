@@ -58,12 +58,15 @@ class ReplyPart:
     """Кусок ответа: текст, вызов инструмента или передача задачи.
 
     failure — служебная фраза об ошибке: она звучит, а ход помечается ошибкой.
+    guard — сработала страховка честности: ответ получен повторным прогоном ("retried")
+    или заменён честной фразой ("fallback"); метка на первом куске такого ответа.
     """
 
     text: str = ""
     tool_call: ToolCall | None = None
     handoff: Handoff | None = None
     failure: bool = False
+    guard: Literal["", "retried", "fallback"] = ""
 
 
 class ExecutorError(Exception):

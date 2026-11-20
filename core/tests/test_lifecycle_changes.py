@@ -66,7 +66,8 @@ async def test_prompt_change_keeps_model_and_model_change_unloads_old(tmp_path: 
 
 async def test_stop_mid_release_unloads_old_and_new_models(tmp_path: Path) -> None:
     made: list[FakeOllama] = []
-    answer = ["Раз. ", "Два. ", "Три."]
+    # первое предложение — целое (≥ 20 символов): страховка честности отдаёт его сразу
+    answer = ["Раз, это первое предложение. ", "Два. ", "Три."]
     core = make_core(tmp_path, fake_kinds(ollama_factory(made, answer, delay=0.15)))
     start(core)
     await eventually(lambda: core.core.state == "ready")
