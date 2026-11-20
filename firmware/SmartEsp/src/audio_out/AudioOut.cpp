@@ -81,7 +81,15 @@ void AudioOut::setVolume(float volume) {
 }
 
 bool AudioOut::isPlaying() const {
-  return toneActive_ || toneRequest_ >= 0 || xStreamBufferBytesAvailable(queue_) > 0;
+  // Порядок важен: сначала очередь, потом queueStarted_. Задача сбрасывает queueStarted_
+  // только после того, как учла в playedBytes_ последний взятый из очереди кусок, —
+  // поэтому «не играет» гарантирует, что счётчик уже полный.
+  const bool queued = xStreamBufferBytesAvailable(queue_) > 0;
+  return queued || queueStarted_ || toneActive_ || toneRequest_ >= 0;
+}
+
+uint32_t AudioOut::playedBytes() const {
+  return playedBytes_;
 }
 
 size_t AudioOut::readReference(int16_t* dst, size_t samples) {
@@ -155,6 +163,7 @@ void AudioOut::run() {
       }
       if (queueStarted_) {
         n = xStreamBufferReceive(queue_, mono, CHUNK * sizeof(int16_t), 0) / sizeof(int16_t);
+        playedBytes_ += static_cast<uint32_t>(n * sizeof(int16_t));  // кусок уйдёт в I2S в этом же проходе
         if (n == 0) {
           queueStarted_ = false;  // очередь кончилась — снова ждём предзаполнения
         } else {

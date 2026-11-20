@@ -13,7 +13,7 @@
 #include "src/server_link/ServerLink.h"
 #include "src/session/Session.h"
 
-constexpr const char* FW_VERSION = "0.3.0";
+constexpr const char* FW_VERSION = "0.4.0";
 constexpr size_t AUDIO_BLOCK = 512;  // 32 мс
 
 AudioOut audioOut;
@@ -51,7 +51,10 @@ void loop() {
   wifiLink.loop();  // server_link обслуживает сеть в своей задаче
 
   session.setConnected(serverLink.isConnected());
-  session.setPlaybackActive(audioOut.isPlaying());
+  // Сначала «играет ли», потом счётчик: так итоговое played полное (см. AudioOut.h).
+  const bool playing = audioOut.isPlaying();
+  session.setPlayedBytes(audioOut.playedBytes());
+  session.setPlaybackActive(playing);
   session.loop(millis());
 
   size_t n;

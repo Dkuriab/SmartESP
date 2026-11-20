@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 MAX_TURN = 0xFFFFFFFF  # ход — uint32
+MAX_BYTES = 0xFFFFFFFF  # счётчик доигранного в played — uint32
 LOWEST_LEVEL = -1000.0  # громкость для NaN/бесконечности/переполнения: слово участвует, но проигрывает
 
 
@@ -57,7 +58,19 @@ class Busy:
     turn: int
 
 
-DeviceMessage = Hello | Wake | UtteranceEnd | BargeIn | PlaybackDone | Busy
+@dataclass(frozen=True)
+class Played:
+    """Сколько звука ответа хода turn колонка уже доиграла (прошивка 0.4.0, расширение протокола 3).
+
+    bytes — байт PCM ответа (16 кГц, 16 бит, моно), отданных динамику с начала ответа.
+    Приходит раз в ~0,5 с, пока звучит ответ, и последним перед playback_done.
+    """
+
+    turn: int
+    bytes: int
+
+
+DeviceMessage = Hello | Wake | UtteranceEnd | BargeIn | PlaybackDone | Busy | Played
 
 
 def _turn(data: dict[str, Any]) -> int | None:
@@ -132,6 +145,14 @@ def _parse_busy(data: dict[str, Any]) -> Busy | None:
     return None if turn is None else Busy(turn)
 
 
+def _parse_played(data: dict[str, Any]) -> Played | None:
+    turn = _turn(data)
+    count = data.get("bytes")
+    if turn is None or isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= MAX_BYTES:
+        return None
+    return Played(turn=turn, bytes=count)
+
+
 _PARSERS = {
     "hello": _parse_hello,
     "wake": _parse_wake,
@@ -139,6 +160,7 @@ _PARSERS = {
     "barge_in": _parse_barge_in,
     "playback_done": _parse_playback_done,
     "busy": _parse_busy,
+    "played": _parse_played,
 }
 
 

@@ -13,8 +13,9 @@
 // 0 — не хватило места.
 size_t encodeHello(const char* fwVersion, const char* deviceId, char* out, size_t capacity);
 
-// wake / utterance_end / barge_in / playback_done с полем turn
-// (reason для utterance_end, level для wake). 0 — не хватило места.
+// wake / utterance_end / barge_in / playback_done / busy / played с полем turn
+// (reason для utterance_end, level для wake, bytes для played). 0 — не хватило места.
+// played — расширение протокола 3: старое ядро неизвестный type пропускает.
 size_t encodeClientEvent(const ClientEvent& event, char* out, size_t capacity);
 
 // Разбирает команду сервера. false — не JSON, неизвестный type или не хватает полей.

@@ -24,6 +24,7 @@ struct Expect {
   UtteranceEndReason reason = UtteranceEndReason::Vad;
   Tone tone = Tone::Wake;
   float volume = 0;
+  uint32_t bytes = 0;  // для played
 };
 
 Expect sendEvent(ClientEventType event, uint32_t turn, UtteranceEndReason reason = UtteranceEndReason::Vad) {
@@ -31,6 +32,12 @@ Expect sendEvent(ClientEventType event, uint32_t turn, UtteranceEndReason reason
   e.event = event;
   e.turn = turn;
   e.reason = reason;
+  return e;
+}
+
+Expect played(uint32_t turn, uint32_t bytes) {
+  Expect e = sendEvent(ClientEventType::Played, turn);
+  e.bytes = bytes;
   return e;
 }
 
@@ -55,7 +62,8 @@ bool matches(const Action& a, const Expect& e) {
   switch (e.type) {
     case ActionType::SendEvent:
       return a.event.type == e.event && a.event.turn == e.turn &&
-             (e.event != ClientEventType::UtteranceEnd || a.event.reason == e.reason);
+             (e.event != ClientEventType::UtteranceEnd || a.event.reason == e.reason) &&
+             (e.event != ClientEventType::Played || a.event.bytes == e.bytes);
     case ActionType::PlayTone: return a.tone == e.tone;
     case ActionType::SetActiveTurn: return a.turn == e.turn;
     case ActionType::SetVolume: return a.volume == e.volume;
@@ -204,7 +212,7 @@ TEST(reply_flow) {
   CHECK(drain(session).empty());
   CHECK(session.state() == SessionState::Speaking);
   session.setPlaybackActive(false);
-  CHECK(sameActions(drain(session), {setActiveTurn(0), sendEvent(ClientEventType::PlaybackDone, 1)}));
+  CHECK(sameActions(drain(session), {played(1, 0), setActiveTurn(0), sendEvent(ClientEventType::PlaybackDone, 1)}));
   CHECK(session.state() == SessionState::Idle);
 }
 
@@ -213,7 +221,7 @@ TEST(reply_end_before_playback_started) {
   session.onServerCommand(server(ServerCommandType::ReplyStart, 1));
   session.onServerCommand(server(ServerCommandType::ReplyEnd, 1));
   session.loop(2000);
-  CHECK(sameActions(drain(session), {setActiveTurn(0), sendEvent(ClientEventType::PlaybackDone, 1)}));
+  CHECK(sameActions(drain(session), {played(1, 0), setActiveTurn(0), sendEvent(ClientEventType::PlaybackDone, 1)}));
   CHECK(session.state() == SessionState::Idle);
 }
 
@@ -364,7 +372,8 @@ TEST(announce_from_idle) {
   session.setPlaybackActive(true);
   session.onServerCommand(server(ServerCommandType::ReplyEnd, 0x80000001u));
   session.setPlaybackActive(false);
-  CHECK(sameActions(drain(session), {setActiveTurn(0), sendEvent(ClientEventType::PlaybackDone, 0x80000001u)}));
+  CHECK(sameActions(drain(session), {played(0x80000001u, 0), setActiveTurn(0),
+                                     sendEvent(ClientEventType::PlaybackDone, 0x80000001u)}));
   CHECK(session.state() == SessionState::Idle);
 }
 
@@ -475,4 +484,90 @@ TEST(thinking_extends_waiting) {
   CHECK(session.state() == SessionState::Waiting);
   session.loop(1000 + 29100);
   CHECK(sameActions(drain(session), {playTone(Tone::Error), setActiveTurn(0)}));
+}
+
+// ---------- played: сколько ответа доиграно ----------
+
+// Раз в 500 мс, пока Speaking; отсчёт времени и байт — от начала ответа.
+TEST(played_cadence_while_speaking) {
+  Session session = waitingSession(1000);
+  session.setPlayedBytes(0);
+  session.loop(1400);
+  session.onServerCommand(server(ServerCommandType::ReplyStart, 1));
+  CHECK(drain(session).empty());
+  session.setPlayedBytes(3200);
+  session.loop(1899);
+  CHECK(drain(session).empty());
+  session.loop(1900);
+  CHECK(sameActions(drain(session), {played(1, 3200)}));
+  session.loop(2399);
+  CHECK(drain(session).empty());
+  session.setPlayedBytes(16000);
+  session.loop(2400);
+  CHECK(sameActions(drain(session), {played(1, 16000)}));
+  CHECK(session.state() == SessionState::Speaking);
+}
+
+// Байты считаются с начала ответа, переполнение счётчика audio_out не мешает.
+TEST(played_counts_from_reply_start) {
+  Session session = waitingSession(1000);
+  session.setPlayedBytes(0xFFFFFF00u);  // счётчик audio_out с прошлых ответов
+  session.onServerCommand(server(ServerCommandType::ReplyStart, 1));
+  session.setPlayedBytes(0x100u);
+  session.loop(1500);
+  CHECK(sameActions(drain(session), {played(1, 0x200u)}));
+}
+
+// Вне Speaking played не шлётся.
+TEST(played_only_while_speaking) {
+  Session listening = listeningSession(1000);
+  listening.onVoiceEvent(voice(VoiceEventType::SpeechStart));
+  listening.setPlayedBytes(6400);
+  listening.loop(1000 + 2000);
+  CHECK(drain(listening).empty());
+
+  Session waiting = waitingSession(1000);
+  waiting.setPlayedBytes(6400);
+  waiting.loop(1000 + 2000);
+  CHECK(drain(waiting).empty());
+
+  Session idle = connectedSession(1000);
+  idle.setPlayedBytes(6400);
+  idle.loop(1000 + 2000);
+  CHECK(drain(idle).empty());
+}
+
+// Итоговое played — перед playback_done, с последним значением счётчика.
+TEST(played_final_before_playback_done) {
+  Session session = speakingSession(1000);
+  session.setPlaybackActive(true);
+  session.setPlayedBytes(9600);
+  session.loop(1200);
+  session.onServerCommand(server(ServerCommandType::ReplyEnd, 1));
+  CHECK(drain(session).empty());
+  session.setPlayedBytes(12800);
+  session.setPlaybackActive(false);
+  CHECK(sameActions(drain(session), {played(1, 12800), setActiveTurn(0), sendEvent(ClientEventType::PlaybackDone, 1)}));
+  CHECK(session.state() == SessionState::Idle);
+  session.loop(1000 + 5000);
+  CHECK(drain(session).empty());
+}
+
+// Обрыв ответа (перебивание, отмена, stop_playback) — без played.
+TEST(played_not_sent_on_interrupt) {
+  Session barge = speakingSession(1000);
+  barge.setPlayedBytes(3200);
+  barge.onVoiceEvent(voice(VoiceEventType::WakeWord));
+  CHECK(sameActions(drain(barge), {simple(ActionType::StopPlayback), sendEvent(ClientEventType::BargeIn, 1),
+                                   playTone(Tone::Wake), setActiveTurn(2), sendEvent(ClientEventType::Wake, 2),
+                                   simple(ActionType::StartCapture)}));
+  barge.loop(1000 + 600);
+  CHECK(drain(barge).empty());
+
+  Session cancelled = speakingSession(1000);
+  cancelled.setPlayedBytes(3200);
+  cancelled.onServerCommand(server(ServerCommandType::CancelTurn, 1));
+  CHECK(sameActions(drain(cancelled), {simple(ActionType::StopPlayback), setActiveTurn(0)}));
+  cancelled.loop(1000 + 600);
+  CHECK(drain(cancelled).empty());
 }
