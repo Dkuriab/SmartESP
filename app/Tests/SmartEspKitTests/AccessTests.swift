@@ -193,15 +193,6 @@ private let documentsRepo = "Documents/SmartEsp"
         #expect(accessSettingsURL.absoluteString
             == "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders")
     }
-
-    @Test func externalLinks() {
-        #expect(opensExternally(URL(string: "https://ollama.com/library")!))
-        #expect(opensExternally(URL(string: "mailto:a@b.c")!))
-        #expect(!opensExternally(URL(string: "http://127.0.0.1:8765/settings")!))
-        #expect(!opensExternally(URL(string: "http://localhost:8765/")!))
-        #expect(!opensExternally(URL(string: "about:blank")!))
-        #expect(!opensExternally(URL(string: "blob:http://127.0.0.1:8765/abc")!))
-    }
 }
 
 @MainActor @Suite struct FileAccessProbeTests {

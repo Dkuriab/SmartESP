@@ -103,23 +103,36 @@ import WebKit
         retryLoad(after: error)
     }
 
+    /// Окно показывает только ядро: внешние ссылки — в браузере, file:// и прочее —
+    /// отмена (брошенный на окно файл иначе заменил бы интерфейс своим просмотром).
     func webView(
         _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction
     ) async -> WKNavigationActionPolicy {
-        guard let url = navigationAction.request.url, opensExternally(url) else { return .allow }
-        NSWorkspace.shared.open(url)
-        return .cancel
+        follow(navigationAction.request) ? .allow : .cancel
     }
 
-    /// `target=_blank` и `window.open`: внешние адреса — в браузере, свои — в этом же окне.
+    /// `target=_blank` и `window.open`: внешние адреса — в браузере, адреса ядра — в этом же окне.
     func webView(
         _ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
         for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
-        if let url = navigationAction.request.url {
-            if opensExternally(url) { NSWorkspace.shared.open(url) } else { webView.load(navigationAction.request) }
-        }
+        if follow(navigationAction.request) { webView.load(navigationAction.request) }
         return nil
+    }
+
+    /// Решение о переходе: `true` — загрузить в окне; внешние открываются в браузере.
+    private func follow(_ request: URLRequest) -> Bool {
+        var core: URL?
+        if case let .page(url) = shown { core = url }
+        switch navigationDecision(for: request.url, core: core) {
+        case .allow:
+            return true
+        case .openExternally:
+            if let url = request.url { NSWorkspace.shared.open(url) }
+            return false
+        case .cancel:
+            return false
+        }
     }
 
     /// Ядро отвечает на `status`, а страница не загрузилась — пробуем ещё раз через 1 с.
