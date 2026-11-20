@@ -9,6 +9,7 @@ from smartesp.contracts import (
     Analyzer,
     Annotation,
     Executor,
+    GuardTag,
     Handoff,
     SpeechToText,
     TextToSpeech,
@@ -73,7 +74,7 @@ class Turn:
     exchanges: list[ToolExchange] = field(default_factory=list[ToolExchange])  # те же вызовы для истории
     source: str = ""  # ход через API: откуда вопрос ("telegram"); у колонки — пусто
     person: str = ""  # ход через API: кто спрашивает; неизвестно — пусто
-    guard: str = ""  # страховка честности: "retried" (повторный прогон) или "fallback" (честная фраза)
+    guard: GuardTag = ""  # страховка честности: "retried" (повторный прогон) или "fallback" (честная фраза)
 
     def elapsed_ms(self) -> float:
         """Сколько миллисекунд прошло с прихода реплики."""

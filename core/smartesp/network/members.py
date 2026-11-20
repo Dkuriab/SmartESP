@@ -13,7 +13,7 @@ from .rules import Target, delegate_tool
 if TYPE_CHECKING:
     from .network import Member
 
-_log = logging.getLogger("smartesp.network.network")  # журнал сети: прогрев — её часть
+_log = logging.getLogger(__name__)
 
 
 def member_tools(

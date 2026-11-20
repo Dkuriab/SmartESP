@@ -9,6 +9,8 @@ from typing import Literal, Protocol, runtime_checkable
 DELEGATE_TOOL = "delegate"  # имя инструмента передачи задачи другому исполнителю
 # уровень рассуждения модели перед ответом: off — не рассуждать (если модель умеет)
 type Reasoning = Literal["off", "low", "medium", "high"]
+# метка страховки честности: ответ повторного прогона или честная фраза вместо ответа ("" — нет)
+type GuardTag = Literal["", "retried", "fallback"]
 
 
 @dataclass(frozen=True)
@@ -66,7 +68,7 @@ class ReplyPart:
     tool_call: ToolCall | None = None
     handoff: Handoff | None = None
     failure: bool = False
-    guard: Literal["", "retried", "fallback"] = ""
+    guard: GuardTag = ""
 
 
 class ExecutorError(Exception):
