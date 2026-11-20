@@ -16,6 +16,7 @@ const char* eventTypeName(ClientEventType type) {
     case ClientEventType::BargeIn: return "barge_in";
     case ClientEventType::PlaybackDone: return "playback_done";
     case ClientEventType::Busy: return "busy";
+    case ClientEventType::Played: return "played";
   }
   return "";
 }
@@ -87,6 +88,9 @@ size_t encodeClientEvent(const ClientEvent& event, char* out, size_t capacity) {
   }
   if (event.type == ClientEventType::Wake) {
     doc["level"] = roundf(event.level * 10.0f) / 10.0f;  // дБFS, одна цифра после запятой
+  }
+  if (event.type == ClientEventType::Played) {
+    doc["bytes"] = event.bytes;
   }
   return serializeInto(doc, out, capacity);
 }

@@ -46,7 +46,8 @@ enum class ClientEventType : uint8_t {
   UtteranceEnd,
   BargeIn,
   PlaybackDone,
-  Busy,  // ответ на announce/listen, когда колонка занята
+  Busy,    // ответ на announce/listen, когда колонка занята
+  Played,  // сколько звука ответа уже доиграно (раз в ~0,5 с и перед playback_done)
 };
 
 struct ClientEvent {
@@ -54,6 +55,7 @@ struct ClientEvent {
   uint32_t turn;              // номер хода
   UtteranceEndReason reason;  // только для UtteranceEnd
   float level;                // дБFS, только для Wake
+  uint32_t bytes;             // только для Played: байт PCM ответа хода, отданных динамику
 };
 
 // ---------- команды сервер → ESP ----------

@@ -79,6 +79,23 @@ TEST(encode_barge_in) {
   CHECK_EQ(doc["turn"].as<int>(), 4);
 }
 
+TEST(encode_played) {
+  ClientEvent event{ClientEventType::Played, 0x80000001u, UtteranceEndReason::Vad, 0.0f, 0xFFFFFFF0u};
+  JsonDocument doc = encodeAndParse(event);
+  CHECK_EQ(std::string(doc["type"] | ""), "played");
+  CHECK_EQ(doc["turn"].as<uint32_t>(), 0x80000001u);
+  CHECK_EQ(doc["bytes"].as<uint32_t>(), 0xFFFFFFF0u);
+  CHECK(doc["reason"].isNull());
+  CHECK(doc["level"].isNull());
+}
+
+TEST(bytes_only_in_played) {
+  ClientEvent event{ClientEventType::PlaybackDone, 2, UtteranceEndReason::Vad, 0.0f, 640};
+  JsonDocument doc = encodeAndParse(event);
+  CHECK_EQ(std::string(doc["type"] | ""), "playback_done");
+  CHECK(doc["bytes"].isNull());
+}
+
 TEST(encode_playback_done) {
   JsonDocument doc = encodeAndParse({ClientEventType::PlaybackDone, 5, UtteranceEndReason::Vad});
   CHECK_EQ(std::string(doc["type"] | ""), "playback_done");
