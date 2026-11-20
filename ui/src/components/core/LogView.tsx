@@ -1,5 +1,5 @@
 // Живой журнал ядра: фильтр «Ошибки / Всё», прокрутка за новыми строками; прокрутил вверх — пауза.
-import { useLayoutEffect, useRef, useState } from 'react'
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { LogEntry } from '../../state/logs'
 import { isProblem } from '../../state/logs'
 
@@ -29,9 +29,11 @@ function useFollow(key: unknown) {
   return { box, follow, onScroll, resume: () => setFollow(true) }
 }
 
-export default function LogView({ lines, online }: Props) {
+/** memo: опрос status и события перерисовывают вкладку, а журнал — до 1000 строк. */
+export default memo(function LogView({ lines, online }: Props) {
   const [filter, setFilter] = useState<Filter>('all')
-  const shown = filter === 'all' ? lines : lines.filter(isProblem)
+  // тот же массив, пока строки не менялись: иначе прокрутка срабатывала бы на каждой отрисовке
+  const shown = useMemo(() => (filter === 'all' ? lines : lines.filter(isProblem)), [lines, filter])
   const { box, follow, onScroll, resume } = useFollow(shown)
   return (
     <section className="core-log" aria-label="Журнал">
@@ -45,7 +47,8 @@ export default function LogView({ lines, online }: Props) {
           ))}
         </div>
       </div>
-      <div className="core-log-lines" ref={box} onScroll={onScroll} data-testid="log-lines">
+      {/* tabIndex: в Safari и WKWebView прокрутка иначе недоступна с клавиатуры; журнал не зачитывается */}
+      <div className="core-log-lines" ref={box} onScroll={onScroll} data-testid="log-lines" tabIndex={0} role="log" aria-live="off" aria-label="Строки журнала">
         {shown.length === 0 && <div className="empty">{filter === 'all' ? 'Журнал пуст' : 'Ошибок нет'}</div>}
         {shown.map((line) => (
           <pre key={line.id} className={`core-line level-${line.level.toLowerCase()}`}>
@@ -60,4 +63,4 @@ export default function LogView({ lines, online }: Props) {
       )}
     </section>
   )
-}
+})

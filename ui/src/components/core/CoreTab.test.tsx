@@ -122,6 +122,8 @@ describe('вкладка «Ядро»', () => {
     expect(screen.queryByText('Ядро готово')).not.toBeInTheDocument()
     expect(screen.getByText('Ollama упала')).toHaveClass('level-error')
     const box = screen.getByTestId('log-lines')
+    expect(screen.getByRole('log', { name: 'Строки журнала' })).toBe(box)
+    expect(box).toHaveAttribute('tabindex', '0') // прокрутка с клавиатуры в Safari и WKWebView
     Object.defineProperty(box, 'scrollHeight', { value: 1000, configurable: true })
     Object.defineProperty(box, 'clientHeight', { value: 200, configurable: true })
     box.scrollTop = 100
