@@ -7,6 +7,7 @@ from pathlib import Path
 
 from core_harness import (
     HEADERS,
+    QUIET_WHISPER,
     TOOLS_OLLAMA,
     ask,
     client,
@@ -38,7 +39,7 @@ async def next_change(events: Subscription) -> dict[str, object]:
 
 async def test_prompt_change_keeps_model_and_model_change_unloads_old(tmp_path: Path) -> None:
     made: list[FakeOllama] = []
-    core = make_core(tmp_path, fake_kinds(ollama_factory(made)))
+    core = make_core(tmp_path, fake_kinds(ollama_factory(made)), QUIET_WHISPER)
     start(core)
     await eventually(lambda: core.core.state == "ready")
     applied = core.bus.subscribe()

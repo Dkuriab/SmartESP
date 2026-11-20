@@ -6,7 +6,7 @@ import pytest
 
 from fakes.fake_executor import FakeOllama
 from fakes.no_connectors import NO_DEFAULT_CONNECTORS
-from smartesp.config import Config, ExecutorConfig
+from smartesp.config import Config, ExecutorConfig, StageConfig
 from smartesp.config.connectors import REPO_DIR
 from smartesp.config.models import BIG_WHEN, DelegateLink
 from smartesp.contracts import Executor, ToolResult, ToolSpec
@@ -37,7 +37,7 @@ def kinds(made: list[FakeOllama]) -> Kinds:
 
 async def test_default_settings_build_network_with_big_and_rule() -> None:
     made: list[FakeOllama] = []
-    config = Config()
+    config = Config(stages=[StageConfig(kind="whisper_detect", quiet_reply=True), StageConfig(kind="clock")])
     analyze, network = await build_answering(config, kinds(made), with_tools)
     target = Target("big", "Большая модель", BIG_WHEN)
     assert list(network.members) == ["dispatcher", "big"] and network.members["dispatcher"].targets == (
@@ -111,3 +111,9 @@ def test_connector_specs_follow_settings() -> None:
         ConnectorSpec("a", "А", "x", ("1", "2"), {"K": "v"}, True),
         ConnectorSpec("b", "Б", "y", (), {}, False),
     ]
+
+
+async def test_default_settings_have_no_whisper_style_rule() -> None:
+    made: list[FakeOllama] = []
+    await build_answering(Config(), kinds(made), with_tools)
+    assert all("[style:quiet]" not in m.prompt for m in made)

@@ -44,3 +44,8 @@ def test_history_list_is_not_changed() -> None:
     history = list(HISTORY)
     build_messages([CLOCK, WHISPER], history, "Привет", "Кухня")
     assert history == HISTORY
+
+
+def test_feed_only_annotation_does_not_reach_the_model() -> None:
+    feed_only = Annotation("сказано шёпотом", "whisper_detect", to_model=False)
+    assert build_messages([feed_only], [], "Привет", "") == [ChatMessage("user", "Привет")]

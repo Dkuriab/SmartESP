@@ -51,6 +51,7 @@ async def test_noise_like_whisper_is_annotated() -> None:
     note = annotations[0]
     assert note.source == "whisper_detect"
     assert "шёпот" in note.text
+    assert not note.to_model  # по умолчанию тихого ответа нет: пометка только в ленту
     assert isinstance(note.data["voiced_ratio"], float)
     assert note.data["voiced_ratio"] < 0.15
 
@@ -98,3 +99,21 @@ async def test_coloured_noise_is_whisper() -> None:
     rng = np.random.default_rng(3)
     coloured = np.convolve(rng.normal(0.0, 0.3, RATE), np.ones(8) / 8, "same") * 3
     assert len(await WhisperDetect().analyze(utterance(to_pcm(coloured)))) == 1
+
+
+def test_quiet_reply_off_by_default_no_hint() -> None:
+    assert WhisperDetect().prompt_hint == ""
+
+
+async def test_quiet_reply_on_tells_the_model() -> None:
+    stage = WhisperDetect(quiet_reply=True)
+    assert "[style:quiet]" in stage.prompt_hint
+    (note,) = await stage.analyze(utterance(whispered()))
+    assert note.to_model and "тихо" in note.text
+
+
+async def test_whisper_never_changes_the_text() -> None:
+    whisper = utterance(whispered())
+    for stage in (WhisperDetect(), WhisperDetect(quiet_reply=True)):
+        (note,) = await stage.analyze(whisper)
+        assert whisper.text == "вопрос" and "вопрос" not in note.text

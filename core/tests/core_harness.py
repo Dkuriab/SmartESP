@@ -23,6 +23,10 @@ from smartesp.wiring import Assembly, Ollama, assemble
 TOKEN = "test-token"
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 FAST_ARBITRATION = "arbitration:\n  window_ms: 20\n  late_ms: 200\n"
+# шёпот с тихим ответом: его правило «[style:quiet]» видно в промптах (по умолчанию правил нет)
+QUIET_WHISPER = (
+    FAST_ARBITRATION + "stages:\n  - kind: whisper_detect\n    quiet_reply: true\n  - kind: clock\n"
+)
 FRAME = bytes(1024)
 
 

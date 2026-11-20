@@ -84,6 +84,9 @@ class StageConfig(BaseModel):
 
     kind: str
     timeout_ms: int = 300
+    # только для whisper_detect: отвечать тише на шёпот. По умолчанию нет: ни один голос
+    # не умеет настоящий шёпот, «тихо» — просто громкость ниже; шёпот всё равно распознаётся
+    quiet_reply: bool = False
 
 
 class HistoryConfig(BaseModel):

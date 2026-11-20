@@ -8,6 +8,7 @@ from pathlib import Path
 from core_harness import (
     FAST_ARBITRATION,
     HEADERS,
+    QUIET_WHISPER,
     TOOLS_OLLAMA,
     client,
     connect,
@@ -75,7 +76,7 @@ async def test_executors_and_stages_together_build_one_network(tmp_path: Path) -
 
 
 async def test_config_shows_dispatcher_prompt_with_stage_rules(tmp_path: Path) -> None:
-    core = make_core(tmp_path, fake_kinds(ollama_factory([])))
+    core = make_core(tmp_path, fake_kinds(ollama_factory([])), QUIET_WHISPER)
     entry = core.config.entry_executor()
     async with client(core) as http:
         prompt = (await http.get("/api/v1/config", headers=HEADERS)).json()["dispatcher_prompt"]
@@ -93,7 +94,7 @@ async def test_config_shows_dispatcher_prompt_with_stage_rules(tmp_path: Path) -
 
 
 async def test_config_shows_prompts_of_all_executors_with_rule(tmp_path: Path) -> None:
-    core = make_core(tmp_path, fake_kinds(ollama_factory([])), ollama=TOOLS_OLLAMA)
+    core = make_core(tmp_path, fake_kinds(ollama_factory([])), QUIET_WHISPER, ollama=TOOLS_OLLAMA)
     start(core)
     await eventually(lambda: core.core.state == "ready")  # сборка сети узнала возможности моделей
     async with client(core) as http:

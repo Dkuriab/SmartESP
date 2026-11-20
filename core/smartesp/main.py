@@ -60,7 +60,7 @@ EXECUTOR_KINDS: dict[str, Callable[[ExecutorConfig], Executor]] = {
     "ollama": lambda c: OllamaExecutor(c.model, c.system_prompt, c.keep_alive, id=c.id),
 }
 STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
-    "whisper_detect": lambda c: WhisperDetect(),
+    "whisper_detect": lambda c: WhisperDetect(c.quiet_reply),
     "clock": lambda c: Clock(),
 }
 KINDS = Kinds(STT_KINDS, TTS_KINDS, EXECUTOR_KINDS, STAGE_KINDS)

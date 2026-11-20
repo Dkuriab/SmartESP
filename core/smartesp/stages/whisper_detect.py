@@ -1,4 +1,11 @@
-"""Обработчик «шёпот»: у шёпота почти нет голосового тона (колебаний связок)."""
+"""Обработчик «шёпот»: у шёпота почти нет голосового тона (колебаний связок).
+
+Тихий ответ на шёпот (quiet_reply) по умолчанию выключен: ни один голос не умеет
+настоящий шёпот, только тише, а правило «[style:quiet]» в промпте модель применяла и
+без пометки (проба: 5 из 72 обычных ответов с меткой). Выключен — пометка «сказано
+шёпотом» идёт только в ленту и журнал, модели не видна. Текст вопроса обработчик не
+меняет никогда: распознавание шёпота идёт по тем же правилам, что и обычной речи.
+"""
 
 import asyncio
 import logging
@@ -17,6 +24,7 @@ VOICED_CORRELATION = 0.5  # кадр с тоном — автокорреляц�
 MIN_ACTIVE_FRAMES = 5  # меньше 160 мс звука — не судим
 WHISPER_VOICED_RATIO = 0.15  # шёпот — кадров с тоном меньше этой доли
 NOTE = "Человек говорит шёпотом — отвечай тихо и коротко"
+FEED_NOTE = "Сказано шёпотом (тихий ответ выключен)"  # без quiet_reply: только лента
 PROMPT_HINT = (
     "Если в сообщении есть пометка, что человек шепчет, начни ответ точно с [style:quiet]. "
     "Во всех остальных случаях никаких меток не пиши."
@@ -72,7 +80,11 @@ class WhisperDetect:
     """Добавляет пометку, если фраза сказана шёпотом."""
 
     name = "whisper_detect"
-    prompt_hint = PROMPT_HINT
+
+    def __init__(self, quiet_reply: bool = False) -> None:
+        """quiet_reply — просить модель ответить тише (правило в промпте и пометка модели)."""
+        self._quiet_reply = quiet_reply
+        self.prompt_hint = PROMPT_HINT if quiet_reply else ""
 
     async def analyze(self, utterance: Utterance) -> list[Annotation]:
         """Пометка «шёпот» или пустой список; доля тона пишется в журнал для настройки порогов."""
@@ -83,4 +95,6 @@ class WhisperDetect:
         if not whisper:
             return []
         data: dict[str, object] = {"voiced_ratio": ratio, "active_frames": active}
-        return [Annotation(text=NOTE, source=self.name, data=data)]
+        if self._quiet_reply:
+            return [Annotation(text=NOTE, source=self.name, data=data)]
+        return [Annotation(text=FEED_NOTE, source=self.name, data=data, to_model=False)]
