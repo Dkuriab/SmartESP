@@ -341,3 +341,21 @@ def test_executor_can_learn_thinking_capability() -> None:
     from smartesp.contracts import ChoosesThinking
 
     assert isinstance(make(FakeClient()), ChoosesThinking)
+
+
+async def test_rejection_is_retried_even_if_a_parallel_request_already_dropped_think() -> None:
+    gate = asyncio.Event()
+
+    class SlowReject(NoThinkingClient):
+        async def _reject(self) -> AsyncIterator[dict[str, Any]]:
+            await gate.wait()  # ответ 400 на ход приходит после того, как прогрев уже сбросил think
+            raise ollama.ResponseError('"gemma3" does not support thinking', 400)
+            yield {}  # pragma: no cover — генератор
+
+    c = SlowReject(["Да."])
+    ex = OllamaExecutor("gemma3-race", "Ты помощник.", "30m", c, reasoning="low")
+    turn = asyncio.ensure_future(collect(ex))
+    await asyncio.sleep(0)
+    await ex.warm_up()  # 400 → think=False
+    gate.set()
+    assert await turn == ["Да."]

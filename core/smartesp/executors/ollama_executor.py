@@ -154,9 +154,12 @@ class OllamaExecutor:
                 self._reasoning,
             )
 
-    def _think_rejected(self, exc: ollama.ResponseError) -> bool:
-        """True, если Ollama отклонила think (400 «… does not support thinking»): дальше без него."""
-        if self._think is False or exc.status_code != 400 or "think" not in str(exc.error).lower():
+    def _think_rejected(self, exc: ollama.ResponseError, sent: bool | str) -> bool:
+        """True, если Ollama отклонила think, отправленный в этом запросе (sent): дальше без него.
+
+        Сравнение с отправленным, а не с текущим: параллельный запрос (прогрев) мог уже сбросить think.
+        """
+        if sent is False or exc.status_code != 400 or "think" not in str(exc.error).lower():
             return False
         self._without_thinking(f"Ollama: {exc.error}")
         return True
@@ -185,14 +188,14 @@ class OllamaExecutor:
         payload += [_message_payload(m) for m in messages]
         extra: dict[str, Any] = {"tools": [_tool_payload(t) for t in tools]} if tools else {}
         try:
-            gave = False
+            gave, sent = False, self._think
             try:
                 async with aclosing(self._chat(payload, extra)) as parts:
                     async for part in parts:
                         gave = True
                         yield part
             except ollama.ResponseError as exc:
-                if gave or not self._think_rejected(exc):
+                if gave or not self._think_rejected(exc, sent):
                     raise
                 async with aclosing(self._chat(payload, extra)) as parts:  # один повтор, уже без think
                     async for part in parts:
@@ -225,11 +228,12 @@ class OllamaExecutor:
         Отклонённый think — как в ходе: один повтор без него. Кидает ExecutorError, если Ollama
         недоступна или модели нет.
         """
+        sent = self._think
         try:
             try:
                 await self._generate_empty()
             except ollama.ResponseError as exc:
-                if not self._think_rejected(exc):
+                if not self._think_rejected(exc, sent):
                     raise
                 await self._generate_empty()
         except (httpx.HTTPError, ConnectionError, ollama.ResponseError) as exc:
