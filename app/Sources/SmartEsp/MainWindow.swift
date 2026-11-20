@@ -120,6 +120,26 @@ import WebKit
         return nil
     }
 
+    /// `<input type="file">` («Проиграть файл…»): без этого WebKit молча считает выбор отменённым.
+    func webView(
+        _ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters,
+        initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor ([URL]?) -> Void
+    ) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        // Типы из accept WebKit наружу не отдаёт: файл проверяет ядро (вид и размер)
+        let finish = { (response: NSApplication.ModalResponse) in
+            completionHandler(response == .OK ? panel.urls : nil)
+        }
+        if window.isVisible {
+            panel.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            panel.begin(completionHandler: finish)
+        }
+    }
+
     /// Решение о переходе: `true` — загрузить в окне; внешние открываются в браузере.
     private func follow(_ request: URLRequest) -> Bool {
         var core: URL?
