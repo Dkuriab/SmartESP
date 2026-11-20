@@ -1,0 +1,42 @@
+[project]
+name = "web-mcp"
+version = "0.1.0"
+description = "MCP-коннектор SmartESP: интернет (поиск DuckDuckGo и чтение страниц)"
+requires-python = ">=3.12,<3.13"
+dependencies = ["mcp==2.3.0", "httpx==0.28.1", "httpcore==1.0.9", "selectolax==1.0.2"]
+
+[project.scripts]
+web-mcp = "web_mcp.server:main"
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["web_mcp"]
+
+[dependency-groups]
+dev = [
+    "pytest==9.2.0",
+    "pytest-asyncio==1.5.0",
+    "ruff==0.17.5",
+    "pyright==1.1.414",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.pyright]
+include = ["web_mcp", "tests"]
