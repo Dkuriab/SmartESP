@@ -69,13 +69,18 @@ function watchOllama(dispatch: Dispatch, reloadModels: () => void): Dispatch {
   }
 }
 
-/** Перечитывание status по таймеру, пока связь есть. */
+/**
+ * Перечитывание status по таймеру, пока связь есть и страница видна (скрытая вкладка
+ * не шумит журналом ядра). Запросы не копятся: загрузчик не начинает второй, пока идёт первый.
+ */
 function statusPoll(load: Loader) {
   let timer: ReturnType<typeof setInterval> | undefined
   const stop = () => clearInterval(timer)
   const start = () => {
     stop()
-    timer = setInterval(() => load(['status']), STATUS_POLL_MS)
+    timer = setInterval(() => {
+      if (!document.hidden) load(['status'])
+    }, STATUS_POLL_MS)
   }
   return { start, stop }
 }

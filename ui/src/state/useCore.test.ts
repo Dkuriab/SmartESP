@@ -132,6 +132,29 @@ describe('useCore', () => {
     }
   })
 
+  it('скрытая вкладка status не опрашивает', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    const flush = () => act(() => new Promise((r) => setTimeout(r, 0)))
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
+    try {
+      renderHook(() => useCore())
+      await flush()
+      act(() => socket().onOpen())
+      await flush()
+      const before = GET.mock.calls.length
+      vi.advanceTimersByTime(15_000)
+      await flush()
+      expect(GET).toHaveBeenCalledTimes(before)
+      hidden.mockReturnValue(false)
+      vi.advanceTimersByTime(5_000)
+      await flush()
+      expect(paths().slice(before)).toEqual(['/api/v1/status'])
+    } finally {
+      hidden.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
   it('Ollama снова доступна — список моделей перечитывается', async () => {
     let reachable = false
     GET.mockImplementation((path: string) => {
