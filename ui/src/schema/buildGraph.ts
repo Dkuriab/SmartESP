@@ -21,10 +21,15 @@ const CONNECTOR_GAP = 56
 const EXECUTOR_LIVE = { thinking: 'думает…', speaking: 'говорит' } as const
 const HINT = 'Колонок пока нет: включите колонку, она появится сама'
 
+/** Путь показывается только у хода, выбранного в ленте: последний ход сам не подсвечивается. */
 function pickTurn(state: CoreState): Turn | undefined {
   const { turns, selectedTurnId } = state
-  return turns.find((t) => t.turn_id === selectedTurnId) ?? turns[0]
+  return selectedTurnId === null ? undefined : turns.find((t) => t.turn_id === selectedTurnId)
 }
+
+/** Ключи гаснущей живой подсветки: «executor:<id>», «connector:<id>». */
+export type Fading = ReadonlySet<string>
+const NONE: Fading = new Set()
 
 function column(count: number, x: number, i: number, gap = GAP): { x: number; y: number } {
   return { x, y: (i - (count - 1) / 2) * gap }
@@ -104,11 +109,10 @@ function executorEdges(executors: ExecutorItem[], path: string[], noTools: Set<s
         ...r,
         label: text ? shortWhen(text) : undefined,
         data: { lit, strong: false, inactive: !l.active || cannot, title: cannot ? (text ? `${text} · неактивна` : 'неактивна') : text },
-        animated: lit,
       } as Edge)
     }
     const lit = e.id === last
-    edges.push({ id: `${execId(e.id)}->voice`, source: execId(e.id), target: 'voice', sourceHandle: 'out-right', data: { lit, strong: false }, animated: lit })
+    edges.push({ id: `${execId(e.id)}->voice`, source: execId(e.id), target: 'voice', sourceHandle: 'out-right', data: { lit, strong: false } })
   })
   return edges
 }
@@ -123,7 +127,7 @@ function buildEdges(state: CoreState, configured: string[], executors: ExecutorI
   const entry = executors[0]?.entry ? executors[0] : undefined
   const edges: Edge[] = []
   const link = (source: string, target: string, lit: boolean, strong = false, targetHandle?: string) =>
-    edges.push({ id: `${source}->${target}`, source, target, targetHandle, data: { lit, strong: lit && strong }, animated: lit })
+    edges.push({ id: `${source}->${target}`, source, target, targetHandle, data: { lit, strong: lit && strong } })
   const head = entry ? execId(entry.id) : undefined
   for (const { device_id: id } of listDevices(state)) {
     const mine = turn?.device_id === id
@@ -139,7 +143,7 @@ function buildEdges(state: CoreState, configured: string[], executors: ExecutorI
  * Узлы исполнителей: имя, модель, «не умеет передавать» без supports_tools, «модель недоступна»
  * после прогрева, «в памяти» — модель загружена в Ollama; live — подпись, если работает сейчас.
  */
-function executorNodes(state: CoreState, executors: ExecutorItem[], path: string[]): Node[] {
+function executorNodes(state: CoreState, executors: ExecutorItem[], path: string[], fading: Fading): Node[] {
   return executors.map((e, i) => {
     const now = state.live.executors[e.id]
     const data = {
@@ -149,6 +153,7 @@ function executorNodes(state: CoreState, executors: ExecutorItem[], path: string
       unavailable: executorUnavailable(state, e.id),
       inMemory: modelInMemory(state, e.model),
       live: now ? EXECUTOR_LIVE[now.state] : undefined,
+      fading: fading.has(execId(e.id)),
       lit: path.includes(e.id),
       kind: 'executor',
       id: e.id,
@@ -158,7 +163,7 @@ function executorNodes(state: CoreState, executors: ExecutorItem[], path: string
 }
 
 /** Узлы коннекторов под голосом: состояние; инструменты выбранного хода — lit; работающий — live. */
-function connectorNodes(state: CoreState, turn?: Turn): Node[] {
+function connectorNodes(state: CoreState, fading: Fading, turn?: Turn): Node[] {
   const used = new Set((turn?.tools ?? []).map((t) => t.connector))
   return listConnectors(state).map((c, i) => {
     const now = state.live.connectors[c.id]
@@ -168,6 +173,7 @@ function connectorNodes(state: CoreState, turn?: Turn): Node[] {
       connectorState: c.enabled ? CONNECTOR_STATES[c.state] : undefined,
       warn: c.state === 'failed',
       live: now ? `${now.tool}…` : undefined,
+      fading: fading.has(`connector:${c.id}`),
       lit: used.has(c.id),
       kind: 'connector',
       id: c.id,
@@ -186,13 +192,13 @@ function connectorsHead(count: number): Node[] {
  * Стрелки исполнитель → коннектор: вызовы выбранного хода (lit) и идущие сейчас (live).
  * Постоянных стрелок нет: инструменты есть у всех исполнителей, чья модель их умеет.
  */
-function toolEdges(state: CoreState, turn?: Turn): Edge[] {
+function toolEdges(state: CoreState, fading: Fading, turn?: Turn): Edge[] {
   const edges = new Map<string, Edge>()
   const add = (executor: string, connector: string, live: boolean) => {
     if (!executor || !connector) return
     const id = `${execId(executor)}->connector:${connector}`
-    const data = { lit: true, strong: false, live }
-    edges.set(id, { id, source: execId(executor), target: `connector:${connector}`, sourceHandle: 'out-right', data, animated: true })
+    const data = { lit: true, strong: false, live, fading: live && fading.has(`connector:${connector}`) }
+    edges.set(id, { id, source: execId(executor), target: `connector:${connector}`, sourceHandle: 'out-right', data, animated: live })
   }
   for (const t of turn?.tools ?? []) add(t.executor, t.connector, false)
   for (const [connector, now] of Object.entries(state.live.connectors)) add(now.executor, connector, true)
@@ -200,17 +206,20 @@ function toolEdges(state: CoreState, turn?: Turn): Edge[] {
   return [...edges.values()].filter((e) => known.has(e.source) && known.has(e.target))
 }
 
-/** Чистая функция: узлы и связи схемы, путь выбранного хода подсвечен (data.lit), работающее сейчас — data.live. */
-export function buildGraph(state: CoreState): Graph {
+/**
+ * Чистая функция: узлы и связи схемы, путь выбранного хода подсвечен (data.lit), работающее
+ * сейчас — data.live; fading — живая подсветка, которая уже гаснет (data.fading).
+ */
+export function buildGraph(state: CoreState, fading: Fading = NONE): Graph {
   const turn = pickTurn(state)
   const eff = state.config?.effective
   const configured = asList(eff?.stages).map((s) => String(s.kind))
   const kinds = [...configured, ...KNOWN_STAGES.map((k) => k.kind).filter((k) => !configured.includes(k))]
   const executors = listExecutors(state)
   const path = turnPath(turn, executors[0]?.entry ? executors[0] : undefined)
-  const nodes = [...leftNodes(state, kinds, configured, turn), ...executorNodes(state, executors, path)]
+  const nodes = [...leftNodes(state, kinds, configured, turn), ...executorNodes(state, executors, path, fading)]
   nodes.push({ id: 'voice', type: 'voice', position: column(1, X_3, 0), data: { label: voiceLabel(state) ?? '—', voiceState: state.status?.voice?.state, lit: !!turn, kind: 'voice', id: 'voice' } })
-  const connectors = connectorNodes(state, turn)
+  const connectors = connectorNodes(state, fading, turn)
   nodes.push(...connectorsHead(connectors.length), ...connectors)
-  return { nodes, edges: [...buildEdges(state, configured, executors, path, turn), ...toolEdges(state, turn)] }
+  return { nodes, edges: [...buildEdges(state, configured, executors, path, turn), ...toolEdges(state, fading, turn)] }
 }

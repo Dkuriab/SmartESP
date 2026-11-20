@@ -20,6 +20,8 @@ type Data = {
   inMemory?: boolean
   /** Блок работает прямо сейчас: короткая подпись под ним («думает…», «calc_add…»). */
   live?: string
+  /** Работа кончилась: живая подсветка гаснет. */
+  fading?: boolean
   /** Состояние коннектора словами. */
   connectorState?: string
   /** Состояние с ошибкой (коннектор упал). */
@@ -42,11 +44,11 @@ const VOICE_STATES: Record<string, string> = {
   missing: 'нет голоса',
 }
 
-/** Классы узла: путь выбранного хода (lit), работа сейчас (live), выбор и прочее. */
+/** Классы узла: путь выбранного хода (lit), работа сейчас (live; гаснет — fading), выбор и прочее. */
 function classes(type: string, data: Data, selected: boolean): string {
   const cls = ['node', `node-${type}`]
   if (data.lit) cls.push('lit')
-  if (data.live) cls.push('live')
+  if (data.live) cls.push(data.fading ? 'fading' : 'live')
   if (data.strong) cls.push('strong')
   if (data.offline) cls.push('offline')
   if (data.enabled === false) cls.push('disabled')

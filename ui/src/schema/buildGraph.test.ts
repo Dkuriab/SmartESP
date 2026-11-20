@@ -70,7 +70,7 @@ describe('buildGraph', () => {
       device_id: 'a',
       annotations: [{ source: 'whisper_detect', text: 'шёпот' }],
     })
-    const g = buildGraph(makeState({ config: config([{ kind: 'whisper_detect' }]), turns: [turn] }))
+    const g = buildGraph(makeState({ config: config([{ kind: 'whisper_detect' }]), turns: [turn], selectedTurnId: 1 }))
     for (const id of ['device:a', 'stage:whisper_detect', 'executor:dispatcher', 'voice'])
       expect(node(g, id)?.data.lit, id).toBe(true)
     expect(node(g, 'device:b')?.data.lit).toBe(false)
@@ -88,12 +88,19 @@ describe('buildGraph', () => {
   })
 
   it('enabled stage without notes keeps the path lit, but not strong', () => {
-    const g = buildGraph(makeState({ config: config([{ kind: 'whisper_detect' }]), turns: [makeTurn(1, { device_id: 'a' })] }))
+    const g = buildGraph(makeState({ config: config([{ kind: 'whisper_detect' }]), turns: [makeTurn(1, { device_id: 'a' })], selectedTurnId: 1 }))
     expect(node(g, 'stage:whisper_detect')?.data).toMatchObject({ lit: true, strong: false })
     expect(node(g, 'device:a')?.data.lit).toBe(true)
     expect(edge(g, 'device:a', 'stage:whisper_detect')?.data).toMatchObject({ lit: true, strong: false })
     expect(edge(g, 'stage:whisper_detect', 'executor:dispatcher')?.data).toMatchObject({ lit: true, strong: false })
     expect(edge(g, 'device:b', 'stage:whisper_detect')?.data?.lit).toBe(false)
+  })
+
+  it('the latest turn is not lit until it is selected in the feed', () => {
+    const turns = [makeTurn(2, { device_id: 'a', path: ['dispatcher'], tools: [{ executor: 'dispatcher', connector: 'calc', tool: 'calc_add', ok: true }] })]
+    const g = buildGraph(makeState({ config: config([{ kind: 'whisper_detect' }]), turns }))
+    expect(g.nodes.some((n) => n.data.lit)).toBe(false)
+    expect(g.edges.some((e) => (e.data as { lit?: boolean } | undefined)?.lit)).toBe(false)
   })
 
   it('without a turn nothing is lit', () => {
@@ -113,7 +120,7 @@ describe('buildGraph', () => {
       { id: 'big', name: 'Большая', model: 'r1' },
     ]
     const graph = (turns = [] as ReturnType<typeof makeTurn>[], executors: unknown[] = base) =>
-      buildGraph(makeState({ config: withExecs(executors), turns }))
+      buildGraph(makeState({ config: withExecs(executors), turns, selectedTurnId: turns[0]?.turn_id ?? null }))
 
     it('makes executor nodes from the defaults', () => {
       const g = graph()

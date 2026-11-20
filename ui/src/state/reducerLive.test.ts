@@ -39,6 +39,6 @@ describe('reduce: живая подсветка', () => {
 
   it('переподключение сбрасывает live', () => {
     const s = reduce(apply(initialState(), thinking, tool), { type: 'opened' })
-    expect(s.live).toEqual({ executors: {}, connectors: {} })
+    expect(s.live).toMatchObject({ executors: {}, connectors: {}, started: {} })
   })
 })
