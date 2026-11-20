@@ -51,7 +51,7 @@ describe('buildGraph: коннекторы', () => {
 
   it('инструменты выбранного хода подсвечивают коннектор и стрелку от вызвавшего', () => {
     const turn = makeTurn(1, { tools: [{ executor: 'dispatcher', connector: 'calc', tool: 'calc_add', ok: true }] })
-    const s = state({ turns: [turn] })
+    const s = state({ turns: [turn], selectedTurnId: 1 })
     expect(node(s, 'connector:calc')?.data.lit).toBe(true)
     expect(node(s, 'connector:notes')?.data.lit).toBe(false)
     expect(edge(s, 'executor:dispatcher', 'connector:calc')?.data).toMatchObject({ lit: true, live: false })
@@ -73,14 +73,25 @@ describe('buildGraph: живая подсветка', () => {
   })
 
   it('идущий вызов рисует живую стрелку, отдельно от пути выбранного хода', () => {
-    const s = state({ live, turns: [makeTurn(1, { path: ['dispatcher'] })] })
+    const s = state({ live, turns: [makeTurn(1, { path: ['dispatcher'] })], selectedTurnId: 1 })
     expect(edge(s, 'executor:dispatcher', 'connector:calc')?.data).toMatchObject({ live: true })
     expect(node(s, 'connector:calc')?.data.lit).toBe(false)
+    // путь прошлого хода — неподвижный синий, движется только идущее сейчас
+    expect(edge(s, 'executor:dispatcher', 'connector:calc')?.animated).toBe(true)
+    expect(buildGraph(s).edges.filter((e) => (e.data as { lit?: boolean }).lit && !(e.data as { live?: boolean }).live).every((e) => !e.animated)).toBe(true)
   })
 
   it('вызов неизвестного исполнителя стрелки не даёт', () => {
     const s = state({ live: { executors: {}, connectors: { calc: { tool: 'x', executor: 'ghost', turn: 'a#1' } } } })
     expect(buildGraph(s).edges.some((e) => e.target === 'connector:calc')).toBe(false)
+  })
+
+  it('гаснущая подсветка помечена fading у узла и живой стрелки', () => {
+    const fading = new Set(['connector:calc'])
+    const g = buildGraph(state({ live }), fading)
+    expect(g.nodes.find((n) => n.id === 'connector:calc')?.data).toMatchObject({ live: 'calc_add…', fading: true })
+    expect(g.nodes.find((n) => n.id === 'executor:dispatcher')?.data.fading).toBe(false)
+    expect(g.edges.find((e) => e.target === 'connector:calc')?.data).toMatchObject({ live: true, fading: true })
   })
 
   it('исполнитель с моделью в памяти Ollama', () => {
