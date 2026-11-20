@@ -20,6 +20,8 @@ describe('Refit', () => {
     expect(fitView).not.toHaveBeenCalled()
     view.rerender(<Refit fitKey="4" width={800} height={600} />)
     expect(fitView).toHaveBeenCalledTimes(1)
+    // на широком экране не раздувает, на узком не мельчит
+    expect(fitView).toHaveBeenCalledWith(expect.objectContaining({ maxZoom: 1.2, minZoom: 0.45 }))
   })
 
   it('изменение размера области — одна подгонка после паузы', () => {
