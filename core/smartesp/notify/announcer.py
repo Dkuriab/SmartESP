@@ -7,8 +7,13 @@
 какая-нибудь подключится. Итог — событие turn_finished вида
 "announcement"; до итога событий нет.
 
-Колонка занята — синтеза нет: сначала вытеснение (preempt: например, файл на колонке
-останавливается и не возобновляется), не освободилась — повтор через retry_s.
+Колонка занята — синтеза нет: сначала мягкое прерывание (interrupt: звучащий ответ,
+начатый раньше объявления, договаривает текущее предложение и уступает; пока все
+объявления — высокого приоритета), затем вытеснение (preempt: например, файл на колонке
+останавливается и не возобновляется). Колонка занята ходом (человек говорит, модель
+думает) — ждём его конца, проверяя каждые busy_poll_s; связь оборвалась или колонка
+ответила busy — повтор через retry_s. Ответ уступил — объявления до конца очереди звучат
+с «Кстати, готово: …», последнее — с вопросом «Вернёмся к тому, о чём говорили?».
 """
 
 import asyncio
@@ -16,20 +21,25 @@ import itertools
 import logging
 import time
 from collections import deque
-from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import Literal
 
-from smartesp.contracts import Delivery, DevicePort, EventSink, Preempt
+from smartesp.contracts import Delivery, DevicePort, EventSink, Interrupt, Preempt
+
+from .speech import Speech, close_audio, event_data, is_question, log_crash
 
 _log = logging.getLogger(__name__)
 
 RETRY_S = 5.0  # колонка занята или связь оборвалась — повтор через столько секунд
 EXPIRE_S = 600.0  # не доставили за столько секунд от say — снимаем
 MAX_SYNTH_FAILURES = 2  # синтез упал — повторяем не больше стольких раз, затем снимаем
+BUSY_POLL_S = 0.25  # колонка занята ходом — проверяем, не освободилась ли, так часто
 UNSYNTHESIZED = "unsynthesized"  # итог попытки: упал синтез, а не доставка
-STYLE = "normal"  # объявления звучат стилем по умолчанию
-_CLOSERS = " \t\n\"'»“”)!.…"  # кавычки, скобки и «!», «.» после «?» («Правда?!», «Что?..»)
+WAITING = "waiting"  # итог попытки: на колонке идёт ход — ждём его конца без синтеза
+PAUSED_FIRST = "Кстати, готово: "  # первое объявление после уступившего ответа
+PAUSED_NEXT = "И ещё: "  # следующие объявления той же очереди
+RESUME_QUESTION = "Вернёмся к тому, о чём говорили?"  # после последнего: «да» — продолжение
 
 
 @dataclass(frozen=True)
@@ -43,44 +53,7 @@ class _Item:
     since: float
 
 
-_Attempt = Delivery | Literal["unsynthesized"]
-
-
-class _Speech:
-    """Звук одной попытки: первый кусок синтезирован до announce; помнит, если синтез упал дальше."""
-
-    def __init__(self, first: bytes, rest: AsyncIterator[bytes]) -> None:
-        """first — уже готовый первый кусок; rest — остаток потока синтеза."""
-        self._first = first
-        self._rest = rest
-        self.failed = False
-
-    async def stream(self) -> AsyncIterator[bytes]:
-        """Весь звук: первый кусок и остаток; сбой синтеза отмечается в failed и пробрасывается."""
-        try:
-            yield self._first
-            async for chunk in self._rest:
-                yield chunk
-        except Exception:
-            self.failed = True
-            raise
-        finally:
-            await self.aclose()
-
-    async def aclose(self) -> None:
-        """Закрывает поток синтеза (колонка могла так и не взять звук: busy, обрыв)."""
-        await _close(self._rest)
-
-
-async def _close(audio: AsyncIterator[bytes]) -> None:
-    """Закрывает поток синтеза, если это генератор."""
-    if isinstance(audio, AsyncGenerator):
-        await audio.aclose()
-
-
-def _is_question(text: str) -> bool:
-    """True, если текст кончается вопросом (Кузя ждёт ответа)."""
-    return text.rstrip(_CLOSERS).endswith("?")
+_Attempt = Delivery | Literal["unsynthesized", "waiting"]
 
 
 class Announcer:
@@ -96,11 +69,15 @@ class Announcer:
         expire_s: float = EXPIRE_S,
         clock: Callable[[], float] = time.monotonic,
         preempt: Preempt | None = None,
+        interrupt: Interrupt | None = None,
+        busy_poll_s: float = BUSY_POLL_S,
     ) -> None:
         """devices — колонки; speak — синтез текста в PCM (может кинуть, если синтеза нет);
         events — куда публиковать итог; retry_s — пауза между попытками; expire_s — срок
         доставки от say (секунды); clock — часы для срока; preempt(колонка) — освободить
-        занятую колонку перед объявлением (True — освободили; None — не вытеснять).
+        занятую колонку перед объявлением (True — освободили; None — не вытеснять);
+        interrupt(колонка, since) — мягко прервать звучащий ответ (None — не прерывать);
+        busy_poll_s — как часто проверять колонку, занятую ходом (секунды).
         """
         self._devices = devices
         self._speak = speak
@@ -109,6 +86,9 @@ class Announcer:
         self._expire_s = expire_s
         self._clock = clock
         self._preempt = preempt
+        self._interrupt = interrupt
+        self._busy_poll_s = busy_poll_s
+        self._paused: dict[str, int] = {}  # колонки с уступившим ответом: сколько уже сказано
         self._numbers = itertools.count(1)
         self._queues: dict[str, deque[_Item]] = {}
         self._workers: dict[str, asyncio.Task[None]] = {}
@@ -129,7 +109,7 @@ class Announcer:
         if device_id not in self._workers:
             worker = asyncio.create_task(self._drain(device_id), name=f"announcer {device_id}")
             self._workers[device_id] = worker
-            worker.add_done_callback(_log_crash)
+            worker.add_done_callback(log_crash)
 
     def set_listen_after(self, on: bool) -> None:
         """Включает или выключает микрофон колонке после доставленного объявления-вопроса."""
@@ -158,6 +138,8 @@ class Announcer:
                 except Exception:
                     _log.error("Объявление a%s: сбой доставки", item.number, exc_info=True)
                     status, device_id = "undelivered", item.target
+                if status == "undelivered":
+                    self._paused.pop(device_id, None)  # вопрос о продолжении так и не прозвучит
                 self._publish(item, status, device_id)
         finally:
             self._workers.pop(target, None)
@@ -173,13 +155,15 @@ class Announcer:
         """
         device_id = item.target
         failures = 0  # сбои синтеза
+        result: _Attempt = "lost"
         while True:
             chosen = self._choose(item.target)
             if chosen is not None:
                 device_id = chosen
-                result = await self._attempt(chosen, item.text)
+                result, text = await self._attempt(chosen, item)
                 if result == "delivered" or result == "interrupted":
-                    return await self._heard(chosen, item.text, result), chosen
+                    self._said(chosen, text)
+                    return await self._heard(chosen, text, result), chosen
                 failures += result == UNSYNTHESIZED
                 if failures > MAX_SYNTH_FAILURES:
                     _log.warning("Объявление a%s снято: синтез речи не удался", item.number)
@@ -188,7 +172,7 @@ class Announcer:
             if left <= 0:
                 _log.warning("Объявление a%s не доставлено за %.0f с", item.number, self._expire_s)
                 return "undelivered", device_id
-            await asyncio.sleep(min(self._retry_s, left))
+            await asyncio.sleep(min(self._busy_poll_s if result == WAITING else self._retry_s, left))
 
     def _choose(self, target: str) -> str | None:
         """Колонка доставки (с речью по инициативе): заданная, иначе последняя активная,
@@ -201,20 +185,21 @@ class Announcer:
         connected = self._devices.proactive_devices()
         return connected[0] if connected else None
 
-    async def _attempt(self, device_id: str, text: str) -> _Attempt:
-        """Одна попытка: первый кусок синтеза, затем announce.
+    async def _attempt(self, device_id: str, item: _Item) -> tuple[_Attempt, str]:
+        """Одна попытка: первый кусок синтеза, затем announce; итог и сказанный текст.
 
-        Колонка занята и вытеснить нечего — "busy" без синтеза.
+        Колонка занята: мягкое прерывание, вытеснение; не освободилась — WAITING без синтеза.
         Синтез упал (сразу или посреди звука) — UNSYNTHESIZED; до первого куска колонка
         ничего не получает (нет и announce, значит, и сигнала «внимание»). Голоса ещё нет (speak кинул сразу)
         или сбой колонки — "lost".
         """
         async with self._speaking.setdefault(device_id, asyncio.Lock()):
             if self._devices.is_busy(device_id):
-                await self._free(device_id)
+                await self._make_room(device_id, item.since)
                 if self._devices.is_busy(device_id):
-                    return "busy"  # синтезировать незачем: повтор через retry_s
-            speech: _Speech | None = None
+                    return WAITING, item.text  # синтезировать незачем
+            text = self._dress(device_id, item)
+            speech: Speech | None = None
             try:
                 speech = await self._synthesize(text)
                 result: _Attempt = UNSYNTHESIZED
@@ -227,8 +212,37 @@ class Announcer:
                 if speech is not None:
                     await speech.aclose()
         if speech is not None and speech.failed and result == "lost":
-            return UNSYNTHESIZED
-        return result
+            return UNSYNTHESIZED, text
+        return result, text
+
+    async def _make_room(self, device_id: str, since: float) -> None:
+        """Освобождает занятую колонку: мягко прерывает звучащий ответ, затем вытесняет файл."""
+        if self._interrupt is not None:
+            try:
+                if await self._interrupt(device_id, since) == "paused":
+                    self._paused.setdefault(device_id, 0)
+            except Exception:
+                _log.warning("Мягкое прерывание на %s не удалось", device_id, exc_info=True)
+        if self._devices.is_busy(device_id):
+            await self._free(device_id)
+
+    def _dress(self, device_id: str, item: _Item) -> str:
+        """Текст объявления; после уступившего ответа — «Кстати, готово: …» и, если больше
+        в очереди ничего нет, вопрос о продолжении."""
+        said = self._paused.get(device_id)
+        if said is None:
+            return item.text
+        text = (PAUSED_FIRST if said == 0 else PAUSED_NEXT) + item.text
+        return text if self._queues.get(item.target) else f"{text} {RESUME_QUESTION}"
+
+    def _said(self, device_id: str, text: str) -> None:
+        """Объявление услышано: прозвучал вопрос о продолжении — уступивший ответ больше не ждёт."""
+        if device_id not in self._paused:
+            return
+        if text.endswith(RESUME_QUESTION):
+            del self._paused[device_id]
+        else:
+            self._paused[device_id] += 1
 
     async def _free(self, device_id: str) -> bool:
         """Вытесняет то, что занимает колонку (preempt); True — колонку освободили."""
@@ -240,22 +254,22 @@ class Announcer:
             _log.warning("Вытеснение на %s перед объявлением не удалось", device_id, exc_info=True)
             return False
 
-    async def _synthesize(self, text: str) -> _Speech | None:
+    async def _synthesize(self, text: str) -> Speech | None:
         """Синтезирует первый кусок звука; синтез упал или звука нет — None (в журнал)."""
         audio = self._speak(text)
         try:
             first = await anext(audio)
         except Exception:  # и StopAsyncIteration: пустой звук объявлять нечего
             _log.warning("Синтез объявления не удался", exc_info=True)
-            await _close(audio)
+            await close_audio(audio)
             return None
-        return _Speech(first, audio)
+        return Speech(first, audio)
 
     async def _heard(self, device_id: str, text: str, result: Delivery) -> str:
         """Итог услышанного объявления; доиграно и кончилось вопросом — включаем микрофон."""
         if result != "delivered":
             return "interrupted"  # перебили сознательно — считаем услышанным
-        if self._listen_after and _is_question(text):
+        if self._listen_after and is_question(text):
             try:
                 await self._devices.listen(device_id)
             except Exception:  # объявление уже услышано
@@ -266,31 +280,8 @@ class Announcer:
         """Событие turn_finished объявления: ok, interrupted или undelivered."""
         if self._events is not None:
             try:  # сбой ленты не должен ронять очередь
-                self._events.publish("turn_finished", _event(item, status, device_id, self._devices))
+                data = event_data(item.number, item.text, item.source, status, device_id)
+                data["device_name"] = self._devices.device_name(device_id)
+                self._events.publish("turn_finished", data)
             except Exception:
                 _log.error("Событие объявления a%s не опубликовано", item.number, exc_info=True)
-
-
-def _event(item: _Item, status: str, device_id: str, devices: DevicePort) -> dict[str, object]:
-    """Данные turn_finished объявления."""
-    return {
-        "turn_id": f"a{item.number}",
-        "device_id": device_id,
-        "device_name": devices.device_name(device_id),
-        "at": time.time(),
-        "text": "",
-        "annotations": [],
-        "style": STYLE,
-        "answer": item.text,
-        "status": status,
-        "path": [item.source],
-        "delegations": [],
-        "origin": "core",
-        "kind": "announcement",
-    }
-
-
-def _log_crash(task: asyncio.Task[None]) -> None:
-    """Задача очереди упала (не должна) — в журнал."""
-    if not task.cancelled() and task.exception() is not None:
-        _log.error("Очередь объявлений %s упала", task.get_name(), exc_info=task.exception())

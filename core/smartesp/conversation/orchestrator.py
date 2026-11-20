@@ -17,6 +17,7 @@ from smartesp.contracts import (
     EventSink,
     Executor,
     ExecutorError,
+    Interruption,
     Question,
     SpeechToText,
     TaskBoard,
@@ -29,6 +30,7 @@ from .activity import watched
 from .asking import ASK_LIMIT_S, ApiTurns
 from .history import History
 from .late import LATE_LIMIT_S, LateAnswers
+from .pausing import RESUME_WAIT_S, Pauses, Remainder, agrees, remainder_sentences, resume_style
 from .sentences import is_meaningless
 from .slots import PartSlots
 from .speaking import speak_answer, speak_text
@@ -89,6 +91,7 @@ class Orchestrator(PartSlots):
             history, self._publish, self._tasks, self._ask_parts, first_part_limit_s, part_idle_s, ask_limit_s
         )
         self._listen_after_question = True
+        self._pauses = Pauses(devices)  # звучащие ответы: мягкое прерывание и остатки для «да»
 
     def use_announcer(self, announcer: Announcer) -> None:
         """Задаёт очередь объявлений: без неё запоздавший ответ не откладывается (TIMEOUT_PHRASE)."""
@@ -105,6 +108,10 @@ class Orchestrator(PartSlots):
         """
         self._late.proactive = proactive
         self._listen_after_question = listen_after_question
+
+    async def interrupt(self, device_id: str, since: float) -> Interruption:
+        """Мягкое прерывание ответа на колонке ради результата (договор Interrupt, см. pausing)."""
+        return await self._pauses.interrupt(device_id, since)
 
     def speech(self, text: str) -> AsyncIterator[bytes]:
         """Озвучка текста текущим синтезом стилем по умолчанию (PCM); синтеза нет — RuntimeError."""
@@ -186,7 +193,7 @@ class Orchestrator(PartSlots):
             await self._devices.listen_after(utterance.device_id, utterance.turn)
 
     async def _converse(self, turn: Turn, parts: Parts) -> None:
-        """Распознаёт, понимает, отвечает и записывает завершённый ход в историю."""
+        """Распознаёт, понимает, отвечает и записывает ход в историю; «да» — продолжение остатка."""
         await hear(turn, parts.stt, self._publish)
         if is_meaningless(turn.text):
             turn.meaningless = True
@@ -194,10 +201,36 @@ class Orchestrator(PartSlots):
             return
         if not self._is_live(turn):
             return
-        messages = await understand(turn, parts.analyze, self._history, turn.device_name)
-        await self._reply(turn, parts, messages)
-        if self._is_live(turn):
+        remainder = self._pauses.claim(turn.utterance.device_id)
+        if remainder is not None and agrees(turn.text):
+            await self._resume(turn, parts.tts, remainder)
+        else:
+            messages = await understand(turn, parts.analyze, self._history, turn.device_name)
+            await self._reply(turn, parts, messages)
+        if self._is_live(turn) or turn.paused:
             remember(turn, self._history)
+
+    async def _resume(self, turn: Turn, tts: TextToSpeech, remainder: Remainder) -> None:
+        """Продолжение прерванного ответа с первого непроизнесённого предложения."""
+        turn.resumed = True
+        turn.style = resume_style(remainder)
+        await remainder.wait(RESUME_WAIT_S)
+        async with closing(remainder_sentences(turn, remainder)) as sentences:
+            await self._speak(turn, tts, sentences)
+
+    async def _speak(
+        self, turn: Turn, tts: TextToSpeech, sentences: AsyncIterator[handoffs.Sentence]
+    ) -> None:
+        """Озвучивает предложения ответа; уступил результату — дочитывает остаток для продолжения."""
+        reply = self._pauses.start(turn)
+        try:
+            await self._play(
+                turn, speak_answer(turn, tts, sentences, functools.partial(self._is_live, turn), reply)
+            )
+        finally:
+            self._pauses.stop(reply)
+        if turn.paused:
+            await reply.collect(sentences)
 
     async def _recover(self, turn: Turn) -> None:
         """После ошибки: сигнал ошибки и, если ответ ещё не начат, пустой ответ (reply_end)."""
@@ -243,9 +276,7 @@ class Orchestrator(PartSlots):
                 closing(handoffs.collect(turn, first, stream, self._waiting(turn))) as texts,
                 closing(handoffs.answer_sentences(texts)) as sentences,
             ):
-                await self._play(
-                    turn, speak_answer(turn, parts.tts, sentences, functools.partial(self._is_live, turn))
-                )
+                await self._speak(turn, parts.tts, sentences)
         settle(turn)  # сигнал ошибки — только если звука не было: оборванного ответа колонке достаточно
         if turn.failed and turn.first_audio_ms is None:
             await self._error_tone(turn)

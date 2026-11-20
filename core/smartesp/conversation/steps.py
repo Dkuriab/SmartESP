@@ -9,7 +9,7 @@ from smartesp.contracts import Analyzer, Annotation, ChatMessage, SpeechToText
 from .activity import Publish, TurnActivity
 from .history import History
 from .prompt import build_messages
-from .turn import Turn, answer_text, log_turn
+from .turn import Turn, answer_text, history_question, log_turn
 from .turn_events import finished_data, heard_data, started_data
 from .turn_messages import turn_messages
 
@@ -61,6 +61,12 @@ def settle(turn: Turn) -> None:
 
 
 def remember(turn: Turn, history: History) -> None:
-    """Записывает в историю ход, доведённый до конца с непустым ответом."""
-    if turn.completed and answer_text(turn):
+    """Записывает в историю ход, доведённый до конца с непустым ответом.
+
+    Ответ, уступивший результату, — только сказанное (остаток прозвучит в ходе-продолжении).
+    """
+    if turn.paused and turn.spoken:
+        said = " ".join(turn.spoken)
+        history.add_messages([ChatMessage("user", history_question(turn)), ChatMessage("assistant", said)])
+    elif turn.completed and answer_text(turn):
         history.add_messages(turn_messages(turn))

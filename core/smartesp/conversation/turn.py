@@ -69,6 +69,9 @@ class Turn:
     )  # где в answer начинается ответ цели или фраза об ошибке
     deferred: bool = False  # поток ответа цели взяла фоновая задача запоздавшего ответа
     last_sentence: str = ""  # последнее озвученное предложение (после clean_for_speech)
+    spoken: list[str] = field(default_factory=list[str])  # озвученные предложения по порядку
+    paused: bool = False  # ответ уступил результату отложенной задачи (мягкое прерывание)
+    resumed: bool = False  # ход продолжает прерванный ответ («да» после «Вернёмся…?»)
     # законченные вызовы инструментов: {executor, connector, tool, ok}
     tools: list[dict[str, object]] = field(default_factory=list[dict[str, object]])
     exchanges: list[ToolExchange] = field(default_factory=list[ToolExchange])  # те же вызовы для истории

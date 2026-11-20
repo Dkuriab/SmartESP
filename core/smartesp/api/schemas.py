@@ -191,6 +191,8 @@ class TurnOut(BaseModel):
     source: str = ""  # ход через API: откуда вопрос ("telegram"); иначе пусто
     person: str = ""  # ход через API: кто спрашивает; иначе пусто
     kind: Literal["turn", "announcement"] = "turn"  # ход разговора или объявление ядра
+    # мягкое прерывание: ответ уступил результату отложенной задачи / ход продолжает прерванный ответ
+    interruption: Literal["paused", "resumed"] | None = None
 
 
 class DownloadIn(BaseModel):

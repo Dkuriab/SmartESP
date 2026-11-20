@@ -47,6 +47,8 @@ def finished_data(turn: Turn) -> dict[str, object]:
     guard — сработала страховка честности ("retried", "fallback") или None.
 
     origin — откуда ход (wake, listen, api); у хода через API ещё source и person, у колонки они пусты.
+    interruption — "paused": ответ уступил результату отложенной задачи; "resumed": ход продолжает
+    прерванный ответ; иначе None.
     """
     return {
         **started_data(turn),
@@ -60,6 +62,7 @@ def finished_data(turn: Turn) -> dict[str, object]:
         "delegations": [delegation_data(handoff) for handoff in turn.delegations],
         "tools": list(turn.tools),
         "guard": turn.guard or None,
+        "interruption": "paused" if turn.paused else "resumed" if turn.resumed else None,
         "stt_ms": _ms(turn.stt_ms),
         "first_text_ms": _ms(turn.first_text_ms),
         "first_audio_ms": _ms(turn.first_audio_ms),
