@@ -209,8 +209,9 @@ class ToolLoop:
             _log.exception("Ящик инструментов упал на вызове %s", call.name)
             return result
         finally:  # и при отмене: подсветка инструмента не должна остаться гореть
+            ok, arguments = not result.is_error, call.arguments
             finished = ToolUse(
-                self._source, call.name, "finished", not result.is_error, call.arguments, result.text
+                self._source, call.name, "finished", ok=ok, arguments=arguments, result=result.text
             )
             self._notify(finished)
         if result.is_error:
