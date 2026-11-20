@@ -116,18 +116,25 @@ async def test_connectors_start_in_background_and_reach_the_network(tmp_path: Pa
 
 
 async def test_editing_connectors_applies_live_and_rebuilds_network(tmp_path: Path) -> None:
-    kinds = fake_kinds(lambda c: FakeOllama(["Да."], c.model))
+    made: list[FakeOllama] = []
+
+    def factory(config: ExecutorConfig) -> Executor:
+        made.append(FakeOllama(["Да."], config.model))
+        return made[-1]
+
     yaml_text = config_yaml(connector("t"), connector("u", enabled=False))
-    core = make_core(tmp_path, kinds, yaml_text, ollama=TOOLS_OLLAMA)
+    core = make_core(tmp_path, fake_kinds(factory), yaml_text, ollama=TOOLS_OLLAMA)
     start(core)
     await eventually(lambda: "echo" in entry_tools(core), timeout=WAIT_S)
     pid = int((tmp_path / "connectors" / "t" / "pid").read_text())
     applied = core.bus.subscribe()
+    built = len(made)
 
     result = await core.core.patch_config({"connectors": [{"id": "t", "enabled": False}]})
     assert result.status == "accepted"
     assert (await next_change(applied))["ok"]
     await eventually(lambda: entry_tools(core) == [], timeout=WAIT_S)
+    assert len(made) > built and all(e.warmed == 0 for e in made[built:])  # пересборка не грузит модели
     assert [(s.id, s.state) for s in core.tools.states()] == [("t", "disabled"), ("u", "disabled")]
     assert not alive(pid)
     assert core.core.config()["effective"]["connectors"][0]["enabled"] is False

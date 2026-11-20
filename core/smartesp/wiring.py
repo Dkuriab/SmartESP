@@ -67,10 +67,16 @@ async def _answering(
 
 
 async def _build_answering(
-    kinds: Kinds, live: LiveAnswering, capabilities: CapabilityCache, tools: McpHub, config: Config
+    kinds: Kinds,
+    live: LiveAnswering,
+    capabilities: CapabilityCache,
+    tools: McpHub,
+    config: Config,
+    *,
+    warm: bool = True,
 ) -> Answering:
     part = await _answering(config, kinds, capabilities, tools)
-    return await live.build(part, WARM_UP_TIMEOUT_S)
+    return await live.build(part, WARM_UP_TIMEOUT_S, warm=warm)
 
 
 def assemble(

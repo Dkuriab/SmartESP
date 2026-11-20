@@ -268,3 +268,53 @@ async def test_failed_build_keeps_models_of_network_waiting_in_release() -> None
     setup.blocker.set()
     await releasing
     assert old.unloaded == [1.0]  # ход кончился — модель b выгружает сама старая сеть
+
+
+async def test_cold_build_with_same_models_does_not_warm_entry_or_members() -> None:
+    # пересборка под инструменты: модели те же — «Выгрузить» владельца не отменяется
+    setup = Setup()
+    await setup.live.warm_startup(pair(network(FakeOllama([], "a"), big=FakeOllama([], "b"))), 10.0)
+    async with asyncio.timeout(1):
+        while not setup.live.members_warmth:
+            await asyncio.sleep(0.001)
+    entry, big = FakeOllama([], "a"), FakeOllama([], "b")
+    part = await setup.live.build(pair(network(entry, big=big)), 10.0, warm=False)
+    previous = setup.live.use(part)
+    assert previous is not None
+    await setup.live.release(previous)
+    await asyncio.sleep(0.01)
+    assert setup.live.executor is part[1]
+    assert entry.warmed == 0 and big.warmed == 0
+    assert setup.live.members_warmth == {"big": None}  # итог прежнего прогрева в силе
+    await setup.live.unload_all()
+
+
+async def test_cold_build_with_new_models_warms_as_usual() -> None:
+    setup = Setup()
+    setup.live.use(pair(network(FakeOllama([], "a"))))
+    entry, big = FakeOllama([], "a"), FakeOllama([], "c")
+    part = await setup.live.build(pair(network(entry, big=big)), 10.0, warm=False)
+    assert entry.warmed == 1  # новая модель c — греем, как при правке
+    setup.live.use(part)
+    async with asyncio.timeout(1):
+        while big.warmed == 0:
+            await asyncio.sleep(0.001)
+    await setup.live.unload_all()
+
+
+async def test_cold_build_does_not_cancel_running_member_warm_up() -> None:
+    setup = Setup()
+    gate = asyncio.Event()
+    big = FakeOllama([], "b", warm_gate=gate)
+    setup.live.use(pair(network(FakeOllama([], "a"), big=big)))
+    await asyncio.sleep(0)
+    part = await setup.live.build(
+        pair(network(FakeOllama([], "a"), big=FakeOllama([], "b"))), 10.0, warm=False
+    )
+    setup.live.use(part)  # коннектор встал через секунды после старта: прогрев большой модели идёт дальше
+    gate.set()
+    async with asyncio.timeout(1):
+        while not setup.live.members_warmth:
+            await asyncio.sleep(0.001)
+    assert big.warmed == 1 and setup.live.members_warmth == {"big": None}
+    await setup.live.unload_all()

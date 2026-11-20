@@ -36,7 +36,9 @@ class LiveAnswering:
     модели живого и всех «в стороне», поэтому модели не остаются в Ollama.
 
     После подмены участники сети, кроме входного, греются в фоне: это не задерживает
-    ни старт, ни правку; итог — в members_warmth.
+    ни старт, ни правку; итог — в members_warmth. Пара, собранная без прогрева
+    (build(warm=False) — пересборка под инструменты с теми же моделями), при подмене
+    участников не греет: выгруженная владельцем модель так и остаётся выгруженной.
     """
 
     def __init__(
@@ -61,6 +63,7 @@ class LiveAnswering:
         self._analyze: Analyzer | None = None
         self._aside: list[Executor] = []  # не живые, но, возможно, загруженные
         self._releasing: list[Executor] = []  # ждут в release конца идущих ходов: их модели заняты
+        self._cold: list[Executor] = []  # собраны без прогрева: подмена их не греет
         self._closed = False
         self._members_warming: asyncio.Task[None] | None = None
         # итог фонового прогрева живой сети: {id: None — прогрет, иначе текст ошибки}
@@ -79,14 +82,19 @@ class LiveAnswering:
         else:
             await self.release(part)
 
-    async def build(self, part: Answering, timeout_s: float) -> Answering:
+    async def build(self, part: Answering, timeout_s: float, *, warm: bool = True) -> Answering:
         """Греет пару для правки настроек (у сети — только входного); не прогрелась — ошибка.
 
         Выгружаются только те модели не прогревшегося исполнителя, которых нет ни
         у живого, ни у ждущих в release: иначе выгрузка оборвала бы их ходы.
+        warm=False (пересборка по тем же настройкам) — не греть ни сейчас, ни при подмене,
+        если у пары те же модели, что у живой; иначе новые модели греются как обычно.
         """
         executor = part[1]
         self._set_aside(executor)
+        if not warm and self.executor is not None and _models(executor) == _models(self.executor):
+            self._cold.append(executor)
+            return part
         try:
             await warm_strict(executor, timeout_s)
         except Exception:
@@ -119,12 +127,14 @@ class LiveAnswering:
         """
         analyze, executor = cast(Answering, part)
         old = None if self.executor is None else (self._analyze, self.executor)
+        cold = any(e is executor for e in self._cold)
         if self.executor is not None:
             self._set_aside(self.executor)
         self._forget(executor)
         self._analyze, self.executor = analyze, executor
         self._install(analyze, executor)
-        self._warm_members(executor)
+        if not cold:  # те же модели: идущий прогрев и его итог остаются в силе
+            self._warm_members(executor)
         return old
 
     async def release(self, part: object) -> None:
@@ -217,6 +227,7 @@ class LiveAnswering:
 
     def _forget(self, executor: Executor) -> None:
         self._aside = [e for e in self._aside if e is not executor]
+        self._cold = [e for e in self._cold if e is not executor]
 
 
 async def warm_strict(executor: Executor, timeout_s: float) -> None:

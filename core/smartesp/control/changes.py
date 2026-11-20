@@ -55,6 +55,7 @@ class ChangeQueue:
     rebuild — та же очередь без правки: пересобрать разделы по записанным
     настройкам (например, сменились инструменты коннекторов). Так пересборка не
     гоняется с правкой: она идёт после её записи и берёт уже новые настройки.
+    Пересборка собирает через Section.refresh, если он задан (иначе build).
     """
 
     def __init__(
@@ -166,7 +167,7 @@ class ChangeQueue:
         """Пересборка по записанным настройкам; итог — в job.done (отмена очереди — его отмена)."""
         try:
             config = self._store.merge({})
-            await self._apply_live(config, config, list(job.names))
+            await self._apply_live(config, config, list(job.names), refresh=True)
         except Exception as error:
             settle(job.done, error)
             return
@@ -195,8 +196,9 @@ class ChangeQueue:
         _log.info("Изменение %s применено: %s", change_id, ", ".join(changed) or "без изменений")
         self._announce(change_id, changed, None)
 
-    async def _apply_live(self, old: Any, new: Any, changed: list[str]) -> None:
-        built = await self._build_all(new, self._live_names(changed))
+    async def _apply_live(self, old: Any, new: Any, changed: list[str], *, refresh: bool = False) -> None:
+        """Собирает, подменяет и освобождает разделы; refresh — пересборка (Section.refresh)."""
+        built = await self._build_all(new, self._live_names(changed), refresh)
         try:
             if TTS_SECTION in changed:
                 await self._open_voice(old, new)
@@ -218,12 +220,14 @@ class ChangeQueue:
             names.append(name)
         return names
 
-    async def _build_all(self, new: Any, names: list[str]) -> dict[str, object]:
+    async def _build_all(self, new: Any, names: list[str], refresh: bool) -> dict[str, object]:
         """Собирает части по очереди; сбой — освобождает уже собранные и пробрасывает."""
         built: dict[str, object] = {}
         try:
             for name in names:
-                built[name] = await self._sections[name].build(new)
+                section = self._sections[name]
+                build = section.refresh if refresh and section.refresh is not None else section.build
+                built[name] = await build(new)
         except BaseException:
             await self._release_all(built)
             raise

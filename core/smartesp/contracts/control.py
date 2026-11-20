@@ -28,7 +28,9 @@ class Section:
 
     build — собирает новую часть из настроек целиком (может долго: качать, греть);
     swap — подменяет часть и возвращает старую (или None);
-    release — освобождает старую часть после подмены (например, выгружает модель).
+    release — освобождает старую часть после подмены (например, выгружает модель);
+    refresh — сборка для пересборки по тем же записанным настройкам (без правки), например
+      без прогрева моделей; None — как build.
 
     Правила для release:
     - его могут вызвать и для части, которую так и не подменили (собрана, но
@@ -42,6 +44,7 @@ class Section:
     build: Callable[[Any], Awaitable[object]]
     swap: Callable[[object], object | None]
     release: Callable[[object], Awaitable[None]] | None = None
+    refresh: Callable[[Any], Awaitable[object]] | None = None
 
 
 class ConfigStore(Protocol):

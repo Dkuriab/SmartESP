@@ -1,17 +1,21 @@
 """Пересборка разделов по текущим настройкам — в той же очереди, что правки (не гоняется с ними)."""
 
 import asyncio
+from typing import Any
 
 import pytest
 from control_harness import Harness
+
+from smartesp.contracts import Section
+from smartesp.control import Core
 
 
 async def test_rebuild_builds_current_settings_swaps_and_releases_without_save() -> None:
     h = Harness()
     await h.core.rebuild(["executors", "stages"])
     assert h.log == [
-        "build executors",
-        "build stages",
+        "refresh executors",  # пересборка — через Section.refresh (у исполнителя — без прогрева)
+        "refresh stages",
         "swap executors",
         "swap stages",
         "release executors:initial",
@@ -33,7 +37,7 @@ async def test_rebuild_during_edit_release_waits_and_uses_edited_settings() -> N
     assert h.log == ["build executors", "swap executors", "release executors:initial"]
     h.sections["executors"].release_gate.set()
     await rebuilding
-    assert h.log[3:6] == ["save", "event change_applied", "build executors"]
+    assert h.log[3:6] == ["save", "event change_applied", "refresh executors"]
     assert h.sections["executors"].current == "executors:[{'id': 'main', 'model': 'big'}]"
     await h.core.aclose()
 
@@ -75,3 +79,28 @@ async def test_rebuild_after_close_is_refused_and_pending_is_cancelled() -> None
         await pending
     with pytest.raises(RuntimeError, match="останавливается"):
         await h.core.rebuild(["executors"])
+
+
+async def test_rebuild_without_refresh_uses_build() -> None:
+    h = Harness()
+    plain = h.sections["history"]
+    sections = {"history": Section(plain.build, plain.swap, plain.release)}  # без refresh
+    core = Core(
+        h.store,
+        sections,
+        events=h.events,
+        feed=h.bus,
+        voices=h.voices,
+        models=no_models,
+        loaded=no_models,
+        devices=list,
+        version="1",
+    )
+    await core.rebuild(["history"])
+    assert h.log[0] == "build history"
+    await core.aclose()
+    await h.core.aclose()
+
+
+async def no_models() -> list[Any]:
+    return []

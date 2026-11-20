@@ -53,13 +53,17 @@ class FakeSection:
         self.release_gate: asyncio.Event | None = None
         self.error: Exception | None = None
 
-    async def build(self, config: Any) -> object:
-        self.log.append(f"build {self.name}")
+    async def build(self, config: Any, how: str = "build") -> object:
+        self.log.append(f"{how} {self.name}")
         if self.gate is not None:
             await self.gate.wait()
         if self.error is not None:
             raise self.error
         return f"{self.name}:{config[self.name]}"
+
+    async def refresh(self, config: Any) -> object:
+        """Сборка для пересборки без правки (у живого исполнителя — без прогрева)."""
+        return await self.build(config, "refresh")
 
     def swap(self, part: object) -> object | None:
         self.log.append(f"swap {self.name}")
@@ -72,7 +76,7 @@ class FakeSection:
             await self.release_gate.wait()  # как ожидание конца звучащего хода
 
     def section(self) -> Section:
-        return Section(build=self.build, swap=self.swap, release=self.release)
+        return Section(build=self.build, swap=self.swap, release=self.release, refresh=self.refresh)
 
 
 class Harness:

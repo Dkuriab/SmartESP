@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,7 +21,6 @@ from smartesp.events import EventBus
 from smartesp.fileplay import FilePlayer
 from smartesp.kinds import Kinds, Ollama, kinds_validator, member_specs, prompt_stages
 from smartesp.lifecycle import (
-    Answering,
     CapabilityCache,
     CapabilityRetry,
     LiveAnswering,
@@ -30,7 +29,7 @@ from smartesp.lifecycle import (
 )
 from smartesp.network import NetworkPrompts
 from smartesp.notify import Announcer
-from smartesp.sections import live_sections, speech_settings
+from smartesp.sections import BuildAnswering, live_sections, speech_settings
 from smartesp.stt import decode_audio, decode_file
 from smartesp.tools import McpHub
 from smartesp.tts import VoiceManager
@@ -117,7 +116,7 @@ def control(
     store: ConfigFile,
     ollama: Ollama,
     version: str,
-    build: Callable[[Config], Awaitable[Answering]],
+    build: BuildAnswering,
     use_speech: Callable[[SpeechConfig], None],
 ) -> Core:
     """Пульт: разделы на лету, сведения для status и промпты из текущих настроек."""

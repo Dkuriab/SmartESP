@@ -6,8 +6,9 @@
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Awaitable, Callable
-from typing import cast
+from typing import Protocol, cast
 
 from smartesp.config import Config, SpeechConfig
 from smartesp.contracts import Section
@@ -17,6 +18,12 @@ from smartesp.kinds import connector_specs
 from smartesp.lifecycle import Answering, LiveAnswering
 from smartesp.notify import Announcer
 from smartesp.tools import ConnectorSpec, McpHub
+
+
+class BuildAnswering(Protocol):
+    """Сборка живой пары по настройкам; warm=False — без прогрева тех же моделей (пересборка)."""
+
+    def __call__(self, config: Config, *, warm: bool = True) -> Awaitable[Answering]: ...
 
 
 async def _device_names(config: Config) -> dict[str, str]:
@@ -49,16 +56,18 @@ def live_sections(
     hub: DeviceHub,
     history: History,
     live: LiveAnswering,
-    build_answering: Callable[[Config], Awaitable[Answering]],
+    build_answering: BuildAnswering,
     use_speech: Callable[[SpeechConfig], None],
     tools: McpHub,
 ) -> dict[str, Section]:
     """Разделы, применяемые на лету (tts пульт открывает через менеджер голосов).
 
     connectors хаб применяет в фоне; сеть с новыми инструментами пересобирается, когда
-    коннекторы встанут (ToolsRefresh в wiring.py).
+    коннекторы встанут (ToolsRefresh в wiring.py) — без прогрева: модели те же, а
+    выгруженную владельцем модель пересборка обратно не грузит.
     """
-    answering = Section(build_answering, live.use, live.release)
+    cold = functools.partial(build_answering, warm=False)
+    answering = Section(build_answering, live.use, live.release, refresh=cold)
     return {
         "devices": Section(_device_names, lambda names: hub.set_names(cast(dict[str, str], names))),
         "history": Section(_history_limits, lambda new: history.set_limits(*cast(tuple[int, int], new))),
