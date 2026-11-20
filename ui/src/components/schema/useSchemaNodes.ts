@@ -2,7 +2,7 @@
 // свежие данные ядра (опрос раз в 5 с, события) не сбрасывают ни места, ни размеры.
 import { NodeChangeset } from '@xyflow/react'
 import type { Node, OnNodesChange } from '@xyflow/react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { browserStorage, clearPositions, finishedMoves, loadPositions, mergeNodes, savePositions } from '../../schema/layout'
 
 export type SchemaNodes = {
@@ -29,11 +29,12 @@ export function useSchemaNodes(next: Node[]): SchemaNodes {
     const own = changes.toArray().filter((c) => OWN.has(c.type))
     if (own.length === 0) return
     setNodes((current) => new NodeChangeset(own).applyTo(current))
-    const moved = finishedMoves(saved, own)
-    if (!moved) return
-    savePositions(storage, moved)
-    setSaved(moved)
+    // от предыдущих мест, а не из замыкания: два шага клавишей до рендера не затирают друг друга
+    setSaved((prev) => finishedMoves(prev, own) ?? prev)
   }
+  useEffect(() => {
+    if (Object.keys(saved).length > 0) savePositions(storage, saved)
+  }, [storage, saved])
   const reset = () => {
     clearPositions(storage)
     setSaved({})
