@@ -91,8 +91,9 @@ def _add_output_tools(server: MCPServer, media: MediaService) -> None:
     @server.tool(
         name="output_set",
         description=(
-            "Переключает звук Mac на устройство по имени или его части. Пример: «JBL», «динамики». "
-            "Имя колонки из строки «Колонка: …» — не устройство Mac." + ONLY_ASKED
+            "Переключает вывод звука Mac на другое устройство (динамики, наушники, AirPlay) по имени "
+            "или его части. Пример: «JBL», «динамики». Только звук Mac — не свет и не другие "
+            "устройства дома; имя колонки из строки «Колонка: …» — не устройство Mac." + ONLY_ASKED
         ),
     )
     async def output_set(name: str) -> str:

@@ -136,6 +136,15 @@ def add_product(
     return f"{verb}: {clean} — {kcal(kcal_100g)} ккал на 100 г{pack_text}."
 
 
+# Подсказки модели (живая проверка: на ответ «Варёное.» модель слала what «гречка» и when из
+# пометки «[время] …» и получала снова «Уточни» / «Не поняла время»; с ними — 5 из 5 записано)
+WHAT_HINT = (
+    "Что съел, как сказал человек: «гречка», «2 яйца». "
+    "Ответил на «Уточни: …» — выбранный вариант целиком: «гречка варёная»"
+)
+WHEN_HINT = "Когда, только если человек сам сказал: «вчера», «8:30»; не сказал — не передавай"
+
+
 def register(server: MCPServer, data_dir: Path, now: Callable[[], datetime], lookups: Lookups) -> None:
     """Регистрирует инструменты записи на сервере."""
 
@@ -147,10 +156,10 @@ def register(server: MCPServer, data_dir: Path, now: Callable[[], datetime], loo
     )
     async def food_log(
         ctx: Context,
-        what: Annotated[str, Field(description="Что съел: «гречка», «2 яйца»")] = "",
+        what: Annotated[str, Field(description=WHAT_HINT)] = "",
         grams: Annotated[float, Field(description="Вес в граммах; 0 — не сказан")] = 0,
         barcode: Annotated[str, Field(description="Штрихкод с упаковки, если есть")] = "",
-        when: Annotated[str, Field(description="Когда: «вчера», «8:30»; пусто — сейчас")] = "",
+        when: Annotated[str, Field(description=WHEN_HINT)] = "",
     ) -> str:
         return await log_food(root_of(ctx, data_dir), lookups, now(), what, grams, barcode, when)
 

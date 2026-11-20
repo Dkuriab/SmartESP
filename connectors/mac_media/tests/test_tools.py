@@ -47,6 +47,7 @@ async def test_actions_only_on_direct_request_reads_are_free() -> None:
     asked = {name for name, text in tools.items() if text.endswith("Только по прямой просьбе человека.")}
     assert asked == TOOLS - {"volume_get", "output_devices", "media_now_playing"}
     assert "«Колонка: …» — не устройство Mac" in tools["output_set"]
+    assert "не свет и не другие устройства дома" in tools["output_set"]
 
 
 # --- медиа-клавиши ---
