@@ -83,7 +83,7 @@ async def test_false_claim_is_retried_with_reminder_and_never_spoken(
     assert guards(parts) == ["retried"]
     retry = model.calls[1]
     assert retry[: len(LIGHT)] == LIGHT
-    assert retry[-2:] == [ChatMessage("assistant", "Свет на кухне включён."), ChatMessage("system", REMINDER)]
+    assert retry[len(LIGHT) :] == [ChatMessage("system", REMINDER)]  # ложь в диалог не попадает
     assert any("повторный прогон" in r.getMessage() and r.levelno == logging.INFO for r in caplog.records)
 
 
@@ -136,7 +136,7 @@ async def test_empty_answer_is_retried_then_fallback() -> None:
     parts = await run(net(model), [ChatMessage("user", "Поставь таймер")])
     assert said(parts) == NO_TOOL_PHRASE
     assert len(model.calls) == 2
-    assert model.calls[1][-1] == ChatMessage("system", REMINDER)  # пустой ответ в диалог не добавляем
+    assert model.calls[1][-1] == ChatMessage("system", REMINDER)
 
 
 async def test_empty_answer_to_empty_question_asks_to_repeat() -> None:
