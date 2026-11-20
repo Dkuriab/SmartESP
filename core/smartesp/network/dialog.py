@@ -55,16 +55,30 @@ def after_tools(messages: list[ChatMessage]) -> bool:
 
 
 def request(messages: list[ChatMessage]) -> str:
-    """Просьба хода: вопрос человека, а если это короткий ответ на уточнение помощника
-    («сухая или варёная?» → «Варёная») — прошлая реплика человека и этот ответ."""
+    """Просьба хода: вопрос человека, а если это короткий ответ на уточнение, которого ещё ждёт
+    действие («сухая или варёная?» → «Варёная»), — прошлая реплика человека и этот ответ.
+
+    Уточнение — прошлый ход кончился вопросом и либо инструмент в нём сам переспросил, либо
+    инструмента не было. После сделанного действия («Поставила. Что-нибудь ещё?» → «Нет, спасибо»)
+    ответ — новая реплика, а не продолжение просьбы.
+    """
     asked = question(messages)
     users = [i for i, m in enumerate(messages) if m.role == "user"]
     if not asked or len(users) < 2 or len(asked.split()) > FOLLOW_UP_WORDS:
         return asked
-    said = [m.content for m in messages[users[-2] + 1 : users[-1]] if m.role == "assistant" and m.content]
-    if not said or not said[-1].rstrip(" \t\n\"'»)").endswith("?"):
+    turn = messages[users[-2] + 1 : users[-1]]
+    said = [m.content for m in turn if m.role == "assistant" and m.content]
+    if not said or not _asks(said[-1]):
         return asked
+    results = [m.content for m in turn if m.role == "tool" and _connector_message(m)]
+    if results and not any(_asks(r) or r.lstrip().lower().startswith("уточни") for r in results):
+        return asked  # действие сделано, вопрос в конце — «что-нибудь ещё?»
     return f"{question(messages[: users[-2] + 1])}\n{asked}"
+
+
+def _asks(text: str) -> bool:
+    """True, если текст кончается вопросом."""
+    return text.rstrip(" \t\n\"'»)").endswith("?")
 
 
 def _connector_message(message: ChatMessage) -> bool:

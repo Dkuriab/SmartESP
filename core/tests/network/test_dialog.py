@@ -86,10 +86,30 @@ def test_after_tools_counts_connector_calls_but_not_delegate() -> None:
 
 
 def test_short_answer_to_a_clarification_carries_the_previous_request() -> None:
-    history = _turn("Запиши обед: гречка 150 грамм", "Уточни: гречка сухая или варёная?", "food_log")
+    history = [
+        ChatMessage("user", "Запиши обед: гречка 150 грамм"),
+        ChatMessage("assistant", "", tool_calls=(ToolCall("food_log", {}),)),
+        ChatMessage("tool", "Уточни: гречка сухая или варёная?", tool_name="food_log"),
+        ChatMessage("assistant", "Уточни: гречка сухая или варёная?"),
+    ]
     assert request([*history, ChatMessage("user", "Варёная")]) == "Запиши обед: гречка 150 грамм\nВарёная"
     long = "А вообще расскажи мне про гречку подробнее"
     assert request([*history, ChatMessage("user", long)]) == long  # не короткий ответ — новая тема
     plain = _turn("Запиши обед", "Записала.", "food_log")
     assert request([*plain, ChatMessage("user", "Спасибо")]) == "Спасибо"  # не было уточнения
     assert request([*history, ChatMessage("user", "")]) == ""  # пустой вопрос остаётся пустым
+
+
+def test_short_answer_after_a_completed_action_is_a_new_turn() -> None:
+    done = [
+        ChatMessage("user", "Поставь таймер на пять минут"),
+        ChatMessage("assistant", "", tool_calls=(ToolCall("timer_start", {}),)),
+        ChatMessage("tool", "Таймер на 5 минут запущен", tool_name="timer_start"),
+        ChatMessage("assistant", "Поставила. Что-нибудь ещё?"),
+    ]
+    assert request([*done, ChatMessage("user", "Нет, спасибо")]) == "Нет, спасибо"
+
+
+def test_clarification_without_any_tool_carries_the_request() -> None:
+    asked = [ChatMessage("user", "Включи свет"), ChatMessage("assistant", "Включить свет на кухне?")]
+    assert request([*asked, ChatMessage("user", "Да")]) == "Включи свет\nДа"
