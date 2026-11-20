@@ -19,7 +19,9 @@ class FakeConfigStore:
         self.saved: list[dict[str, Any]] = []
         self.on_save: list[str] | None = None  # общий журнал вызовов, если задан
         self.save_error: Exception | None = None
-        self.settings: dict[str, list[dict[str, str]]] = {}  # объявленные настройки коннекторов по id
+        self.settings: dict[
+            str, dict[str, Any]
+        ] = {}  # объявленное коннекторами по id: {settings, note, example}
 
     def effective(self) -> dict[str, Any]:
         return copy.deepcopy(self.current)
@@ -51,7 +53,7 @@ class FakeConfigStore:
     def section(self, config: dict[str, Any], name: str) -> object:
         return config[name]
 
-    def connector_settings(self) -> dict[str, list[dict[str, str]]]:
+    def connector_settings(self) -> dict[str, dict[str, Any]]:
         return copy.deepcopy(self.settings)
 
 

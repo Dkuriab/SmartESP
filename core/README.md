@@ -261,14 +261,17 @@ connectors:
 - Ключи `PATH`, `HOME`, `SHELL`, `ENV`, `BASH_ENV`, `IFS`, `VIRTUAL_ENV`, `PYTHON*`,
   `DYLD_*`, `LD_*`, `UV_*`, `SMARTESP_*` через API не меняются никогда, даже если их
   объявил файл (он их пропускает с предупреждением в журнал).
+- Необязательные `note` и `example` — пояснение для панели коннектора и пример записи в
+  `config.yaml` (только показ), например почему настроек в приложении нет.
 
 `GET /connectors` отдаёт у каждого коннектора `settings` —
-`[{key, title, type, hint, value}]` с текущими значениями (секрет — `•••`); в
-`GET /status` их нет. Сохранение — та же правка `connectors`, она применяется на лету
+`[{key, title, type, hint, value}]` с текущими значениями (секрет — `•••`), `note` и
+`example`; в `GET /status` их нет. Сохранение — та же правка `connectors`, она применяется на лету
 и перезапускает только этот коннектор. Сейчас объявлены: `weather` (`WEATHER_PLACE`,
-`WEATHER_LAT`, `WEATHER_LON`), `claude_tasks` (`CLAUDE_TASK_FOLDERS`,
-`CLAUDE_TASK_TOOLS`), `food` (`FOOD_OFF`); `notes`, `calc`, `timers` и `mac_media`
-настроек не имеют.
+`WEATHER_LAT`, `WEATHER_LON`) и `food` (`FOOD_OFF`). `claude_tasks` намеренно не
+объявляет ничего (только `note` и `example`): папки и инструменты Клода через токен API
+дали бы правку любых файлов (`~/.zshrc`) или оболочку — они настраиваются только в
+`config.yaml`. `notes`, `calc`, `timers` и `mac_media` настроек не имеют.
 
 Коннекторы стартуют в фоне: голос готов, не дожидаясь их, а пока коннектор
 запускается, его инструментов в сети нет. Когда список готовых инструментов

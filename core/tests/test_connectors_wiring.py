@@ -13,6 +13,7 @@ import time
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 
+import pytest
 from core_harness import (
     HEADERS,
     TOOLS_OLLAMA,
@@ -103,7 +104,8 @@ async def test_connectors_start_in_background_and_reach_the_network(tmp_path: Pa
     assert [(c["id"], c["state"]) for c in listed] == [("t", "ready")]
     assert "echo" in listed[0]["tools"] and listed[0]["error"] == ""
     assert listed[0]["settings"] == []  # у тестового коннектора нет smartesp.json
-    assert status["connectors"] == [{k: v for k, v in c.items() if k != "settings"} for c in listed]
+    detail = ("settings", "note", "example")  # только в GET /connectors
+    assert status["connectors"] == [{k: v for k, v in c.items() if k not in detail} for c in listed]
 
     speaking, _ = await connect(core, "kitchen")
     ask(speaking, 1)
@@ -170,6 +172,29 @@ async def test_api_cannot_set_connector_command_or_add_one(tmp_path: Path) -> No
     assert (tmp_path / "config.yaml").read_text(encoding="utf-8") == before
     assert [(s.id, s.state) for s in core.tools.states()] == [("t", "disabled")]
     assert not marker.exists()
+    await stop(core)
+    await finish(core)
+
+
+@pytest.mark.parametrize(
+    "env", [{"CLAUDE_TASK_TOOLS": "Bash"}, {"CLAUDE_TASK_FOLDERS": "home=~"}], ids=["tools", "folders"]
+)
+async def test_api_cannot_configure_claude_tasks(tmp_path: Path, env: dict[str, str]) -> None:
+    # решение W3-3: папки и инструменты Клода — только config.yaml (иначе токен = правка ~/.zshrc)
+    kept = [e for e in NO_DEFAULT_CONNECTORS if e["id"] != "claude_tasks"]  # выключен по умолчанию
+    body = {"arbitration": {"window_ms": 20, "late_ms": 200}, "connectors": kept}
+    core = make_core(tmp_path, fake_kinds(lambda c: FakeOllama(["Да."], c.model)), json.dumps(body))
+    start(core)
+    await eventually(lambda: core.core.state == "ready", timeout=5)
+    before = (tmp_path / "config.yaml").read_text(encoding="utf-8")
+    async with client(core) as http:
+        listed = (await http.get("/api/v1/connectors", headers=HEADERS)).json()
+        entries = [{"id": "claude_tasks", "enabled": True, "env": env}]
+        response = await http.patch("/api/v1/config", json={"connectors": entries}, headers=HEADERS)
+    assert [c["settings"] for c in listed if c["id"] == "claude_tasks"] == [[]]
+    assert response.status_code == 422
+    assert "меняют только в config.yaml" in response.json()["error"]
+    assert (tmp_path / "config.yaml").read_text(encoding="utf-8") == before
     await stop(core)
     await finish(core)
 

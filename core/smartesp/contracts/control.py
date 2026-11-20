@@ -70,9 +70,9 @@ class ConfigStore(Protocol):
         """Возвращает значение раздела верхнего уровня — для сравнения до и после правки."""
         ...
 
-    def connector_settings(self) -> dict[str, list[dict[str, str]]]:
-        """Возвращает объявленные настройки коннекторов по id: [{key, title, type, hint, value}];
-        непустое значение секрета скрыто («•••»)."""
+    def connector_settings(self) -> dict[str, dict[str, Any]]:
+        """Возвращает объявленное коннекторами по id: {settings: [{key, title, type, hint, value}],
+        note, example}; непустое значение секрета скрыто («•••»)."""
         ...
 
 
@@ -110,8 +110,8 @@ class CorePort(Protocol):
         ...
 
     def connectors(self) -> list[dict[str, Any]]:
-        """Возвращает MCP-коннекторы: [{id, name, state, tools, error, settings}] в порядке настроек;
-        settings — объявленные коннектором настройки (как в ConfigStore.connector_settings)."""
+        """Возвращает MCP-коннекторы: [{id, name, state, tools, error, settings, note, example}] в порядке
+        настроек; settings, note, example — объявленное коннектором (ConfigStore.connector_settings)."""
         ...
 
     def config(self) -> dict[str, Any]:

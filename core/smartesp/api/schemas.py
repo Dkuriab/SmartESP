@@ -68,9 +68,14 @@ class ConnectorSettingOut(BaseModel):
 
 
 class ConnectorDetailOut(ConnectorOut):
-    """Коннектор в GET /connectors: ещё и настройки, которые можно менять из интерфейса."""
+    """Коннектор в GET /connectors: ещё и настройки, которые можно менять из интерфейса.
+
+    note и example — пояснение коннектора для панели и пример для config.yaml (нет — "").
+    """
 
     settings: list[ConnectorSettingOut] = Field(default_factory=list[ConnectorSettingOut])
+    note: str = ""
+    example: str = ""
 
 
 class StatusOut(BaseModel):

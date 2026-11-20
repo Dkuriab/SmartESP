@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from smartesp.config import ConfigFile, ConnectorConfig
-from smartesp.config.manifest import MASK, declared_settings, protected_key, settings_view
+from smartesp.config import Config, ConfigFile, ConnectorConfig
+from smartesp.config.manifest import MASK, declared_settings, manifest_note, protected_key, settings_view
 
 
 def project(tmp_path: Path, settings: object) -> Path:
@@ -120,8 +120,13 @@ def test_empty_secret_is_not_masked(tmp_path: Path) -> None:
 def test_store_lists_settings_by_connector(tmp_path: Path) -> None:
     store = store_with(tmp_path, project(tmp_path, [CITY]), {"CITY": "Тверь"})
     settings = store.connector_settings()
-    assert settings["my"][0]["value"] == "Тверь"
-    assert [s["key"] for s in settings["weather"]][0] == "WEATHER_PLACE"
+    assert settings["my"] == {
+        "settings": settings_view(connector(tmp_path / "conn", {"CITY": "Тверь"})),
+        "note": "",
+        "example": "",
+    }
+    assert settings["my"]["settings"][0]["value"] == "Тверь"
+    assert [s["key"] for s in settings["weather"]["settings"]][0] == "WEATHER_PLACE"
 
 
 # ---- правка через API ----
@@ -246,3 +251,35 @@ def test_flag_values(tmp_path: Path, value: str, ok: bool) -> None:
     else:
         with pytest.raises(ValueError, match="ON"):
             store.merge(patch)
+
+
+# ---- claude_tasks: ничего через API (решение W3-3) ----
+
+
+def test_claude_tasks_declares_nothing_settable_but_explains() -> None:
+    tasks = next(c for c in Config().connectors if c.id == "claude_tasks")
+    assert declared_settings(tasks) == []
+    assert "config.yaml" in manifest_note(tasks)["note"]
+    assert "CLAUDE_TASK_FOLDERS" in manifest_note(tasks)["example"]
+
+
+@pytest.mark.parametrize(
+    "env", [{"CLAUDE_TASK_FOLDERS": "home=~"}, {"CLAUDE_TASK_TOOLS": "Bash"}, {"CLAUDE_TASK_ENV": "X"}]
+)
+def test_claude_tasks_env_rejected(tmp_path: Path, env: dict[str, str]) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text("version: 4\n", encoding="utf-8")
+    store = ConfigFile(path)
+    store.load()
+    with pytest.raises(ValueError, match="меняют только в config.yaml"):
+        store.merge({"connectors": [{"id": "claude_tasks", "env": env}]})
+
+
+def test_note_read_from_manifest(tmp_path: Path) -> None:
+    folder = tmp_path / "conn"
+    folder.mkdir()
+    (folder / "smartesp.json").write_text(
+        '{"note": "Только руками", "example": "env: {A: b}"}', encoding="utf-8"
+    )
+    assert manifest_note(connector(folder)) == {"note": "Только руками", "example": "env: {A: b}"}
+    assert manifest_note(ConnectorConfig(id="x", name="X", command="/bin/x")) == {"note": "", "example": ""}

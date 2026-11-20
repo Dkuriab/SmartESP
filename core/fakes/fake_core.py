@@ -60,6 +60,8 @@ class FakeCore:
                 "tools": ["note_add"],
                 "error": "",
                 "settings": [],
+                "note": "",
+                "example": "",
             },
             {
                 "id": "weather",
@@ -77,6 +79,8 @@ class FakeCore:
                     },
                     {"key": "WEATHER_PIN", "title": "Пин", "type": "secret", "hint": "", "value": "•••"},
                 ],
+                "note": "",
+                "example": "",
             },
         ]
         self.questions: list[Question] = []  # вопросы /ask
@@ -104,7 +108,10 @@ class FakeCore:
             "applying": False,
             "restart_required": False,
             "executors": [{"id": "big", "ready": False, "error": "нет модели"}],
-            "connectors": [{k: v for k, v in c.items() if k != "settings"} for c in self.connector_items],
+            "connectors": [
+                {k: v for k, v in c.items() if k not in ("settings", "note", "example")}
+                for c in self.connector_items
+            ],
         }
 
     def connectors(self) -> list[dict[str, Any]]:

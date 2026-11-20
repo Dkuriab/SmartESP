@@ -395,6 +395,8 @@ export interface components {
         /**
          * ConnectorDetailOut
          * @description Коннектор в GET /connectors: ещё и настройки, которые можно менять из интерфейса.
+         *
+         *     note и example — пояснение коннектора для панели и пример для config.yaml (нет — "").
          */
         ConnectorDetailOut: {
             /** Id */
@@ -415,6 +417,16 @@ export interface components {
             error: string;
             /** Settings */
             settings?: components["schemas"]["ConnectorSettingOut"][];
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /**
+             * Example
+             * @default
+             */
+            example: string;
         };
         /**
          * ConnectorOut

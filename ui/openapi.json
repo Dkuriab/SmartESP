@@ -1111,6 +1111,16 @@
             },
             "type": "array",
             "title": "Settings"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          },
+          "example": {
+            "type": "string",
+            "title": "Example",
+            "default": ""
           }
         },
         "type": "object",
@@ -1121,7 +1131,7 @@
           "tools"
         ],
         "title": "ConnectorDetailOut",
-        "description": "Коннектор в GET /connectors: ещё и настройки, которые можно менять из интерфейса."
+        "description": "Коннектор в GET /connectors: ещё и настройки, которые можно менять из интерфейса.\n\nnote и example — пояснение коннектора для панели и пример для config.yaml (нет — \"\")."
       },
       "ConnectorOut": {
         "properties": {

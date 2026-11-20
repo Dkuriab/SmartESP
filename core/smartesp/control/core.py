@@ -202,12 +202,14 @@ class Core:
         return [{**dataclasses.asdict(c), "tools": list(c.tools)} for c in self._connectors()]
 
     def connectors(self) -> list[dict[str, Any]]:
-        """Коннекторы: [{id, name, state, tools, error, settings}] в порядке настроек.
+        """Коннекторы: [{id, name, state, tools, error, settings, note, example}] в порядке настроек.
 
-        settings — объявленные коннектором настройки с текущими значениями (секреты скрыты).
+        settings — объявленные коннектором настройки с текущими значениями (секреты скрыты);
+        note и example — его пояснение и пример для config.yaml (нет — пустые строки).
         """
         declared = self._store.connector_settings()
-        return [{**item, "settings": declared.get(item["id"], [])} for item in self._connector_states()]
+        empty = {"settings": [], "note": "", "example": ""}
+        return [{**item, **empty, **declared.get(item["id"], {})} for item in self._connector_states()]
 
     def config(self) -> dict[str, Any]:
         """Действующие настройки, ключи владельца, разделы с перезапуском и итоговые промпты."""

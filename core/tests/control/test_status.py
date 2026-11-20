@@ -57,7 +57,7 @@ async def test_status_and_list_show_connectors() -> None:
         },
     ]
     assert (await h.core.status())["connectors"] == expected
-    assert h.core.connectors() == [{**item, "settings": []} for item in expected]
+    assert h.core.connectors() == [{**item, "settings": [], "note": "", "example": ""} for item in expected]
     await h.core.aclose()
 
 
@@ -65,8 +65,9 @@ async def test_connector_list_has_declared_settings() -> None:
     h = Harness()
     h.connector_states = [ConnectorState("weather", "Погода", "ready", ("weather_now",))]
     city = {"key": "WEATHER_PLACE", "title": "Город", "type": "text", "hint": "", "value": "Тверь"}
-    h.store.settings = {"weather": [city]}
+    h.store.settings = {"weather": {"settings": [city], "note": "Только так", "example": ""}}
     assert h.core.connectors()[0]["settings"] == [city]
+    assert h.core.connectors()[0]["note"] == "Только так"
     assert "settings" not in (await h.core.status())["connectors"][0]  # сводку опрашивают часто
     await h.core.aclose()
 

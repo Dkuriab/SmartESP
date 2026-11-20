@@ -1,7 +1,9 @@
 """Настройки, которые коннектор объявляет сам: файл smartesp.json в папке его проекта.
 
-Формат: `{"settings": [{"key", "title", "type", "hint"}]}`, type — text, path, list, secret
-или flag. Через API у коннектора можно менять только объявленные ключи env (см. api_patch.py).
+Формат: `{"settings": [{"key", "title", "type", "hint"}], "note": "…", "example": "…"}`, type —
+text, path, list, secret или flag; note и example (необязательны) — пояснение для панели
+коннектора и пример для config.yaml (например, почему настроек в приложении нет).
+Через API у коннектора можно менять только объявленные ключи env (см. api_patch.py).
 Файл только читается; ключи окружения, опасные для запуска (PATH, PYTHON*, DYLD_* …),
 не объявляются никогда, что бы файл ни говорил.
 """
@@ -52,6 +54,8 @@ class ConnectorSetting(BaseModel):
 
 class _Manifest(BaseModel):
     settings: list[ConnectorSetting] = Field(default_factory=list[ConnectorSetting])
+    note: str = ""
+    example: str = ""
 
 
 def protected_key(key: str) -> bool:
@@ -67,22 +71,35 @@ def project_dir(args: Sequence[str]) -> Path | None:
     return None
 
 
-def declared_settings(connector: ConnectorConfig) -> list[ConnectorSetting]:
-    """Настройки из smartesp.json проекта коннектора; нет файла или он неверный — пусто."""
+def _manifest(connector: ConnectorConfig) -> _Manifest:
+    """smartesp.json проекта коннектора; нет файла или он неверный — пустой."""
     folder = project_dir(connector.expanded().args)
     if folder is None:
-        return []
+        return _Manifest()
     path = folder / MANIFEST_NAME
     try:
-        manifest = _Manifest.model_validate_json(path.read_bytes())
+        return _Manifest.model_validate_json(path.read_bytes())
     except FileNotFoundError:
-        return []
+        return _Manifest()
     except (OSError, ValidationError) as error:
         _log.warning("Коннектор %s: не читается %s, настроек нет: %s", connector.id, path, error)
-        return []
+        return _Manifest()
+
+
+def manifest_note(connector: ConnectorConfig) -> dict[str, str]:
+    """Пояснение и пример из smartesp.json: {note, example}; нет — пустые строки."""
+    manifest = _manifest(connector)
+    return {"note": manifest.note, "example": manifest.example}
+
+
+def declared_settings(connector: ConnectorConfig) -> list[ConnectorSetting]:
+    """Настройки из smartesp.json проекта коннектора без защищённых ключей; нет файла — пусто."""
+    manifest = _manifest(connector)
     allowed = [s for s in manifest.settings if not protected_key(s.key)]
     if len(allowed) != len(manifest.settings):
-        _log.warning("Коннектор %s: ключи PATH, PYTHON*, DYLD_* и т. п. в %s пропущены", connector.id, path)
+        _log.warning(
+            "Коннектор %s: ключи PATH, PYTHON*, DYLD_* и т. п. в %s пропущены", connector.id, MANIFEST_NAME
+        )
     return allowed
 
 

@@ -11,7 +11,7 @@ from ._files import owner_changes, write_overrides
 from .api_patch import check_api_entries
 from .connectors import merge_connector_entries
 from .loader import load_with_overrides
-from .manifest import settings_view
+from .manifest import manifest_note, settings_view
 from .models import Config
 
 _log = logging.getLogger(__name__)
@@ -87,9 +87,13 @@ class ConfigFile:
         """Текущие настройки; до load — по изменениям владельца (их нет — умолчания)."""
         return self._config if self._config is not None else Config.model_validate(self._overrides)
 
-    def connector_settings(self) -> dict[str, list[dict[str, str]]]:
-        """Объявленные настройки коннекторов по id: {key, title, type, hint, value}; секрет — «•••»."""
-        return {c.id: settings_view(c) for c in self._current().connectors}
+    def connector_settings(self) -> dict[str, dict[str, Any]]:
+        """Что коннекторы объявили в smartesp.json, по id: {settings, note, example}.
+
+        settings — [{key, title, type, hint, value}], непустой секрет — «•••»; note и example —
+        пояснение и пример для config.yaml (нет — пустые строки).
+        """
+        return {c.id: {"settings": settings_view(c), **manifest_note(c)} for c in self._current().connectors}
 
     def save(self, config: Config) -> None:
         """Пишет в файл только отличия от умолчаний (атомарно) и запоминает их."""

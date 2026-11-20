@@ -19,6 +19,18 @@ const details = [
     tools: [],
     error: '',
     settings: [text('WEATHER_PLACE', 'Город', '', 'например, Москва')],
+    note: '',
+    example: '',
+  },
+  {
+    id: 'calc',
+    name: 'Калькулятор',
+    state: 'ready' as const,
+    tools: [],
+    error: '',
+    settings: [],
+    note: 'Папки и инструменты Клода настраиваются только в config.yaml',
+    example: 'connectors:\n  - id: claude_tasks',
   },
   {
     id: 'claude_tasks',
@@ -31,6 +43,8 @@ const details = [
       { key: 'OFF', title: 'Open Food Facts', type: 'flag' as const, hint: '', value: '' },
       { key: 'PIN', title: 'Пин', type: 'secret' as const, hint: '', value: '•••' },
     ],
+    note: '',
+    example: '',
   },
 ]
 
@@ -138,5 +152,12 @@ describe('ConnectorSettings', () => {
     setup('weather', { pending: { 1: 'Обработчики' } })
     expect(screen.getByLabelText('Город')).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Сохранить' })).toBeDisabled()
+  })
+
+  it('пояснение коннектора и пример для config.yaml — только показ, без формы', () => {
+    setup('calc')
+    expect(screen.getByText('Папки и инструменты Клода настраиваются только в config.yaml')).toBeInTheDocument()
+    expect(screen.getByText(/id: claude_tasks/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Сохранить' })).not.toBeInTheDocument()
   })
 })

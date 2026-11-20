@@ -20,10 +20,23 @@ type Props = {
   settings?: ConnectorSetting[]
   /** Сохранить изменённые настройки; ответ — текст ошибки ('' — принято). */
   onSave?: (env: Record<string, string>) => Promise<string>
+  /** Пояснение коннектора и пример для config.yaml (только показ). */
+  note?: { text: string; example: string }
 }
 
 const NO_SETTINGS: ConnectorSetting[] = []
 const noSave = () => Promise.resolve('')
+
+/** Пояснение коннектора (например, почему настроек в приложении нет) и пример для config.yaml. */
+function Note({ text, example }: { text: string; example: string }) {
+  if (!text && !example) return null
+  return (
+    <>
+      {text && <p className="set-text">{text}</p>}
+      {example && <pre className="config-example">{example}</pre>}
+    </>
+  )
+}
 
 function Env({ env }: { env: ConnectorItem['env'] }) {
   if (env.length === 0) return null
@@ -42,7 +55,7 @@ function Env({ env }: { env: ConnectorItem['env'] }) {
 }
 
 export default function ConnectorSettings(props: Props) {
-  const { connector, applying, locked, liveTool, onToggle, settings = NO_SETTINGS, onSave = noSave } = props
+  const { connector, applying, locked, liveTool, onToggle, settings = NO_SETTINGS, onSave = noSave, note } = props
   const declared = new Set(settings.map((s) => s.key))
   return (
     <div className="set">
@@ -79,6 +92,7 @@ export default function ConnectorSettings(props: Props) {
         // новые значения из ядра (после применения) — форма заново
         <ConnectorForm key={JSON.stringify(settings)} settings={settings} disabled={locked} onSave={onSave} />
       )}
+      {note && <Note text={note.text} example={note.example} />}
       <Env env={connector.env.filter((e) => !declared.has(e.key))} />
     </div>
   )
@@ -92,7 +106,7 @@ export function ConnectorPanel({ state, actions, id, hint }: PanelProps) {
   if (!connector) return hint
   const onToggle = (on: boolean) =>
     void actions.setConnectors(connectorToggle(id, on), `${connector.name}: ${on ? 'включён' : 'выключен'}`)
-  const settings = state.connectors?.find((c) => c.id === id)?.settings
+  const detail = state.connectors?.find((c) => c.id === id)
   const onSave = (env: Record<string, string>) => actions.saveConnectorEnv(id, env, `${connector.name}: настройки`)
   return (
     <ConnectorSettings
@@ -101,8 +115,9 @@ export function ConnectorPanel({ state, actions, id, hint }: PanelProps) {
       locked={connectorsLocked(state)}
       liveTool={state.live.connectors[id]?.tool}
       onToggle={onToggle}
-      settings={settings}
+      settings={detail?.settings}
       onSave={onSave}
+      note={detail && { text: detail.note ?? '', example: detail.example ?? '' }}
     />
   )
 }

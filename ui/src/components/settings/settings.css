@@ -380,3 +380,14 @@
 .folder-list > .chip {
   align-self: flex-start;
 }
+
+.config-example {
+  margin: 8px 0 0;
+  padding: 8px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
