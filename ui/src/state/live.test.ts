@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CoreEvent } from '../api/events'
 import type { Live } from './live'
-import { NO_LIVE, applyLive } from './live'
+import { NO_LIVE, applyLive, quietLive } from './live'
 
 const ids = { turn_id: 7, device_id: 'kitchen' }
 
@@ -57,5 +57,26 @@ describe('applyLive: коннекторы', () => {
     const elsewhere = { ...started, data: { ...started.data, device_id: 'hall', connector: 'notes' } }
     const live = run(started, elsewhere, ev('turn_finished', {}))
     expect(Object.keys(live.connectors)).toEqual(['notes'])
+  })
+})
+
+describe('applyLive: старты работы (для подсветки не короче 1,2 с)', () => {
+  const started = ev('tool_call', { executor: 'dispatcher', connector: 'calc', tool: 'calc_add', state: 'started' })
+  const finished = ev('tool_call', { executor: 'dispatcher', connector: 'calc', tool: 'calc_add', state: 'finished' })
+  const thinking = ev('executor_active', { executor: 'dispatcher', state: 'thinking' })
+
+  it('каждый старт получает новый номер; конец старт не стирает', () => {
+    const live = run(started, finished)
+    expect(live.connectors).toEqual({})
+    expect(live.started?.['connector:calc']).toEqual({ seq: 1, value: { tool: 'calc_add', executor: 'dispatcher', turn: 'kitchen#7' } })
+    const again = applyLive(live, started)
+    expect(again.started?.['connector:calc']?.seq).toBe(2)
+    expect(applyLive(again, thinking).started?.['executor:dispatcher']).toMatchObject({ seq: 3, value: { state: 'thinking' } })
+  })
+
+  it('quietLive: всё снято, но номера стартов продолжаются', () => {
+    const quiet = quietLive(run(started, thinking))
+    expect(quiet).toMatchObject({ executors: {}, connectors: {}, started: {} })
+    expect(applyLive(quiet, started).started?.['connector:calc']?.seq).toBe(3)
   })
 })

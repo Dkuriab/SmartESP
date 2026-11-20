@@ -6,12 +6,30 @@ export type LiveExecutor = { state: 'thinking' | 'speaking'; turn: string }
 /** Коннектор в работе: какой инструмент и кто его вызвал. */
 export type LiveTool = { tool: string; executor: string; turn: string }
 
+/** Старт работы: номер растёт с каждым стартом, чтобы подсветка заметила и вызов, кончившийся в том же кадре. */
+export type LiveStart = { seq: number; value: LiveExecutor | LiveTool }
+
 export type Live = {
   executors: Record<string, LiveExecutor>
   connectors: Record<string, LiveTool>
+  /** Последний старт по ключу «executor:<id>» / «connector:<id>»; конец работы его не стирает. */
+  started?: Record<string, LiveStart>
+  /** Номер последнего старта (не сбрасывается при обрыве связи). */
+  seq?: number
 }
 
 export const NO_LIVE: Live = { executors: {}, connectors: {} }
+
+/** Всё снято (обрыв связи, переподключение), номера стартов продолжаются. */
+export function quietLive(live: Live): Live {
+  return { executors: {}, connectors: {}, started: {}, seq: live.seq ?? 0 }
+}
+
+/** Отмечает старт работы под ключом. */
+function start(live: Live, key: string, value: LiveExecutor | LiveTool): Live {
+  const seq = (live.seq ?? 0) + 1
+  return { ...live, seq, started: { ...live.started, [key]: { seq, value } } }
+}
 
 type Data = Record<string, unknown>
 
@@ -35,7 +53,8 @@ function executorActive(live: Live, data: Data): Live {
   if (!id) return live
   const state = data.state
   if (state === 'thinking' || state === 'speaking') {
-    return { ...live, executors: { ...live.executors, [id]: { state, turn: turnKey(data) } } }
+    const now: LiveExecutor = { state, turn: turnKey(data) }
+    return start({ ...live, executors: { ...live.executors, [id]: now } }, `executor:${id}`, now)
   }
   if (live.executors[id]?.turn !== turnKey(data)) return live // отложенный ответ хода 1 не гасит ход 2
   return { ...live, executors: without(live.executors, id) }
@@ -46,7 +65,7 @@ function toolCall(live: Live, data: Data): Live {
   const id = str(data.connector)
   if (!id) return live
   const call = { tool: str(data.tool), executor: str(data.executor), turn: turnKey(data) }
-  if (data.state === 'started') return { ...live, connectors: { ...live.connectors, [id]: call } }
+  if (data.state === 'started') return start({ ...live, connectors: { ...live.connectors, [id]: call } }, `connector:${id}`, call)
   const now = live.connectors[id]
   if (!now || now.tool !== call.tool || now.turn !== call.turn) return live
   return { ...live, connectors: without(live.connectors, id) }

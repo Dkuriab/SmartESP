@@ -1,7 +1,7 @@
 // Редьюсер состояния интерфейса: чистая функция, без сети.
 import { applyEvent } from './eventRules'
 import { setFilePhase } from './files'
-import { NO_LIVE } from './live'
+import { quietLive } from './live'
 import type { Action, CoreState, Loaded, Status } from './model'
 import { mergeTurns } from './turns'
 
@@ -56,7 +56,7 @@ function opened(state: CoreState): CoreState {
     currentTurnIds: [],
     downloads: {},
     restarting: false,
-    live: NO_LIVE,
+    live: quietLive(state.live),
     files: {},
   }
 }
@@ -97,7 +97,7 @@ export function reduce(state: CoreState, action: Action): CoreState {
       return applyEvent(state, action.event)
     case 'connection':
       // без связи окончания работы не придут: подсветка «думает…» иначе осталась бы навсегда
-      return { ...state, connection: action.connection, live: action.connection === 'online' ? state.live : NO_LIVE }
+      return { ...state, connection: action.connection, live: action.connection === 'online' ? state.live : quietLive(state.live) }
     case 'select':
       return { ...state, selected: action.selected }
     case 'selectTurn':

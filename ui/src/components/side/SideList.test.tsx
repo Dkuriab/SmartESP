@@ -1,4 +1,5 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
+import { LIVE_MIN_MS } from '../../schema/linger'
 import userEvent from '@testing-library/user-event'
 import type { CoreState } from '../../state/model'
 import { makeActions, makeConfig, makeState, makeStatus } from '../fixtures'
@@ -134,5 +135,18 @@ describe('SideList: коннекторы и живая подсветка', () =
     draw({ live })
     expect(within(section('Исполнители')).getByLabelText('говорит')).toBeInTheDocument()
     expect(within(section('Коннекторы')).getByLabelText('calc_add…')).toBeInTheDocument()
+  })
+
+  it('вызов, начавшийся и кончившийся в одном кадре, отмечен точкой не меньше LIVE_MIN_MS', () => {
+    vi.useFakeTimers()
+    const state = makeState({ config: makeConfig({ connectors }), status })
+    const view = render(<SideList state={state} actions={makeActions()} />)
+    const call = { tool: 'calc_add', executor: 'dispatcher', turn: 'a#1' }
+    const flashed = { ...state, live: { executors: {}, connectors: {}, seq: 1, started: { 'connector:calc': { seq: 1, value: call } } } }
+    view.rerender(<SideList state={flashed} actions={makeActions()} />)
+    expect(within(section('Коннекторы')).getByLabelText('calc_add…')).toBeInTheDocument()
+    act(() => void vi.advanceTimersByTime(LIVE_MIN_MS))
+    expect(within(section('Коннекторы')).queryByLabelText('calc_add…')).not.toBeInTheDocument()
+    vi.useRealTimers()
   })
 })

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Live } from '../state/live'
 import { NO_LIVE } from '../state/live'
-import { LIVE_FADE_MS, LIVE_MIN_MS, createLinger } from './linger'
+import { LIVE_FADE_MS, LIVE_MIN_MS, NO_GLOW, createLinger } from './linger'
 
 const calc: Live = { executors: {}, connectors: { calc: { tool: 'calc_add', executor: 'dispatcher', turn: 'a#1' } } }
 const thinking: Live = { executors: { dispatcher: { state: 'thinking', turn: 'a#1' } }, connectors: {} }
@@ -95,4 +95,34 @@ describe('createLinger: живая подсветка держится и гас
     tick(LIVE_MIN_MS + LIVE_FADE_MS)
     expect(seen).not.toHaveBeenCalled()
   })
+
+  const tool = { tool: 'calc_add', executor: 'dispatcher', turn: 'a#1' }
+  /** Старт и конец вызова пришли в одном кадре: в live вызова уже нет, остался только старт. */
+  const flash = (seq: number): Live => ({ executors: {}, connectors: {}, seq, started: { 'connector:calc': { seq, value: tool } } })
+
+  it('старт и конец в одном кадре: вызов всё равно светится LIVE_MIN_MS и гаснет', () => {
+    const { linger } = make()
+    linger.update(flash(1))
+    expect(linger.snapshot().live.connectors.calc).toEqual(tool)
+    expect(linger.snapshot().fading.size).toBe(0)
+    tick(LIVE_MIN_MS)
+    expect(linger.snapshot().fading.has('connector:calc')).toBe(true)
+    tick(LIVE_FADE_MS)
+    expect(linger.snapshot()).toBe(NO_GLOW)
+    linger.update(flash(1)) // тот же старт ещё раз не зажигает
+    expect(linger.snapshot()).toBe(NO_GLOW)
+    linger.update(flash(2))
+    expect(linger.snapshot().live.connectors.calc).toEqual(tool)
+  })
+
+  it('старты, бывшие до появления схемы, не зажигаются; после обрыва новые — зажигаются', () => {
+    const linger = createLinger(() => now, flash(4))
+    linger.subscribe(() => {})
+    linger.update(flash(4))
+    expect(linger.snapshot()).toBe(NO_GLOW)
+    linger.clear()
+    linger.update(flash(5))
+    expect(linger.snapshot().live.connectors.calc).toEqual(tool)
+  })
 })
+

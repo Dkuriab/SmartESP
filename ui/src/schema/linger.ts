@@ -26,16 +26,30 @@ function current(live: Live): Map<string, LiveExecutor | LiveTool> {
   return now
 }
 
-/** Новые записи по свежей живой подсветке: начавшиеся — с now, кончившиеся — ended = now. */
-function track(entries: Entries, live: Live, at: number): Entries {
+/** Номера последних стартов по ключу. */
+type Seen = Record<string, number>
+
+const seqsOf = (live: Live): Seen => Object.fromEntries(Object.entries(live.started ?? {}).map(([k, s]) => [k, s.seq]))
+
+/**
+ * Новые записи по свежей живой подсветке: начавшиеся — с at, кончившиеся — ended = at.
+ * Старт, которого ещё не видели (номер вырос), зажигается, даже если работа уже
+ * кончилась в том же кадре: тогда запись сразу с ended = at и держится минимум.
+ */
+function track(entries: Entries, live: Live, at: number, seen: Seen): Entries {
   const now = current(live)
   const next: Entries = {}
   for (const [key, value] of now) {
     const old = entries[key]
     next[key] = { value, since: old && old.ended === undefined ? old.since : at }
   }
+  for (const [key, s] of Object.entries(live.started ?? {})) {
+    if (s.seq <= (seen[key] ?? 0)) continue
+    seen[key] = s.seq
+    if (!now.has(key)) next[key] = { value: s.value, since: at, ended: at }
+  }
   for (const [key, old] of Object.entries(entries)) {
-    if (!now.has(key)) next[key] = old.ended === undefined ? { ...old, ended: at } : old
+    if (!(key in next)) next[key] = old.ended === undefined ? { ...old, ended: at } : old
   }
   return next
 }
@@ -66,8 +80,12 @@ function nextChange(entries: Entries, at: number): number | null {
   return Number.isFinite(next) ? next - at : null
 }
 
-/** Хранилище живой подсветки; now — часы (подменяются в тестах). */
-export function createLinger(now: () => number = () => Date.now()) {
+/**
+ * Хранилище живой подсветки; now — часы (подменяются в тестах); initial — живая
+ * подсветка на момент создания: её прошлые старты не зажигаются заново (смена вкладки).
+ */
+export function createLinger(now: () => number = () => Date.now(), initial?: Live) {
+  const seen: Seen = initial ? seqsOf(initial) : {}
   let entries: Entries = {}
   let glow: Glow = NO_GLOW
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -88,7 +106,7 @@ export function createLinger(now: () => number = () => Date.now()) {
   return {
     /** Свежая живая подсветка из состояния. */
     update(live: Live) {
-      entries = track(entries, live, now())
+      entries = track(entries, live, now(), seen)
       refresh()
     },
     /** Обрыв связи: снять всё сразу, без задержки и угасания. */

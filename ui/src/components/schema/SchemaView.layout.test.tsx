@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { makeActions, makeConfig, makeState, makeStatus } from '../fixtures'
 import { LIVE_FADE_MS, LIVE_MIN_MS } from '../../schema/linger'
 import type { CoreState } from '../../state/model'
+import { reduce } from '../../state/reducer'
 import SchemaView from './SchemaView'
 
 const observers = new Set<ObserverMock>()
@@ -86,6 +87,28 @@ describe('SchemaView: живая подсветка держится и гасн
     expect(card()).toHaveClass('fading')
     act(() => void vi.advanceTimersByTime(LIVE_FADE_MS))
     expect(card()).not.toHaveClass('live')
+    expect(card()).not.toHaveClass('fading')
+  })
+
+  it('старт и конец вызова в одном кадре (один act) всё равно зажигают узел на LIVE_MIN_MS', () => {
+    vi.useFakeTimers()
+    const connectors = [{ id: 'calc', name: 'Калькулятор', command: 'uv', enabled: true }]
+    const idle = makeState({ config: makeConfig({ connectors }) })
+    const view = render(draw(idle))
+    const call = { device_id: 'a', turn_id: 1, connector: 'calc', tool: 'calc_add', executor: 'dispatcher' }
+    const both = [
+      { type: 'event' as const, event: { kind: 'tool_call', at: 0, data: { ...call, state: 'started' } } },
+      { type: 'event' as const, event: { kind: 'tool_call', at: 0, data: { ...call, state: 'finished' } } },
+    ].reduce(reduce, idle)
+    expect(both.live.connectors).toEqual({})
+    act(() => view.rerender(draw(both)))
+    const card = () => screen.getByText('Калькулятор').closest('.node')
+    expect(card()).toHaveClass('live')
+    act(() => void vi.advanceTimersByTime(LIVE_MIN_MS - 1))
+    expect(card()).toHaveClass('live')
+    act(() => void vi.advanceTimersByTime(1))
+    expect(card()).toHaveClass('fading')
+    act(() => void vi.advanceTimersByTime(LIVE_FADE_MS))
     expect(card()).not.toHaveClass('fading')
   })
 

@@ -1,11 +1,13 @@
 // Левая панель: колонки, обработчики, исполнители, голос и коннекторы; клик выбирает блок.
-// Работающее сейчас отмечено пульсирующей точкой с подписью (на узком экране схема мелкая).
+// Работающее сейчас отмечено пульсирующей точкой с подписью (на узком экране схема мелкая);
+// короткая работа отмечена не меньше 1,2 с.
 import type { ReactNode } from 'react'
 import { isApplying, listDevices, listExecutors, listStages, stagesLocked, stagesWith, voiceLabel } from '../../schema/blocks'
 import { connectorToggle, connectorsLocked, listConnectors } from '../../schema/connectors'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState, Selection } from '../../state/model'
 import AccessInfo from '../common/AccessInfo'
+import { steadyLive, useLiveGlow } from '../schema/useLiveGlow'
 import './side.css'
 
 type Props = { state: CoreState; actions: CoreActions }
@@ -125,15 +127,18 @@ function Connectors(props: Props) {
 
 export default function SideList(props: Props) {
   const { state, actions } = props
+  // точки работы держатся не меньше 1,2 с — как живая подсветка схемы
+  const glow = useLiveGlow(state.live, state.connection === 'online')
+  const working = { ...props, state: { ...state, live: steadyLive(glow) } }
   return (
     <>
       <Devices {...props} />
       <Stages {...props} />
-      <Executors {...props} />
+      <Executors {...working} />
       <Section title="Голос">
         <Row icon="🔈" label="Голос" sub={voiceLabel(state) ?? '—'} target={{ kind: 'voice', id: 'voice' }} props={props} />
       </Section>
-      <Connectors {...props} />
+      <Connectors {...working} />
       <AccessInfo loadAccess={actions.loadAccess} online={state.connection === 'online'} />
     </>
   )

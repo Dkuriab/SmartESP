@@ -302,7 +302,7 @@ describe('reduce: связь пропала', () => {
   it('живая подсветка снимается, данные остаются', () => {
     const busy = { executors: { dispatcher: { state: 'thinking' as const, turn: 'k#1' } }, connectors: {} }
     const s = reduce({ ...initialState('online'), live: busy }, { type: 'connection', connection: 'offline' })
-    expect(s.live).toEqual({ executors: {}, connectors: {} })
+    expect(s.live).toMatchObject({ executors: {}, connectors: {}, started: {} })
     expect(s.connection).toBe('offline')
   })
 })
