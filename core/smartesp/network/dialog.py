@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager
 from smartesp.contracts import DELEGATE_TOOL, ChatMessage, ReplyPart
 
 TASK_PREFIX = "\n\nЗадача от диспетчера: "  # дописывается к последнему сообщению user у цели
-# строки перед вопросом в сообщении user (их собирает conversation.build_messages)
+# строки контекста перед вопросом в сообщении user: так их собирала conversation.build_messages
+# до W9 (теперь контекст — отдельное сообщение system); question() по-прежнему их отбрасывает
 _NOTE = re.compile(r"^\[[^\]\n]+\] ")  # пометка обработчика «[источник] текст»
 _DEVICE = "Колонка: "  # строка с именем колонки
 _STYLE_TAG = re.compile(r"^\s*\[\s*style\s*:\s*[\w-]+\s*\]", re.IGNORECASE)  # «[style:quiet]»

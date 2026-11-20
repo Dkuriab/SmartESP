@@ -53,5 +53,5 @@ def test_label_goes_to_the_model_message_instead_of_source() -> None:
     from smartesp.conversation.prompt import build_messages
 
     note = Annotation("четверг, 19 ноября 2026, 21:40, вечер", "clock", label="время")
-    (message,) = build_messages([note], [], "который час", "Кухня")[-1:]
-    assert message.content.startswith("[время] четверг, 19 ноября 2026, 21:40, вечер\nКолонка: Кухня")
+    context, _ = build_messages([note], [], "который час", "Кухня")
+    assert context.content.endswith("\n[время] четверг, 19 ноября 2026, 21:40, вечер\nКолонка: Кухня")

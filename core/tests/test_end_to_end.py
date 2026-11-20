@@ -202,7 +202,8 @@ def test_two_speakers_louder_one_answers(tmp_path: Path) -> None:
         assert _read(quiet, 0.3) is None  # тихой колонке больше ничего: ни reply_start, ни звука
 
     assert len(executor.calls) == 1
-    assert "Колонка: Спальня" in executor.calls[0][-1].content
+    context = executor.calls[0][-2]  # контекст хода — отдельным system перед вопросом
+    assert context.role == "system" and context.content.endswith("\nКолонка: Спальня")
 
 
 class _LateNetwork:

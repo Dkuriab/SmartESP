@@ -21,6 +21,7 @@ from smartesp.contracts import (
 )
 from smartesp.conversation import History, Orchestrator, asking
 from smartesp.conversation.asking import BUSY, FAILED_PHRASE, LATE_PHRASE, NOT_HEARD
+from smartesp.conversation.prompt import CONTEXT_HEAD
 
 CHANNEL = "[канал] Telegram: вопрос не с колонки, ответ прочитают текстом"
 VOICE = b"\x01\x00" * 1600
@@ -45,8 +46,8 @@ async def test_text_question_answered_without_sound() -> None:
     assert stt.calls == 0
     assert (setup.port.plays, setup.port.tones, setup.tts.texts) == ([], [], [])
     assert (analyzer.seen[0].text, analyzer.seen[0].origin) == ("Какая погода?", "api")
-    content = f"[время] сейчас 10:00\n{CHANNEL}\n[человек] Аня\n\nКакая погода?"
-    assert executor.calls[0][-1] == ChatMessage("user", content)  # без строки «Колонка: …»
+    context = f"{CONTEXT_HEAD}\n[время] сейчас 10:00\n{CHANNEL}\n[человек] Аня"  # без строки «Колонка: …»
+    assert executor.calls[0][-2:] == [ChatMessage("system", context), ChatMessage("user", "Какая погода?")]
     assert setup.history.messages() == [  # в истории видно, откуда вопрос
         ChatMessage("user", "[Telegram · Аня] Какая погода?"),
         ChatMessage("assistant", "Сегодня солнечно. Тепло."),
@@ -84,7 +85,7 @@ async def test_voice_question_goes_through_same_stt() -> None:
     answer = await setup.orchestrator.ask(telegram(pcm=VOICE))
     assert answer.text == "Десять."
     assert stt.calls == 1
-    assert executor.calls[0][-1].content.endswith("\n\nКоторый час?")
+    assert executor.calls[0][-1] == ChatMessage("user", "Который час?")
     heard = next(data for kind, data in sink.events if kind == "turn_heard")
     assert (heard["turn_id"], heard["text"]) == ("api1", "Который час?")
     assert finished(sink)["text"] == "Который час?"
