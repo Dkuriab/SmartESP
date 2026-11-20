@@ -2,6 +2,7 @@
 
 import pytest
 
+from smartesp.contracts import ChatMessage
 from smartesp.network.claim_check import (
     asks_action,
     claims_action,
@@ -10,6 +11,7 @@ from smartesp.network.claim_check import (
     opens_structure,
     spells_tool_call,
 )
+from smartesp.network.dialog import after_tools, request
 
 NAMES = frozenset({"timer_start", "delegate", "list_show"})
 
@@ -151,6 +153,18 @@ def test_confirmation_right_after_a_tool_turn_is_not_a_claim() -> None:
 )
 def test_action_requests(question: str, asks: bool) -> None:
     assert asks_action(question) is asks
+
+
+def test_command_after_an_answered_knowledge_question_is_still_a_request() -> None:
+    # прошлый вопрос о знании склеен с короткой командой — команда всё равно просьба
+    history = [
+        ChatMessage("user", "Сколько сейчас времени?"),
+        ChatMessage("assistant", "Сейчас три часа. Что-нибудь ещё?"),
+        ChatMessage("user", "Включи свет"),
+    ]
+    assert false_claim("Включила.", request(history), after_tools(history))
+    assert asks_action("Сколько сейчас времени?\nВключи свет")
+    assert not asks_action("Сколько сейчас времени?\nДа")
 
 
 def test_participles_are_claims_only_without_past_and_dates() -> None:

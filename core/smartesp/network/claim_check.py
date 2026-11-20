@@ -118,15 +118,17 @@ def first_sentence(text: str) -> str | None:
 def requested_actions(question: str) -> frozenset[str]:
     """Семейства действий, о которых просит человек: «Включи свет», «Включишь свет?», «Можешь
     поставить таймер?», «Включить свет». Цитаты («как сказать «включи»?») не считаются."""
-    text = _QUOTED.sub(" ", question)
-    words = text.lower().split()
-    if words and words[0].strip(",.!?") in _KNOWLEDGE:
-        return frozenset()  # «Как можно установить…», «Когда включают…» — вопрос о знании
-    found = {family for family, pattern in _ASKED.items() if pattern.search(text)}
-    for family, pattern in _INFINITIVES.items():
-        match = pattern.search(text)
-        if match and (pattern.match(text.lstrip()) or _modal_before(text[: match.start()])):
-            found.add(family)  # неопределённая форма в начале или сразу после «можешь/надо…»
+    found: set[str] = set()
+    # каждая строка — своя реплика: склейка «Сколько сейчас времени?\nВключи свет» — просьба
+    for text in _QUOTED.sub(" ", question).splitlines():
+        words = text.lower().split()
+        if words and words[0].strip(",.!?") in _KNOWLEDGE:
+            continue  # «Как можно установить…», «Когда включают…» — вопрос о знании
+        found |= {family for family, pattern in _ASKED.items() if pattern.search(text)}
+        for family, pattern in _INFINITIVES.items():
+            match = pattern.search(text)
+            if match and (pattern.match(text.lstrip()) or _modal_before(text[: match.start()])):
+                found.add(family)  # неопределённая форма в начале или сразу после «можешь/надо…»
     return frozenset(found)
 
 
