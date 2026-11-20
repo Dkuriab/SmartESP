@@ -6,6 +6,9 @@ import type { Device, FilePhase } from '../../state/model'
 /** С этой версии протокола колонка принимает звук, начатый ядром. */
 export const MIN_SPEECH_PROTOCOL = 3
 
+/** audio/* и расширения: у ogg/opus в macOS (Safari, окно выбора) нет системного «аудио»-типа. */
+export const AUDIO_ACCEPT = 'audio/*,.mp3,.wav,.ogg,.oga,.opus,.m4a'
+
 type Props = { device: Device; phase?: FilePhase; onPlay: (file: File) => void; onStop: () => void }
 
 /** Почему файл проиграть нельзя; можно — пусто. */
@@ -41,7 +44,7 @@ export default function DeviceFile({ device, phase, onPlay, onStop }: Props) {
         </button>
         <span className="device-file-phase" role="status">{phaseText(phase)}</span>
       </div>
-      <input ref={input} type="file" accept="audio/*" hidden aria-label="Звуковой файл" onChange={pick} />
+      <input ref={input} type="file" accept={AUDIO_ACCEPT} hidden aria-label="Звуковой файл" onChange={pick} />
       {why && <div className="set-note">{why}</div>}
     </div>
   )

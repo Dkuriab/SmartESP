@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Client } from './actions'
-import { createFileActions, NOT_PLAYING } from './fileActions'
+import { createFileActions, MAX_FILE_BYTES, NOT_PLAYING, TOO_BIG } from './fileActions'
 import type { Action } from './model'
 
 function setup() {
@@ -37,6 +37,15 @@ describe('действия с файлом на колонке', () => {
       { type: 'notice', notice: { text: 'Колонка занята', tone: 'error' } },
       { type: 'filePhase', deviceId: 'aa:bb', phase: null },
     ])
+  })
+
+  it('playFile: файл больше 50 МБ не отправляется, уведомление', async () => {
+    const { client, dispatched, actions } = setup()
+    const big = new File(['x'], 'big.wav')
+    Object.defineProperty(big, 'size', { value: MAX_FILE_BYTES + 1 })
+    await actions.playFile('aa:bb', big)
+    expect(client.POST).not.toHaveBeenCalled()
+    expect(dispatched).toEqual([{ type: 'notice', notice: { text: TOO_BIG, tone: 'error' } }])
   })
 
   it('stopFile: остановлен — фаза снята (итог придёт событием)', async () => {

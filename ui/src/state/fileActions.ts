@@ -11,6 +11,9 @@ export type FileActions = {
 }
 
 export const NOT_PLAYING = 'На колонке не играет файл'
+/** Больше ядро не примет (413); проверяем до загрузки — иначе браузер часто видит обрыв связи. */
+export const MAX_FILE_BYTES = 50 * 1024 * 1024
+export const TOO_BIG = 'Файл больше 50 МБ — ядро такой не примет'
 const PLAY_PATH = '/api/v1/devices/{device_id}/play'
 
 /** Тело запроса: файл в поле audio. */
@@ -23,6 +26,10 @@ function form(file: File): FormData {
 export function createFileActions(client: Client, dispatch: Dispatch): FileActions {
   return {
     async playFile(deviceId, file) {
+      if (file.size > MAX_FILE_BYTES) {
+        dispatch({ type: 'notice', notice: { text: TOO_BIG, tone: 'error' } })
+        return
+      }
       dispatch({ type: 'filePhase', deviceId, phase: 'sending' })
       const params = { path: { device_id: deviceId } }
       // в схеме файл — строка (binary); на деле уходит FormData с самим файлом

@@ -23,7 +23,7 @@ describe('файл на колонке в панели', () => {
     const file = new File(['ID3'], 'song.mp3', { type: 'audio/mpeg' })
     await userEvent.upload(screen.getByLabelText('Звуковой файл'), file)
     expect(actions.playFile).toHaveBeenCalledWith('aa:bb', file)
-    expect(screen.getByLabelText('Звуковой файл')).toHaveAttribute('accept', 'audio/*')
+    expect(screen.getByLabelText('Звуковой файл')).toHaveAttribute('accept', 'audio/*,.mp3,.wav,.ogg,.oga,.opus,.m4a')
   })
 
   it('«Остановить» вызывает stopFile', async () => {
