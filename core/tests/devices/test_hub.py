@@ -123,6 +123,17 @@ async def test_playback_done_ends_turn() -> None:
     await eventually(lambda: not hub.is_active("A", 1))
 
 
+async def test_played_is_ignored_for_now() -> None:
+    clock = FakeClock()
+    hub = make_hub(clock)
+    conn, _ = await accepted_turn(hub, clock, "A")
+    conn.feed_json("played", turn=1, bytes=16000)  # прогресс ответа: ход не заканчивает
+    await asyncio.sleep(0.02)
+    assert hub.is_active("A", 1)
+    conn.feed_json("playback_done", turn=1)
+    await eventually(lambda: not hub.is_active("A", 1))
+
+
 async def test_newer_turn_ends_previous() -> None:
     clock = FakeClock()
     hub = make_hub(clock)

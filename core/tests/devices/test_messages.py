@@ -7,6 +7,7 @@ from smartesp.devices import (
     Busy,
     Hello,
     PlaybackDone,
+    Played,
     UtteranceEnd,
     Wake,
     announce,
@@ -65,6 +66,22 @@ def test_parse_rejects_bad_turn_and_level() -> None:
 def test_parse_busy() -> None:
     assert parse_message('{"type":"busy","turn":2147483649}') == Busy(2147483649)
     assert parse_message('{"type":"busy"}') is None
+
+
+def test_parse_played() -> None:
+    assert parse_message('{"type":"played","turn":2147483649,"bytes":16000}') == Played(2147483649, 16000)
+    assert parse_message('{"type":"played","turn":1,"bytes":4294967295}') == Played(1, 4294967295)
+    assert parse_message('{"type":"played","turn":1,"bytes":0}') == Played(1, 0)
+
+
+def test_parse_played_rejects_bad_bytes() -> None:
+    assert parse_message('{"type":"played","turn":1}') is None
+    assert parse_message('{"type":"played","bytes":10}') is None
+    assert parse_message('{"type":"played","turn":1,"bytes":-1}') is None
+    assert parse_message('{"type":"played","turn":1,"bytes":4294967296}') is None
+    assert parse_message('{"type":"played","turn":1,"bytes":1.5}') is None
+    assert parse_message('{"type":"played","turn":1,"bytes":true}') is None
+    assert parse_message('{"type":"played","turn":1,"bytes":"10"}') is None
 
 
 def test_encode_announce_and_listen() -> None:
