@@ -17,19 +17,19 @@ import logging
 from collections.abc import AsyncIterator, Callable
 from typing import Literal
 
-from smartesp.contracts import ChatMessage, ReplyPart, ToolObserver, ToolUse
+from smartesp.contracts import ChatMessage, GuardTag, ReplyPart, ToolObserver, ToolUse
 
-from .claim_check import claims_action, first_sentence, opens_structure, spells_tool_call
-from .dialog import closing, speakable
+from .claim_check import asks_action, false_claim, first_sentence, opens_structure, spells_tool_call
+from .dialog import after_tools, closing, question, speakable
 
 _log = logging.getLogger(__name__)
 
 REMINDER = "Ты не вызвал инструмент. Вызови нужный инструмент или честно скажи, что не можешь это сделать."
-NO_TOOL_PHRASE = "Не получилось это сделать — у меня нет подходящего инструмента."
-NOT_HEARD_PHRASE = "Не расслышала, повтори, пожалуйста."
+NO_TOOL_PHRASE = "Не получилось это сделать — у меня нет подходящего инструмента."  # на просьбу действия
+NOT_HEARD_PHRASE = "Не расслышала, повтори, пожалуйста."  # вопрос пуст
+EMPTY_PHRASE = "Не получилось ответить, спроси ещё раз, пожалуйста."  # на прочие вопросы
 
 Reason = Literal["claim", "empty", "syntax"]
-Tag = Literal["", "retried", "fallback"]
 # прогон участника: сообщения и наблюдатель его вызовов инструментов → куски
 Start = Callable[[list[ChatMessage], ToolObserver], AsyncIterator[ReplyPart]]
 _REASONS: dict[Reason, str] = {
@@ -42,14 +42,17 @@ _CALLED = object()  # инструмент начал работу, пока ж�
 
 
 async def guarded(
-    source: str, start: Start, messages: list[ChatMessage], names: frozenset[str], heard: bool
+    source: str, start: Start, messages: list[ChatMessage], names: frozenset[str], base: list[ChatMessage]
 ) -> AsyncIterator[ReplyPart]:
     """Куски ответа участника source под страховкой честности.
 
-    start — прогон участника; names — имена его инструментов (для поиска вызова текстом);
-    heard — вопрос человека непустой (иначе на пустой ответ — NOT_HEARD_PHRASE).
+    start — прогон участника с сообщениями messages; names — имена его инструментов (для поиска
+    вызова текстом); base — исходные сообщения хода: из них вопрос человека (утверждения ищутся
+    только на просьбу действия) и был ли инструмент в прошлом ходе.
     """
-    first = _Attempt(start, messages, names)
+    asked = question(base)
+    check = _Check(names, asked, after_tools(base))
+    first = _Attempt(start, messages, check)
     async with closing(first.parts()) as parts:
         async for part in parts:
             yield part
@@ -59,7 +62,7 @@ async def guarded(
     _log.info("«%s»: %s без инструмента (%r) — повторный прогон", source, _REASONS[reason], text)
     # без нечестного ответа в диалоге: с ним gpt-oss:20b в замере повторял ложь в 7 из 16 прогонов,
     # без него — 0 из 16
-    second = _Attempt(start, [*messages, ChatMessage("system", REMINDER)], names, tag="retried")
+    second = _Attempt(start, [*messages, ChatMessage("system", REMINDER)], check, tag="retried")
     async with closing(second.parts()) as parts:
         async for part in parts:
             yield part
@@ -67,8 +70,27 @@ async def guarded(
         return
     reason, text = second.violation
     _log.info("«%s»: снова %s (%r) — честная фраза", source, _REASONS[reason], text)
-    phrase = NOT_HEARD_PHRASE if reason == "empty" and not heard else NO_TOOL_PHRASE
-    yield ReplyPart(phrase, guard="fallback")
+    yield ReplyPart(_fallback(reason, asked), guard="fallback")
+
+
+def _fallback(reason: Reason, asked: str) -> str:
+    """Честная фраза вместо ответа: пустой вопрос, просьба действия или прочее."""
+    if reason == "empty" and not asked:
+        return NOT_HEARD_PHRASE
+    return NO_TOOL_PHRASE if asks_action(asked) else EMPTY_PHRASE
+
+
+@dataclasses.dataclass(frozen=True)
+class _Check:
+    """Что проверять: имена инструментов, вопрос человека, был ли инструмент в прошлом ходе."""
+
+    names: frozenset[str]
+    question: str
+    after_tools: bool
+
+    def claims(self, sentence: str) -> bool:
+        """Ложное «сделала» на просьбу этого хода."""
+        return false_claim(sentence, self.question, self.after_tools)
 
 
 class _Attempt:
@@ -78,12 +100,10 @@ class _Attempt:
     отдано ничего); tag — метка guard для первого отданного куска.
     """
 
-    def __init__(
-        self, start: Start, messages: list[ChatMessage], names: frozenset[str], tag: Tag = ""
-    ) -> None:
+    def __init__(self, start: Start, messages: list[ChatMessage], check: _Check, tag: GuardTag = "") -> None:
         self._start = start
         self._messages = messages
-        self._names = names
+        self._check = check
         self._tag = tag
         self._called = asyncio.Event()
         self._pending: asyncio.Future[object] | None = None
@@ -137,13 +157,13 @@ class _Attempt:
         if claim:
             return "claim"
         if opens_structure(text):
-            return "syntax" if spells_tool_call(text, self._names) else "wait"
+            return "syntax" if spells_tool_call(text, self._check.names) else "wait"
         sentence = first_sentence(text)
         if sentence is None:
             return "wait"
-        if spells_tool_call(sentence, self._names):
+        if spells_tool_call(sentence, self._check.names):
             return "syntax"
-        return "claim" if claims_action(sentence) else "release"
+        return "claim" if self._check.claims(sentence) else "release"
 
     def _at_end(self, held: list[ReplyPart], text: str) -> list[ReplyPart] | None:
         """Поток кончился: был вызов — придержанное как есть, иначе решение по всему тексту."""
@@ -151,9 +171,9 @@ class _Attempt:
             return held
         if not speakable(text):
             self.violation = ("empty", text)
-        elif spells_tool_call(text, self._names):
+        elif spells_tool_call(text, self._check.names):
             self.violation = ("syntax", text)
-        elif claims_action(first_sentence(text) or text.strip()):
+        elif self._check.claims(first_sentence(text) or text.strip()):
             self.violation = ("claim", text)
         return None if self.violation is not None else held
 

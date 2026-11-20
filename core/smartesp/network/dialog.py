@@ -42,6 +42,14 @@ def question(messages: list[ChatMessage]) -> str:
     return "\n".join(lines).strip()
 
 
+def after_tools(messages: list[ChatMessage]) -> bool:
+    """True, если в прошлом ходе (между двумя последними сообщениями user) вызывали инструмент."""
+    users = [i for i, m in enumerate(messages) if m.role == "user"]
+    if len(users) < 2:
+        return False
+    return any(m.role == "tool" or m.tool_calls for m in messages[users[-2] + 1 : users[-1]])
+
+
 def _connector_message(message: ChatMessage) -> bool:
     """True у вызова инструмента коннектора (не delegate) и у ответа такого инструмента."""
     if message.role == "tool":

@@ -7,11 +7,11 @@ import logging
 from collections.abc import AsyncIterator, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Literal
 
 from smartesp.contracts import (
     ChatMessage,
     Executor,
+    GuardTag,
     Handoff,
     ReplyPart,
     ToolBox,
@@ -62,7 +62,7 @@ class _Outcome:
     text: list[str] = field(default_factory=list[str])
     called: bool = False  # был хоть один вызов delegate (верный или нет)
     handoff: Handoff | None = None
-    guard: Literal["", "retried", "fallback"] = ""  # метка страховки с куска вызова delegate
+    guard: GuardTag = ""  # метка страховки с куска вызова delegate
 
 
 class ExecutorNetwork:
@@ -155,7 +155,7 @@ class ExecutorNetwork:
             )
 
         names = frozenset(t.name for t in tools)  # у входного — страховка честности (guard.py)
-        stream = guarded(member_id, start, own, names, bool(question(base))) if depth == 0 else start(own)
+        stream = guarded(member_id, start, own, names, base) if depth == 0 else start(own)
         parts = self._own_parts(member_id, stream, offered, outcome)
         async with closing(parts):
             async for part in parts:

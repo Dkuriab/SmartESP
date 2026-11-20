@@ -9,10 +9,11 @@ from collections.abc import AsyncIterator, Sequence
 import pytest
 from network_helpers import BIG, QUESTION, call
 
+from fakes.fake_executor import FakeExecutor
 from fakes.fake_toolbox import FakeToolBox, tool_spec
 from smartesp.contracts import ChatMessage, Executor, ReplyPart, ToolCall, ToolResult, ToolSpec
 from smartesp.network import ExecutorNetwork, Member
-from smartesp.network.guard import NO_TOOL_PHRASE, NOT_HEARD_PHRASE, REMINDER
+from smartesp.network.guard import EMPTY_PHRASE, NO_TOOL_PHRASE, NOT_HEARD_PHRASE, REMINDER
 
 TIMER = tool_spec("timer_start")
 LIGHT = [ChatMessage("user", "Включи свет на кухне")]
@@ -191,3 +192,59 @@ async def test_target_answers_are_not_checked() -> None:
     big = Scripted(["Свет на кухне включён."])
     parts = await run(net(model, big))
     assert "Свет на кухне включён." in said(parts) and len(big.calls) == 1
+
+
+async def test_fact_with_participle_on_a_question_is_not_retried() -> None:
+    answer = "Первый спутник был запущен 4 октября 1957 года."
+    model = Scripted([answer])
+    parts = await run(net(model), [ChatMessage("user", "Когда запустили первый спутник?")])
+    assert said(parts) == answer and len(model.calls) == 1
+
+
+async def test_empty_answer_to_a_chat_question_gets_neutral_phrase() -> None:
+    parts = await run(net(Scripted([], [])), [ChatMessage("user", "Спасибо!")])
+    assert said(parts) == EMPTY_PHRASE and guards(parts) == ["fallback"]
+
+
+async def test_confirmation_after_a_tool_turn_is_not_retried() -> None:
+    history = [
+        ChatMessage("user", "Поставь таймер на десять минут"),
+        ChatMessage("assistant", "", tool_calls=(ToolCall("timer_start", {"seconds": 600}),)),
+        ChatMessage("tool", "Таймер на 10 минут", tool_name="timer_start"),
+        ChatMessage("assistant", "Таймер на десять минут."),
+        ChatMessage("user", "Поставь таймер на десять минут"),
+    ]
+    model = Scripted(["Таймер уже поставлен на десять минут."])
+    parts = await run(net(model), history)
+    assert said(parts) == "Таймер уже поставлен на десять минут." and len(model.calls) == 1
+
+
+async def test_style_tag_answer_flows_like_any_other() -> None:
+    gate = asyncio.Event()
+    model = Scripted(["[style:quiet] Небо голубое из-за рассеяния. ", "Ещё."], gate=gate)
+    stream = net(model).run(QUESTION)
+    first = await asyncio.wait_for(anext(stream), 1)  # не держится до конца как «JSON»
+    assert first.text.startswith("[style:quiet]")
+    gate.set()
+    await stream.aclose()  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]
+
+
+async def test_closing_while_a_claim_is_held_closes_the_model() -> None:
+    model = FakeExecutor(["Включаю музыку прямо сейчас. ", "А теперь громче."], delay=10)
+    stream = net(model).run(LIGHT)
+    reading = asyncio.ensure_future(anext(stream))
+    await asyncio.sleep(0.05)  # чтение модели идёт в отдельной задаче страховки
+    assert not reading.done()
+    reading.cancel()  # перебили, пока страховка ждёт кусок
+    await asyncio.gather(reading, return_exceptions=True)
+    await stream.aclose()  # type: ignore[attr-defined]  # pyright: ignore[reportAttributeAccessIssue]
+    assert model.closed_early
+
+
+async def test_caller_tool_counts_as_a_call() -> None:
+    caller = tool_spec("reply_photo")
+    model = Scripted(["Включаю камеру прямо сейчас. ", ReplyPart(tool_call=ToolCall("reply_photo", {}))])
+    network = net(model)
+    parts = [p async for p in network.run(LIGHT, [caller])]
+    assert [p.tool_call.name for p in parts if p.tool_call] == ["reply_photo"]
+    assert said(parts) == "Включаю камеру прямо сейчас. " and len(model.calls) == 1
