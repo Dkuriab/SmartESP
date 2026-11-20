@@ -73,3 +73,10 @@ def test_new_keys_known_in_patch(tmp_path: Path) -> None:
     bad = {**ex, "delegates": [{"to": "b", "wehn": "w"}]}
     with pytest.raises(ValueError, match=r"delegates\[0\]\.wehn"):
         store.merge({"executors": [bad, _ex("b")]})
+
+
+def test_reasoning_defaults_to_off_and_rejects_unknown_level() -> None:
+    config = Config.model_validate({"executors": [_ex("a", entry=True)]})
+    assert config.executors[0].reasoning == "off"
+    with pytest.raises(ValueError, match="reasoning"):
+        Config.model_validate({"executors": [{**_ex("a", entry=True), "reasoning": "max"}]})

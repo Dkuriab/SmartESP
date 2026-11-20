@@ -36,6 +36,8 @@ _NO_ACCESS_PROMPT = (
     " Нет данных или инструмента — скажи: «У меня нет доступа к …»."
     " Не говори, что что-то сделал, если инструмент этого не сделал."
 )
+# модель диспетчера по умолчанию прежних версий (до волны 3): в старом файле значит «не меняли»
+_LEGACY_MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
 _LEGACY_PROMPTS = (
     DEFAULT_SYSTEM_PROMPT,
     _NO_ACCESS_PROMPT,
@@ -130,8 +132,10 @@ def _migrate(raw: dict[str, Any]) -> dict[str, Any]:
 
 def _is_legacy_executors(value: object) -> bool:
     """Список исполнителей совпадает с умолчанием прежних версий (с любым прежним промптом)."""
-    # прежнее умолчание — один диспетчер без связей (сеть из двух исполнителей появилась позже)
-    legacy = Config().executors[0].model_dump(exclude={"delegates", "description"})
+    # прежнее умолчание — один диспетчер без связей (сеть из двух исполнителей появилась позже),
+    # на прежней модели и без поля reasoning
+    legacy = Config().executors[0].model_dump(exclude={"delegates", "description", "reasoning"})
+    legacy["model"] = _LEGACY_MODEL
     defaults = [legacy]
     if not isinstance(value, list) or len(value) != len(defaults):
         return False

@@ -2,6 +2,8 @@
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from smartesp.contracts import Reasoning
+
 from .connectors import ConnectorConfig, default_connectors, overlay_connectors
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -75,6 +77,8 @@ class ExecutorConfig(BaseModel):
     entry: bool = False
     system_prompt: str = ""
     keep_alive: str = "24h"
+    # рассуждение перед ответом: off/low/medium/high (как передаётся модели — решает исполнитель)
+    reasoning: Reasoning = "off"
     description: str = ""
     delegates: list[DelegateLink] = Field(default_factory=list)
 

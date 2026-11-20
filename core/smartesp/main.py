@@ -57,7 +57,9 @@ TTS_KINDS: dict[str, Callable[[Path, str], TextToSpeech]] = {
     "vosk": lambda path, voice: VoskTTS(path, voice),
 }
 EXECUTOR_KINDS: dict[str, Callable[[ExecutorConfig], Executor]] = {
-    "ollama": lambda c: OllamaExecutor(c.model, c.system_prompt, c.keep_alive, id=c.id),
+    "ollama": lambda c: OllamaExecutor(
+        c.model, c.system_prompt, c.keep_alive, id=c.id, reasoning=c.reasoning
+    ),
 }
 STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
     "whisper_detect": lambda c: WhisperDetect(c.quiet_reply),

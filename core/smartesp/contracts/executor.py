@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
 DELEGATE_TOOL = "delegate"  # имя инструмента передачи задачи другому исполнителю
+# уровень рассуждения модели перед ответом: off — не рассуждать (если модель умеет)
+type Reasoning = Literal["off", "low", "medium", "high"]
 
 
 @dataclass(frozen=True)

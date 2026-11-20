@@ -213,3 +213,45 @@ async def test_unload_times_out_on_hang(caplog: pytest.LogCaptureFixture) -> Non
     await make(Hanging()).unload(timeout_s=0.1)
     assert time.monotonic() - start < 1.0
     assert any(r.levelname == "WARNING" for r in caplog.records)
+
+
+# ---- уровень рассуждения (W3-6) ----
+
+
+@pytest.mark.parametrize(
+    ("model", "reasoning", "think"),
+    [
+        ("qwen3:8b", "off", False),
+        ("qwen3:8b", "low", True),
+        ("qwen3:8b", "high", True),
+        ("gpt-oss:20b", "low", "low"),
+        ("gpt-oss:20b", "medium", "medium"),
+        ("gpt-oss:120b", "high", "high"),
+        # gpt-oss не умеет выключать рассуждение: false он игнорирует и думает на среднем уровне
+        ("gpt-oss:20b", "off", "low"),
+        ("someone/GPT-OSS-20B-custom", "medium", "medium"),
+    ],
+)
+async def test_reasoning_maps_to_think_per_model_family(model: str, reasoning: str, think: object) -> None:
+    c = FakeClient(["x"])
+    ex = OllamaExecutor(model, "Ты помощник.", "30m", c, reasoning=reasoning)  # type: ignore[arg-type]
+    await collect(ex)
+    assert c.chat_kwargs["think"] == think
+
+
+async def test_reasoning_defaults_to_off() -> None:
+    c = FakeClient(["x"])
+    await collect(make(c))
+    assert c.chat_kwargs["think"] is False
+
+
+async def test_thinking_text_is_never_yielded() -> None:
+    class Thinking(FakeClient):
+        async def _stream(self) -> AsyncIterator[dict[str, Any]]:
+            yield {"message": {"content": "", "thinking": "Человек просит таймер…"}}
+            yield {"message": {"content": "Готово.", "thinking": "ещё мысли"}}
+
+    c = Thinking()
+    ex = OllamaExecutor("gpt-oss:20b", "Ты помощник.", "30m", c, reasoning="low")
+    parts = [p async for p in ex.run([ChatMessage("user", "привет")])]
+    assert [p.text for p in parts] == ["Готово."]

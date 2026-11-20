@@ -52,6 +52,13 @@ def test_registries_have_known_kinds() -> None:
     assert set(STAGE_KINDS) == {"whisper_detect", "clock"}
 
 
+def test_ollama_kind_passes_reasoning_level() -> None:
+    from smartesp.config import ExecutorConfig
+
+    config = ExecutorConfig(id="d", name="Д", model="gpt-oss:20b", reasoning="medium")
+    assert vars(EXECUTOR_KINDS["ollama"](config))["_think"] == "medium"
+
+
 def test_default_voice_is_silero_xenia() -> None:
     assert Config().tts == TtsConfig(kind="silero", voice="xenia")
 

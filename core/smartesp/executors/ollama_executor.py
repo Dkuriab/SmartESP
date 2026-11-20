@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 import ollama
 
-from smartesp.contracts import ChatMessage, ExecutorError, ReplyPart, ToolCall, ToolSpec
+from smartesp.contracts import ChatMessage, ExecutorError, Reasoning, ReplyPart, ToolCall, ToolSpec
 
 _log = logging.getLogger(__name__)
 
@@ -22,10 +22,24 @@ REQUEST_TIMEOUT_S = 120.0
 # пауза между кусками и предел запоздавшего ответа (600 с от начала хода). Клиент не должен
 # обрывать ответ раньше них.
 STREAM_READ_TIMEOUT_S = 660.0
+# модели, у которых рассуждение не выключается (think=false они игнорируют и думают на среднем
+# уровне), зато есть уровни low/medium/high: им передаём уровень, «off» — самый низкий
+_LEVELED_FAMILIES = ("gpt-oss",)
+
+
+def think_value(model: str, reasoning: Reasoning) -> bool | str:
+    """Значение think для Ollama по уровню рассуждения и семейству модели.
+
+    gpt-oss — уровень строкой («off» → «low»: ниже не бывает); остальные — False при «off»,
+    иначе True (уровней у них нет). Текст рассуждения в ответ не попадает (см. _chunk_text).
+    """
+    if any(family in model.lower() for family in _LEVELED_FAMILIES):
+        return "low" if reasoning == "off" else reasoning
+    return reasoning != "off"
 
 
 def _chunk_text(chunk: Any) -> str:
-    """Достаёт текст из куска ответа (объект ollama или словарь)."""
+    """Достаёт текст ответа из куска (объект ollama или словарь); рассуждение (thinking) не берёт."""
     message = chunk["message"] if isinstance(chunk, dict) else chunk.message
     if message is None:
         return ""
@@ -86,13 +100,16 @@ class OllamaExecutor:
         timeout_s: float = REQUEST_TIMEOUT_S,
         *,
         id: str = "",  # noqa: A002 — имя поля задано контрактом Identified
+        reasoning: Reasoning = "off",
     ) -> None:
         """Запоминает настройки; клиент по умолчанию — локальный ollama.AsyncClient.
 
         timeout_s — таймаут HTTP-операций клиента по умолчанию, секунды (с client не нужен);
         для потока ответа — свой клиент, у которого чтение ждёт STREAM_READ_TIMEOUT_S.
+        reasoning — уровень рассуждения перед ответом (см. think_value).
         """
         self.id = id
+        self._think = think_value(model, reasoning)
         self._model = model
         self._system_prompt = system_prompt
         self._keep_alive = keep_alive
@@ -145,7 +162,7 @@ class OllamaExecutor:
                 model=self._model,
                 messages=payload,
                 stream=True,
-                think=False,
+                think=self._think,
                 keep_alive=self._keep_alive,
                 **extra,
             )
