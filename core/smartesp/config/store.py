@@ -8,8 +8,10 @@ from typing import Any, get_args, get_origin
 from pydantic import BaseModel, ValidationError
 
 from ._files import owner_changes, write_overrides
-from .connectors import check_api_entries, merge_connector_entries
+from .api_patch import check_api_entries
+from .connectors import merge_connector_entries
 from .loader import load_with_overrides
+from .manifest import settings_view
 from .models import Config
 
 _log = logging.getLogger(__name__)
@@ -58,8 +60,8 @@ class ConfigFile:
 
         Словари сливаются вглубь, списки заменяются целиком (кроме connectors: те
         сливаются по id, см. config/connectors.py), null сбрасывает ключ к умолчанию.
-        Правка идёт из API, поэтому в connectors — только [{id, enabled}] уже известных
-        коннекторов (команду и окружение меняют руками в config.yaml).
+        Правка идёт из API, поэтому в connectors — только [{id, enabled, env}] уже известных
+        коннекторов, а в env — только ключи, объявленные коннектором (config/api_patch.py).
         Неизвестный ключ в правке или неверный результат — ValueError с понятным текстом;
         неизвестные ключи, уже лежащие в файле, правке не мешают.
         """
@@ -71,7 +73,10 @@ class ConfigFile:
         if unknown:
             raise ValueError(f"неизвестный ключ настроек: {unknown[0]}")
         if "connectors" in patch:
-            check_api_entries(patch["connectors"], {c.id for c in self._current().connectors})
+            patch = {
+                **patch,
+                "connectors": check_api_entries(patch["connectors"], self._current().connectors),
+            }
         merged = _merge(self._overrides, _by_id(self._overrides, patch))
         try:
             return Config.model_validate(merged)
@@ -81,6 +86,10 @@ class ConfigFile:
     def _current(self) -> Config:
         """Текущие настройки; до load — по изменениям владельца (их нет — умолчания)."""
         return self._config if self._config is not None else Config.model_validate(self._overrides)
+
+    def connector_settings(self) -> dict[str, list[dict[str, str]]]:
+        """Объявленные настройки коннекторов по id: {key, title, type, hint, value}; секрет — «•••»."""
+        return {c.id: settings_view(c) for c in self._current().connectors}
 
     def save(self, config: Config) -> None:
         """Пишет в файл только отличия от умолчаний (атомарно) и запоминает их."""

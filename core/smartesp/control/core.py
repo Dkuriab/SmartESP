@@ -180,7 +180,7 @@ class Core:
         executors, connectors.
 
         executors — [{id, ready, error}] исполнителей, чей фоновый прогрев закончился;
-        connectors — как в connectors().
+        connectors — как в connectors(), но без settings (сводку опрашивают часто).
         """
         return {
             "version": self._version,
@@ -195,12 +195,19 @@ class Core:
                 {"id": executor_id, "ready": error is None, "error": error}
                 for executor_id, error in self._executor_states().items()
             ],
-            "connectors": self.connectors(),
+            "connectors": self._connector_states(),
         }
 
-    def connectors(self) -> list[dict[str, Any]]:
-        """Коннекторы: [{id, name, state, tools, error}] в порядке настроек."""
+    def _connector_states(self) -> list[dict[str, Any]]:
         return [{**dataclasses.asdict(c), "tools": list(c.tools)} for c in self._connectors()]
+
+    def connectors(self) -> list[dict[str, Any]]:
+        """Коннекторы: [{id, name, state, tools, error, settings}] в порядке настроек.
+
+        settings — объявленные коннектором настройки с текущими значениями (секреты скрыты).
+        """
+        declared = self._store.connector_settings()
+        return [{**item, "settings": declared.get(item["id"], [])} for item in self._connector_states()]
 
     def config(self) -> dict[str, Any]:
         """Действующие настройки, ключи владельца, разделы с перезапуском и итоговые промпты."""

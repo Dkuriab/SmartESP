@@ -68,7 +68,8 @@ User-Agent `SmartEsp-food/0.1 (home assistant)`, таймаут 5 с на вес
 потом `product_add` со штрихкодом.
 
 **Open Food Facts** по умолчанию выключен (из России без VPN не открывается). Включается
-переменной окружения `FOOD_OFF=1`: тогда он спрашивается после своей базы и до barcode-list.ru.
+переменной окружения `FOOD_OFF=1` (или переключателем на панели коннектора в приложении:
+он объявлен в `smartesp.json`): тогда он спрашивается после своей базы и до barcode-list.ru.
 Запрос: `GET https://world.openfoodfacts.org/api/v2/product/<код>`, найденное кэшируется
 в `products.json`.
 

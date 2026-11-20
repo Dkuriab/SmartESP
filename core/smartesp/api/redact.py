@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Mapping, Sequence, Set
 from typing import Any, cast
 
 _TOKEN = re.compile(r"token=[^&\s\"']+")
@@ -38,26 +39,39 @@ _SECRET_KEY = re.compile(r"TOKEN|KEY|SECRET|PASSWORD", re.IGNORECASE)
 MASKED = "•••"
 
 
-def mask_connector_secrets(config: dict[str, Any]) -> dict[str, Any]:
-    """Копия ответа GET /config, где непустые значения env коннекторов с ключом-секретом — «•••».
+def declared_secrets(connectors: Sequence[Mapping[str, Any]]) -> dict[str, set[str]]:
+    """Ключи env, объявленные коннекторами секретами: {id: {ключ}} (из settings в connectors())."""
+    result: dict[str, set[str]] = {}
+    for item in connectors:
+        settings = cast(list[Mapping[str, Any]], item.get("settings") or [])
+        result[str(item.get("id"))] = {str(s.get("key")) for s in settings if s.get("type") == "secret"}
+    return result
 
-    Секрет — ключ, в имени которого есть TOKEN, KEY, SECRET или PASSWORD (без учёта регистра).
-    Править env через API всё равно нельзя, поэтому значения обратно не нужны.
+
+def mask_connector_secrets(
+    config: dict[str, Any], declared: Mapping[str, Set[str]] | None = None
+) -> dict[str, Any]:
+    """Копия ответа GET /config, где непустые значения env-секретов коннекторов — «•••».
+
+    Секрет — ключ, в имени которого есть TOKEN, KEY, SECRET или PASSWORD (без учёта регистра),
+    или объявленный коннектором секретом: declared — {id: {ключ}}. Назад «•••» значит «не менять».
     """
     effective = config.get("effective")
     connectors = effective.get("connectors") if isinstance(effective, dict) else None
     if not isinstance(connectors, list):
         return config
-    masked = [_masked(item) for item in cast(list[object], connectors)]
+    secrets = declared or {}
+    masked = [_masked(item, secrets) for item in cast(list[object], connectors)]
     return {**config, "effective": {**cast(dict[str, Any], effective), "connectors": masked}}
 
 
-def _masked(item: object) -> object:
+def _masked(item: object, declared: Mapping[str, Set[str]]) -> object:
     env = item.get("env") if isinstance(item, dict) else None
     if not isinstance(env, dict):
         return item
+    own = declared.get(str(cast(dict[str, object], item).get("id")), set[str]())
     hidden = {
-        key: MASKED if _SECRET_KEY.search(str(key)) and value else value
+        key: MASKED if (_SECRET_KEY.search(str(key)) or key in own) and value else value
         for key, value in cast(dict[object, object], env).items()
     }
     return {**cast(dict[str, object], item), "env": hidden}

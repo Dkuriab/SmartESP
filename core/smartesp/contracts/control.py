@@ -70,6 +70,11 @@ class ConfigStore(Protocol):
         """Возвращает значение раздела верхнего уровня — для сравнения до и после правки."""
         ...
 
+    def connector_settings(self) -> dict[str, list[dict[str, str]]]:
+        """Возвращает объявленные настройки коннекторов по id: [{key, title, type, hint, value}];
+        непустое значение секрета скрыто («•••»)."""
+        ...
+
 
 class VoicePort(Protocol):
     """То, что пульт берёт у менеджера голосов."""
@@ -101,11 +106,12 @@ class CorePort(Protocol):
     async def status(self) -> dict[str, Any]:
         """Возвращает сводку: version, uptime_s, state, ollama, devices, voice, applying, restart_required,
         executors ([{id, ready, error}] — итог фонового прогрева исполнителей),
-        connectors (как в connectors())."""
+        connectors ([{id, name, state, tools, error}] — без settings, сводку опрашивают часто)."""
         ...
 
     def connectors(self) -> list[dict[str, Any]]:
-        """Возвращает MCP-коннекторы: [{id, name, state, tools, error}] в порядке настроек."""
+        """Возвращает MCP-коннекторы: [{id, name, state, tools, error, settings}] в порядке настроек;
+        settings — объявленные коннектором настройки (как в ConfigStore.connector_settings)."""
         ...
 
     def config(self) -> dict[str, Any]:

@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import copy
-from collections.abc import Collection
 from pathlib import Path
 from typing import Any, cast
 
@@ -34,8 +33,6 @@ DEFAULT_CONNECTORS: tuple[tuple[str, str, dict[str, str], bool], ...] = (
     ("claude_tasks", "Задачи Клоду", {"CLAUDE_TASK_FOLDERS": ""}, False),
 )
 REMOVE = "remove"  # ключ записи владельца: убрать коннектор
-API_FIELDS = frozenset({"id", "enabled"})  # что можно менять у коннектора через API
-API_ONLY_TEXT = "Команду и окружение коннектора меняют только в config.yaml"
 
 
 class ConnectorConfig(BaseModel):
@@ -147,23 +144,6 @@ def overlay_connectors(entries: object) -> object:
             result.append(_overlay_one(default, entry, keep_nulls=False))
     result += [_overlay_one({}, e, keep_nulls=False) for e in owner.values() if not e.get(REMOVE)]
     return result + other
-
-
-def check_api_entries(entries: object, known: Collection[str]) -> None:
-    """Правка connectors через API: только [{id, enabled}] для уже известных id; иначе ValueError.
-
-    Команда, аргументы, окружение, имя, новый коннектор, remove и сброс списка (null) — только
-    руками в config.yaml: иначе токен API стал бы запуском любой команды на Mac.
-    known — id действующих коннекторов (умолчания и записи владельца).
-    """
-    if not isinstance(entries, list):
-        raise ValueError(API_ONLY_TEXT)
-    for item in cast(list[object], entries):
-        if not isinstance(item, dict):
-            raise ValueError(API_ONLY_TEXT)
-        entry = cast(dict[str, object], item)
-        if not set(entry) <= API_FIELDS or entry.get("id") not in known:
-            raise ValueError(API_ONLY_TEXT)
 
 
 def merge_connector_entries(base: list[Any], patch: list[Any]) -> list[object]:

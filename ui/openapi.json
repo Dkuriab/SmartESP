@@ -130,7 +130,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/ConnectorOut"
+                    "$ref": "#/components/schemas/ConnectorDetailOut"
                   },
                   "type": "array",
                   "title": "Response Get Connectors Api V1 Connectors Get"
@@ -1073,6 +1073,56 @@
         "title": "ConfigOut",
         "description": "Настройки: целиком, изменённые владельцем и разделы, требующие перезапуска."
       },
+      "ConnectorDetailOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "starting",
+              "ready",
+              "failed",
+              "disabled"
+            ],
+            "title": "State"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tools"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "default": ""
+          },
+          "settings": {
+            "items": {
+              "$ref": "#/components/schemas/ConnectorSettingOut"
+            },
+            "type": "array",
+            "title": "Settings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "state",
+          "tools"
+        ],
+        "title": "ConnectorDetailOut",
+        "description": "Коннектор в GET /connectors: ещё и настройки, которые можно менять из интерфейса."
+      },
       "ConnectorOut": {
         "properties": {
           "id": {
@@ -1115,6 +1165,47 @@
         ],
         "title": "ConnectorOut",
         "description": "MCP-коннектор: состояние, инструменты (как их видит модель; только у готового), ошибка."
+      },
+      "ConnectorSettingOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "path",
+              "list",
+              "secret",
+              "flag"
+            ],
+            "title": "Type"
+          },
+          "hint": {
+            "type": "string",
+            "title": "Hint",
+            "default": ""
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "type"
+        ],
+        "title": "ConnectorSettingOut",
+        "description": "Настройка, объявленная коннектором (smartesp.json): ключ env, подпись, тип, значение.\n\ntype: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», secret — скрытое\n(значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто."
       },
       "CoreInfoOut": {
         "properties": {

@@ -82,7 +82,8 @@ def test_patches_merge_with_earlier_owner_entries(tmp_path: Path) -> None:
     [
         [{"id": "calc", "command": "/bin/sh", "args": ["-c", "echo"]}],
         [{"id": "calc", "args": ["-c", "echo"]}],
-        [{"id": "weather", "env": {"WEATHER_PLACE": "Москва"}}],
+        [{"id": "calc", "env": {"CALC_X": "1"}}],  # calc ничего не объявляет
+        [{"id": "weather", "env": {"WEATHER_PLACE": "Москва", "PATH": "/tmp"}}],
         [{"id": "calc", "name": "Счёт"}],
         [{"id": "food", "remove": True}],
         [{"id": "my", "name": "Моё", "command": "/bin/my"}],
@@ -92,7 +93,7 @@ def test_patches_merge_with_earlier_owner_entries(tmp_path: Path) -> None:
         None,  # сброс списка стёр бы окружение и коннекторы владельца
     ],
 )
-def test_api_patch_may_only_toggle_known_connectors(tmp_path: Path, entries: object) -> None:
+def test_api_patch_may_only_toggle_or_set_declared_env(tmp_path: Path, entries: object) -> None:
     store = store_with(tmp_path, "connectors:\n  - {id: weather, env: {WEATHER_PLACE: Тверь}}\n")
     before = (tmp_path / "config.yaml").read_text(encoding="utf-8")
     with pytest.raises(ValueError, match="меняют только в config.yaml"):

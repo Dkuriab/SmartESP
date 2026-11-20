@@ -1,0 +1,5 @@
+{
+  "settings": [
+    {"key": "FOOD_OFF", "title": "Open Food Facts (нужен VPN)", "type": "flag", "hint": "поиск продуктов в базе Open Food Facts; из России без VPN не открывается"}
+  ]
+}

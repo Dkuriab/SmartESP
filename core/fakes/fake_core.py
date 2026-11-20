@@ -53,8 +53,31 @@ class FakeCore:
         self.previews: list[tuple[str, str, str, str]] = []
         self.turn_items = [make_turn(i) for i in (3, 2, 1)]
         self.connector_items: list[dict[str, Any]] = [
-            {"id": "notes", "name": "Заметки", "state": "ready", "tools": ["note_add"], "error": ""},
-            {"id": "weather", "name": "Погода", "state": "failed", "tools": [], "error": "упал"},
+            {
+                "id": "notes",
+                "name": "Заметки",
+                "state": "ready",
+                "tools": ["note_add"],
+                "error": "",
+                "settings": [],
+            },
+            {
+                "id": "weather",
+                "name": "Погода",
+                "state": "failed",
+                "tools": [],
+                "error": "упал",
+                "settings": [
+                    {
+                        "key": "WEATHER_PLACE",
+                        "title": "Город",
+                        "type": "text",
+                        "hint": "Москва",
+                        "value": "Тверь",
+                    },
+                    {"key": "WEATHER_PIN", "title": "Пин", "type": "secret", "hint": "", "value": "•••"},
+                ],
+            },
         ]
         self.questions: list[Question] = []  # вопросы /ask
         self.voices_asked: list[tuple[bytes, str, str]] = []  # (звук, человек, источник) /ask/voice
@@ -81,7 +104,7 @@ class FakeCore:
             "applying": False,
             "restart_required": False,
             "executors": [{"id": "big", "ready": False, "error": "нет модели"}],
-            "connectors": self.connectors(),
+            "connectors": [{k: v for k, v in c.items() if k != "settings"} for c in self.connector_items],
         }
 
     def connectors(self) -> list[dict[str, Any]]:

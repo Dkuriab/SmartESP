@@ -393,6 +393,30 @@ export interface components {
             };
         };
         /**
+         * ConnectorDetailOut
+         * @description Коннектор в GET /connectors: ещё и настройки, которые можно менять из интерфейса.
+         */
+        ConnectorDetailOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "starting" | "ready" | "failed" | "disabled";
+            /** Tools */
+            tools: string[];
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+            /** Settings */
+            settings?: components["schemas"]["ConnectorSettingOut"][];
+        };
+        /**
          * ConnectorOut
          * @description MCP-коннектор: состояние, инструменты (как их видит модель; только у готового), ошибка.
          */
@@ -413,6 +437,34 @@ export interface components {
              * @default
              */
             error: string;
+        };
+        /**
+         * ConnectorSettingOut
+         * @description Настройка, объявленная коннектором (smartesp.json): ключ env, подпись, тип, значение.
+         *
+         *     type: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», secret — скрытое
+         *     (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто.
+         */
+        ConnectorSettingOut: {
+            /** Key */
+            key: string;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "text" | "path" | "list" | "secret" | "flag";
+            /**
+             * Hint
+             * @default
+             */
+            hint: string;
+            /**
+             * Value
+             * @default
+             */
+            value: string;
         };
         /**
          * CoreInfoOut
@@ -869,7 +921,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ConnectorOut"][];
+                    "application/json": components["schemas"]["ConnectorDetailOut"][];
                 };
             };
             /** @description Unauthorized */

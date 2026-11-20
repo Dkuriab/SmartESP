@@ -102,7 +102,8 @@ async def test_connectors_start_in_background_and_reach_the_network(tmp_path: Pa
         status = (await http.get("/api/v1/status", headers=HEADERS)).json()
     assert [(c["id"], c["state"]) for c in listed] == [("t", "ready")]
     assert "echo" in listed[0]["tools"] and listed[0]["error"] == ""
-    assert status["connectors"] == listed
+    assert listed[0]["settings"] == []  # у тестового коннектора нет smartesp.json
+    assert status["connectors"] == [{k: v for k, v in c.items() if k != "settings"} for c in listed]
 
     speaking, _ = await connect(core, "kitchen")
     ask(speaking, 1)
@@ -155,7 +156,11 @@ async def test_api_cannot_set_connector_command_or_add_one(tmp_path: Path) -> No
     before = (tmp_path / "config.yaml").read_text(encoding="utf-8")
     marker = tmp_path / "pwned"
     shell = {"command": "/bin/sh", "args": ["-c", f"touch {marker}"]}
-    attempts = ([{"id": "t", **shell}], [{"id": "x", "name": "x", **shell}], [{"id": "t", "env": {}}])
+    attempts = (
+        [{"id": "t", **shell}],
+        [{"id": "x", "name": "x", **shell}],
+        [{"id": "t", "env": {"PATH": "/tmp"}}],
+    )
     async with client(core) as http:
         for entries in attempts:
             response = await http.patch("/api/v1/config", json={"connectors": entries}, headers=HEADERS)

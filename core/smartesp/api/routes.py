@@ -26,12 +26,12 @@ from .core_routes import add_core_routes
 from .log_buffer import LogBuffer
 from .logs import add_logs_route
 from .play import add_play_routes
-from .redact import mask_connector_secrets
+from .redact import declared_secrets, mask_connector_secrets
 from .schemas import (
     AccessOut,
     ChangeOut,
     ConfigOut,
-    ConnectorOut,
+    ConnectorDetailOut,
     DownloadIn,
     ErrorOut,
     ModelOut,
@@ -83,7 +83,8 @@ def _add_resource_routes(secured: APIRouter, core: CorePort) -> None:
 
     @secured.get("/config")
     def get_config() -> ConfigOut:
-        return ConfigOut.model_validate(mask_connector_secrets(core.config()))
+        secrets = declared_secrets(core.connectors())
+        return ConfigOut.model_validate(mask_connector_secrets(core.config(), secrets))
 
     @secured.patch(
         "/config",
@@ -94,8 +95,8 @@ def _add_resource_routes(secured: APIRouter, core: CorePort) -> None:
         return _change_response(await core.patch_config(patch), _PATCH_CODES)
 
     @secured.get("/connectors")
-    async def get_connectors() -> list[ConnectorOut]:
-        return [ConnectorOut.model_validate(item) for item in core.connectors()]
+    async def get_connectors() -> list[ConnectorDetailOut]:
+        return [ConnectorDetailOut.model_validate(item) for item in core.connectors()]
 
     @secured.get("/models", responses={502: {"model": ErrorOut}})
     async def get_models() -> list[ModelOut]:

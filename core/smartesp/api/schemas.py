@@ -53,6 +53,26 @@ class ConnectorOut(BaseModel):
     error: str = ""  # текст последней ошибки; пусто — ошибки нет
 
 
+class ConnectorSettingOut(BaseModel):
+    """Настройка, объявленная коннектором (smartesp.json): ключ env, подпись, тип, значение.
+
+    type: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», secret — скрытое
+    (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто.
+    """
+
+    key: str
+    title: str
+    type: Literal["text", "path", "list", "secret", "flag"]
+    hint: str = ""
+    value: str = ""
+
+
+class ConnectorDetailOut(ConnectorOut):
+    """Коннектор в GET /connectors: ещё и настройки, которые можно менять из интерфейса."""
+
+    settings: list[ConnectorSettingOut] = Field(default_factory=list[ConnectorSettingOut])
+
+
 class StatusOut(BaseModel):
     """Сводка ядра."""
 

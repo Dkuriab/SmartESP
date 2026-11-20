@@ -82,6 +82,21 @@ async def test_config_masks_secret_env_of_connectors(
     assert env["API_KEY"] == "k1"  # настройки ядра не тронуты
 
 
+async def test_config_masks_declared_secrets(
+    client: httpx.AsyncClient, core: FakeCore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # WEATHER_PIN объявлен секретом (в FakeCore.connector_items), хотя по имени им не выглядит
+    env = {"WEATHER_PLACE": "Тверь", "WEATHER_PIN": "1234"}
+    full = {
+        **core.config(),
+        "effective": {"connectors": [{"id": "weather", "env": env}, {"id": "notes", "env": env}]},
+    }
+    monkeypatch.setattr(core, "config", lambda: full)
+    shown = (await client.get(f"{P}/config", headers=HEADERS)).json()["effective"]["connectors"]
+    assert shown[0]["env"] == {"WEATHER_PLACE": "Тверь", "WEATHER_PIN": "•••"}
+    assert shown[1]["env"] == env  # у notes этот ключ секретом не объявлен
+
+
 @pytest.mark.parametrize(("status", "code"), [("restart_required", 200), ("invalid", 422), ("stopping", 503)])
 async def test_patch_status_codes(client: httpx.AsyncClient, core: FakeCore, status: str, code: int) -> None:
     core.patch_status = status
