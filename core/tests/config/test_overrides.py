@@ -174,13 +174,30 @@ def test_legacy_kuzya_prompt_without_honesty_rule_is_pruned(tmp_path: Path) -> N
     )
     write(path, legacy_dump(prompt=kuzya))
     config = load_config(path)
-    assert config == Config() and "У меня нет доступа" in config.entry_executor().system_prompt
+    assert config == Config() and "не выдумывай" in config.entry_executor().system_prompt
     assert read(path) == {"version": 4}
 
 
-def test_default_prompt_has_honesty_rule() -> None:
+def test_legacy_no_access_prompt_is_pruned(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    no_access = (
+        "Тебя зовут Кузя. Ты голосовой помощник умной колонки. Отвечай по-русски, коротко, 1–3 предложения, "
+        "без разметки, списков и эмодзи — ответ будет озвучен."
+        " Ты знаешь только то, что есть в сообщении, в пометках и в ответах инструментов."
+        " Не выдумывай время, погоду, новости и состояние устройств."
+        " Нет данных или инструмента — скажи: «У меня нет доступа к …»."
+        " Не говори, что что-то сделал, если инструмент этого не сделал."
+    )
+    write(path, legacy_dump(prompt=no_access))
+    assert load_config(path) == Config()
+    assert read(path) == {"version": 4}
+
+
+def test_default_prompt_has_honesty_rule_but_no_push_to_no_access() -> None:
     prompt = Config().entry_executor().system_prompt
-    assert "Не выдумывай" in prompt and "У меня нет доступа" in prompt and len(prompt) < 600
+    assert "не выдумывай" in prompt and "Не говори, что что-то сделал" in prompt and len(prompt) < 600
+    # «нет доступа» — только правило ядра для действий и данных; общие знания — как обычно
+    assert "нет доступа" not in prompt and "знаешь только" not in prompt
 
 
 def test_v3_explicit_stages_get_clock_once(tmp_path: Path) -> None:
