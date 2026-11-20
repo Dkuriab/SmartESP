@@ -1,5 +1,5 @@
 // Перезапуск и остановка ядра; остановка — с подтверждением на месте (в окне приложения нет confirm).
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 type Props = {
   online: boolean
@@ -14,8 +14,27 @@ type Props = {
 
 type Phase = 'idle' | 'confirm' | 'sending' | 'stopped'
 
+type ConfirmProps = { sending: boolean; onYes: () => void; onCancel: () => void }
+
+/** Подтверждение остановки; фокус сразу на безопасной «Отмена». */
+function StopConfirm({ sending, onYes, onCancel }: ConfirmProps) {
+  const focusOnMount = useCallback((el: HTMLButtonElement | null) => el?.focus(), [])
+  return (
+    <div className="remove-ask" role="alertdialog" aria-label="Остановить ядро?">
+      <p className="core-note">Остановить ядро? Кузя перестанет отвечать, само ядро не перезапустится.</p>
+      <button type="button" className="btn btn-danger" disabled={sending} onClick={onYes}>
+        Да, остановить
+      </button>
+      <button type="button" className="btn btn-plain" ref={focusOnMount} onClick={onCancel}>
+        Отмена
+      </button>
+    </div>
+  )
+}
+
 export default function CoreControls({ online, busy, onRestart, onStop, inApp }: Props) {
   const [phase, setPhase] = useState<Phase>('idle')
+  const refocus = useRef(false) // «Отмена» — фокус обратно на «Остановить», а не на <body>
   const [wasOnline, setWasOnline] = useState(online)
   if (online !== wasOnline) {
     // связь вернулась — ядро снова запущено: кнопки снова нужны
@@ -31,24 +50,24 @@ export default function CoreControls({ online, busy, onRestart, onStop, inApp }:
     return <p className="core-note" role="status">Ядро останавливается. {again}</p>
   }
   if (phase !== 'idle') {
-    return (
-      <div className="remove-ask">
-        <p className="core-note">Остановить ядро? Кузя перестанет отвечать, само ядро не перезапустится.</p>
-        <button type="button" className="btn btn-danger" disabled={phase === 'sending' || busy} onClick={() => void stop()}>
-          Да, остановить
-        </button>
-        <button type="button" className="btn btn-plain" onClick={() => setPhase('idle')}>
-          Отмена
-        </button>
-      </div>
-    )
+    const cancel = () => {
+      refocus.current = true
+      setPhase('idle')
+    }
+    return <StopConfirm sending={phase === 'sending' || busy} onYes={() => void stop()} onCancel={cancel} />
+  }
+  const stopRef = (el: HTMLButtonElement | null) => {
+    if (el && refocus.current) {
+      refocus.current = false
+      el.focus()
+    }
   }
   return (
     <div className="core-buttons">
       <button type="button" className="btn" disabled={!online || busy} onClick={onRestart}>
         Перезапустить
       </button>
-      <button type="button" className="btn btn-danger" disabled={!online || busy} onClick={() => setPhase('confirm')}>
+      <button type="button" className="btn btn-danger" ref={stopRef} disabled={!online || busy} onClick={() => setPhase('confirm')}>
         Остановить
       </button>
     </div>

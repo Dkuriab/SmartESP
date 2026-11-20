@@ -43,8 +43,11 @@ describe('вкладка «Ядро»', () => {
     const actions = makeActions()
     render(<CoreTab state={makeState()} actions={actions} />)
     await userEvent.click(screen.getByRole('button', { name: 'Остановить' }))
+    expect(screen.getByRole('alertdialog', { name: 'Остановить ядро?' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Отмена' })).toHaveFocus() // Return/пробел не остановят ядро
     await userEvent.click(screen.getByRole('button', { name: 'Отмена' }))
     expect(actions.stopCore).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Остановить' })).toHaveFocus() // фокус не падает на <body>
     await userEvent.click(screen.getByRole('button', { name: 'Остановить' }))
     await userEvent.click(screen.getByRole('button', { name: 'Да, остановить' }))
     expect(actions.stopCore).toHaveBeenCalledTimes(1)
