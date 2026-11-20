@@ -9,9 +9,10 @@ from typing import Any, cast
 
 from mcp import types
 
-from smartesp.contracts import ToolResult
+from smartesp.contracts import TaskBoard, ToolResult
 
 from .specs import AnnounceHandler
+from .task_notices import TASK_TYPE, handle_task
 
 logger = logging.getLogger("smartesp.tools")
 
@@ -64,27 +65,31 @@ def handle_log(
     params: types.LoggingMessageNotificationParams,
     connector_id: str,
     on_announce: AnnounceHandler | None,
+    tasks: TaskBoard | None = None,
 ) -> None:
     """Разбирает уведомление журнала коннектора.
 
-    Объявление (logger «smartesp», data.type «announce») уходит в on_announce,
-    остальное — в журнал ядра с тем же уровнем. Не бросает исключений.
+    Объявление (logger «smartesp», data.type «announce») уходит в on_announce, задача
+    (data.type «task», см. task_notices) — в реестр tasks, остальное — в журнал ядра
+    с тем же уровнем. Не бросает исключений.
     """
-    fields = _announce_fields(params)
-    if fields is not None:
+    fields = _core_fields(params)
+    if fields is not None and fields.get("type") == ANNOUNCE_TYPE:
         _announce(fields, connector_id, on_announce)
+        return
+    if fields is not None and fields.get("type") == TASK_TYPE:
+        handle_task(fields, connector_id, tasks)
         return
     level = _LEVELS.get(params.level, logging.INFO)
     logger.log(level, "Коннектор %s [%s]: %s", connector_id, params.logger or "-", params.data)
 
 
-def _announce_fields(params: types.LoggingMessageNotificationParams) -> dict[str, Any] | None:
-    """Поля объявления, если уведомление — объявление; иначе None."""
+def _core_fields(params: types.LoggingMessageNotificationParams) -> dict[str, Any] | None:
+    """Поля уведомления ядру (журнал «smartesp», данные — словарь); иначе None."""
     data: object = params.data
     if params.logger != ANNOUNCE_LOGGER or not isinstance(data, dict):
         return None
-    fields = cast(dict[str, Any], data)
-    return fields if fields.get("type") == ANNOUNCE_TYPE else None
+    return cast(dict[str, Any], data)
 
 
 def _announce(fields: dict[str, Any], connector_id: str, on_announce: AnnounceHandler | None) -> None:

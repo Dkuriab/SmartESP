@@ -17,7 +17,7 @@ from mcp import ClientSession, stdio_client, types
 from mcp.shared.exceptions import MCPError
 from mcp.shared.message import SessionMessage
 
-from smartesp.contracts import ToolResult
+from smartesp.contracts import TaskBoard, ToolResult
 
 from .messages import handle_log, logger, tool_result
 from .process import kill_group, launch_params
@@ -51,6 +51,7 @@ class Connector:
         data_dir: Path,
         *,
         on_announce: AnnounceHandler | None,
+        tasks: TaskBoard | None = None,
         on_change: Callable[[], None],
         start_timeout_s: float,
         restart_delays_s: tuple[float, ...],
@@ -62,6 +63,7 @@ class Connector:
         self._data_dir = data_dir / "connectors" / spec.id
         self._pid_file = data_dir / "run" / "connectors" / f"{spec.id}.pid"
         self._on_announce = on_announce
+        self._tasks = tasks
         self._on_change = on_change
         self._start_timeout_s = start_timeout_s
         self._delays = restart_delays_s or (1.0,)
@@ -208,7 +210,7 @@ class Connector:
         return {**os.environ, **self.spec.env, DATA_ENV: str(self._data_dir)}
 
     async def _log(self, params: types.LoggingMessageNotificationParams) -> None:
-        handle_log(params, self.spec.id, self._on_announce)
+        handle_log(params, self.spec.id, self._on_announce, self._tasks)
 
     def _ready(self, session: ClientSession, tools: tuple[types.Tool, ...]) -> None:
         self._session = session

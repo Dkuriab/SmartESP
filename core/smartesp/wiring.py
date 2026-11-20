@@ -43,6 +43,7 @@ from smartesp.parts import (
     live_answering,
     voice_manager,
 )
+from smartesp.tasks import TaskRegistry
 from smartesp.tools import McpHub
 
 __all__ = ["Assembly", "Ollama", "assemble", "finish", "start", "stop"]
@@ -99,9 +100,12 @@ def assemble(
     hub, history, orchestrator, announcer, files, use_speech = conversation(config, bus)
     live = live_answering(orchestrator, turn_wait_s=TURN_WAIT_S, unload_s=UNLOAD_S, warm_s=WARM_UP_TIMEOUT_S)
     capabilities = CapabilityCache(ollama.capabilities)
+    tasks = TaskRegistry(bus, hub.device_name)  # «В работе»: запоздавшие ответы и задачи коннекторов
+    orchestrator.use_tasks(tasks)
     tools = McpHub(
         home,
         on_announce=lambda text, person, connector: announcer.say(NO_DEVICE, text, connector),
+        tasks=tasks,
         on_tools=lambda: parts.refresh.changed(),
     )
     voices, voice_ready = voice_manager(home, kinds, orchestrator, bus)
@@ -117,6 +121,7 @@ def assemble(
         live,
         capabilities,
         tools,
+        tasks,
         voices,
         voice_ready,
         run_file,
@@ -151,7 +156,7 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str, logs: Lo
         await parts.hub.handle(WebSocketConnection(ws))
 
     port = parts.config.server.port
-    api = create_api(parts.core, parts.bus, token, port=port, files=parts.files, logs=logs)
+    api = create_api(parts.core, parts.bus, token, port=port, files=parts.files, logs=logs, tasks=parts.tasks)
     app.include_router(api)
     app.add_middleware(BodyLimit, token=token)  # предел тела и токен ходов через API — до чтения тела
     mount_ui(app, ui_dir)  # последним: монтирование на / перехватывает всё, что объявлено позже

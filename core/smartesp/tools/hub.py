@@ -6,12 +6,13 @@ import asyncio
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from smartesp.contracts import ConnectorState, ToolResult, ToolSpec
+from smartesp.contracts import ConnectorState, TaskBoard, ToolResult, ToolSpec
 
 from .connector import Connector
 from .messages import logger
 from .naming import pick_name
 from .specs import AnnounceHandler, ConnectorSpec
+from .task_notices import task_source
 
 START_TIMEOUT_S = 10.0  # дольше коннектор при запуске не ждём
 START_GRACE_S = 10.0  # запас на закрытие процесса, не уложившегося в предел запуска
@@ -32,6 +33,7 @@ class McpHub:
         data_dir: Path,
         *,
         on_announce: AnnounceHandler | None = None,
+        tasks: TaskBoard | None = None,
         on_tools: Callable[[], None] | None = None,
         call_timeout_s: float = 15.0,
         restart_delays_s: tuple[float, ...] = (1.0, 5.0, 30.0, 300.0),
@@ -39,10 +41,14 @@ class McpHub:
     ) -> None:
         """data_dir — папка данных ядра (коннектор получает <data_dir>/connectors/<id>);
         on_announce(text, person, connector_id) — коннектор просит сказать вслух;
+        tasks — реестр «В работе»: задачи коннекторов; упавший или убранный коннектор — его
+        идущие задачи отменяются (запустившись, коннектор сообщит идущие заново);
         on_tools() — изменился список инструментов готовых коннекторов (specs()).
         """
         self._data_dir = data_dir
         self._on_announce = on_announce
+        self._tasks = tasks
+        self._ready: set[str] = set()  # id готовых коннекторов при прошлой пересборке
         self._on_tools = on_tools
         self._call_timeout_s = call_timeout_s
         self._restart_delays_s = restart_delays_s
@@ -158,6 +164,7 @@ class McpHub:
             spec,
             self._data_dir,
             on_announce=self._on_announce,
+            tasks=self._tasks,
             on_change=self._rebuild,
             start_timeout_s=self._start_timeout_s,
             restart_delays_s=self._restart_delays_s,
@@ -192,11 +199,23 @@ class McpHub:
             exposed[connector.spec.id] = tuple(names)
         changed = specs != self._specs
         self._routes, self._specs, self._exposed = routes, specs, exposed
+        self._forget_gone()
         if changed and self._on_tools is not None:
             try:
                 self._on_tools()
             except Exception:
                 logger.exception("Коннекторы: обработчик смены инструментов упал")
+
+    def _forget_gone(self) -> None:
+        """Коннекторы, переставшие быть готовыми: их идущие задачи в реестре — отменены."""
+        ready = {c.spec.id for c in self._connectors.values() if c.state == "ready"}
+        gone, self._ready = self._ready - ready, ready
+        for cid in sorted(gone):
+            if self._tasks is not None:
+                try:
+                    self._tasks.forget(task_source(cid))
+                except Exception:
+                    logger.exception("Коннекторы: реестр задач упал")
 
     def _free_name(self, routes: dict[str, tuple[Connector, str]], cid: str, tool: str) -> str | None:
         """Имя инструмента для модели: своё или с префиксом `<id>_` (см. pick_name); None — не нашлось."""

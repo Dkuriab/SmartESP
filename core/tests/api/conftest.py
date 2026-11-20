@@ -9,6 +9,7 @@ from fastapi import FastAPI
 
 from fakes.fake_core import FakeCore
 from fakes.fake_playback import FakeFilePlayback
+from fakes.fake_tasks import FakeTaskBoard
 from smartesp.api import BodyLimit, LogBuffer, create_api, mount_ui
 from smartesp.events import EventBus
 
@@ -23,9 +24,11 @@ def make_app(
     ui_dir: Path,
     files: FakeFilePlayback | None = None,
     logs: LogBuffer | None = None,
+    tasks: FakeTaskBoard | None = None,
 ) -> FastAPI:
     app = FastAPI()
-    api = create_api(core, bus, TOKEN, port=PORT, files=files or FakeFilePlayback(), logs=logs or LogBuffer())
+    files, logs = files or FakeFilePlayback(), logs or LogBuffer()
+    api = create_api(core, bus, TOKEN, port=PORT, files=files, logs=logs, tasks=tasks or FakeTaskBoard())
     app.include_router(api)
     app.add_middleware(BodyLimit, token=TOKEN)
     mount_ui(app, ui_dir)
@@ -53,8 +56,20 @@ def logs() -> LogBuffer:
 
 
 @pytest.fixture
-def app(core: FakeCore, bus: EventBus, files: FakeFilePlayback, logs: LogBuffer, tmp_path: Path) -> FastAPI:
-    return make_app(core, bus, tmp_path / "no-dist", files, logs)
+def tasks() -> FakeTaskBoard:
+    return FakeTaskBoard()
+
+
+@pytest.fixture
+def app(
+    core: FakeCore,
+    bus: EventBus,
+    files: FakeFilePlayback,
+    logs: LogBuffer,
+    tasks: FakeTaskBoard,
+    tmp_path: Path,
+) -> FastAPI:
+    return make_app(core, bus, tmp_path / "no-dist", files, logs, tasks)
 
 
 @pytest.fixture

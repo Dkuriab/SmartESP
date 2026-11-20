@@ -76,6 +76,13 @@ async def announce(text: str, person: str | None, ctx: Context) -> str:
     return "объявил"
 
 
+@server.tool(description="Задача «В работе» через уведомление журнала")
+async def task(task_id: str, title: str, status: str, ctx: Context) -> str:
+    data = {"type": "task", "id": task_id, "title": title, "status": status, "eta": 1800000000}
+    await ctx.log("info", data, logger_name="smartesp")  # pyright: ignore[reportDeprecated]
+    return "сообщил"
+
+
 @server.tool(description="Объявление позже, вне вызова инструмента (как таймер)")
 async def announce_later(text: str, seconds: float, ctx: Context) -> str:
     session = ctx.request_context.session

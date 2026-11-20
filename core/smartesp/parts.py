@@ -31,6 +31,7 @@ from smartesp.network import NetworkPrompts
 from smartesp.notify import Announcer
 from smartesp.sections import BuildAnswering, live_sections, speech_settings
 from smartesp.stt import decode_audio, decode_file
+from smartesp.tasks import TaskRegistry
 from smartesp.tools import McpHub
 from smartesp.tts import VoiceManager
 
@@ -51,6 +52,7 @@ class Assembly:
     live: LiveAnswering
     capabilities: CapabilityCache  # возможности моделей: умеют ли инструменты
     tools: McpHub  # MCP-коннекторы: инструменты сети и объявления
+    tasks: TaskRegistry  # «В работе»: отложенные задачи ядра и коннекторов
     voices: VoiceManager
     voice_ready: asyncio.Event
     run_file: RunFile

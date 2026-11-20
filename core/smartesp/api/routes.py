@@ -16,6 +16,7 @@ from smartesp.contracts import (
     ExecutorError,
     FilePlayback,
     Subscription,
+    TaskBoard,
     VoiceNotDownloadedError,
 )
 
@@ -40,6 +41,7 @@ from .schemas import (
     TurnOut,
     VoiceOut,
 )
+from .tasks import add_tasks_routes
 
 DEFAULT_PREVIEW_TEXT = "Привет! Я буду отвечать этим голосом."
 WS_UNAUTHORIZED = 4401
@@ -53,12 +55,19 @@ def _change_response(result: ChangeResult, codes: dict[str, int]) -> JSONRespons
 
 
 def create_api(
-    core: CorePort, feed: EventFeed, token: str, *, port: int, files: FilePlayback, logs: LogBuffer
+    core: CorePort,
+    feed: EventFeed,
+    token: str,
+    *,
+    port: int,
+    files: FilePlayback,
+    logs: LogBuffer,
+    tasks: TaskBoard | None = None,
 ) -> APIRouter:
     """Собирает роутер `/api/v1`; все ресурсы требуют токен.
 
     `port` — порт сервера для адресов входа; `files` — проигрывание файлов на колонках;
-    `logs` — журнал для WebSocket `/logs`.
+    `logs` — журнал для WebSocket `/logs`; `tasks` — реестр «В работе» (None — пусто).
     """
     router = APIRouter(prefix="/api/v1")
     secured = APIRouter(dependencies=[Depends(require_token(token))], responses=_UNAUTHORIZED)
@@ -66,6 +75,7 @@ def create_api(
     _add_voice_routes(secured, core)
     add_ask_routes(secured, core)
     add_play_routes(secured, files)
+    add_tasks_routes(secured, tasks)
     add_core_routes(secured, core, port)
     _add_access_route(secured, token, port)
     router.include_router(secured)

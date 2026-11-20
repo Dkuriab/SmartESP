@@ -12,7 +12,17 @@ import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 
-from smartesp.contracts import Announcer, ChatMessage, DevicePort, ExecutorError, Handoff, ReplyPart
+from smartesp.contracts import (
+    Announcer,
+    ChatMessage,
+    DevicePort,
+    ExecutorError,
+    Handoff,
+    ReplyPart,
+    TaskBoard,
+    TaskReport,
+    TaskStatus,
+)
 
 from .history import History
 from .sentences import clean_for_speech, strip_style_tag
@@ -25,6 +35,8 @@ _log = logging.getLogger(__name__)
 
 LATE_LIMIT_S = 600.0  # дольше этого от начала хода запоздавший ответ не ждём
 ANSWER_PREFIX = "{name} отвечает: "  # начало объявления запоздавшего ответа
+TASK_SOURCE = "late_answer"  # источник задач «В работе» запоздавших ответов
+TASK_TITLE = "{name}: {task}"  # задача «В работе»: кто отвечает и на что
 
 
 @dataclass(frozen=True)
@@ -62,6 +74,7 @@ class LateAnswers:
         self.proactive = True  # «Кузя может заговорить сам»: только для новых отложенных ответов
         self.accepting = True  # ядро останавливается — новых не берём
         self.announcer: Announcer | None = None
+        self.tasks: TaskBoard | None = None  # реестр «В работе»: ожидание ответа видно в интерфейсе
 
     def defer(
         self,
@@ -83,6 +96,7 @@ class LateAnswers:
             return False
         job = _Job(turn, handoff, pending, parts, announcer)
         self._tasks.start(self._wait(job), name=f"late answer {device_id}#{turn.utterance.turn}")
+        self._report(job, "running")
         return True
 
     async def cancel_all(self) -> None:
@@ -104,11 +118,37 @@ class LateAnswers:
             _log.warning("Колонка %s: ответ %s не получен: %r", job.turn.device_name, name, error)
             text = ""
         if not text:
+            self._report(job, "failed")
             self._publish("turn_finished", undelivered_data(job.turn, job.handoff))
             return
+        self._report(job, "done", text)
         message = ANSWER_PREFIX.format(name=name) + text
         job.announcer.say(job.turn.utterance.device_id, message, job.handoff.target)
         self._history.add_messages([ChatMessage("assistant", message)])  # после say: не сказали — не помним
+
+    def _report(self, job: _Job, status: TaskStatus, result: str = "") -> None:
+        """Сообщает реестру «В работе» о задаче ожидания ответа (сбой реестра — в журнал)."""
+        if self.tasks is None:
+            return
+        turn, handoff = job.turn, job.handoff
+        title = (
+            TASK_TITLE.format(name=handoff.target_name, task=handoff.task)
+            if handoff.task
+            else handoff.target_name
+        )
+        report = TaskReport(
+            TASK_SOURCE,
+            f"{turn.utterance.device_id}#{turn.utterance.turn}",
+            title,
+            status,
+            device_id=turn.utterance.device_id,
+            person=turn.person,
+            result=result,
+        )
+        try:
+            self.tasks.report(report)
+        except Exception:
+            _log.error("Реестр задач упал", exc_info=True)
 
     async def _collect(self, pending: asyncio.Task[ReplyPart | None], parts: AsyncIterator[ReplyPart]) -> str:
         """Весь текст ответа цели для озвучки; фраза сети об ошибке — ExecutorError.

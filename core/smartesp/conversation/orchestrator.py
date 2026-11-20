@@ -19,16 +19,18 @@ from smartesp.contracts import (
     ExecutorError,
     Question,
     SpeechToText,
+    TaskBoard,
     TextToSpeech,
     Utterance,
 )
 
 from . import handoffs
 from .activity import watched
-from .asking import ASK_LIMIT_S, ApiTurns, AskParts
+from .asking import ASK_LIMIT_S, ApiTurns
 from .history import History
 from .late import LATE_LIMIT_S, LateAnswers
 from .sentences import is_meaningless
+from .slots import PartSlots
 from .speaking import speak_answer, speak_text
 from .steps import begin, end, hear, remember, settle, understand
 from .streams import closing, first_part, no_audio
@@ -44,7 +46,7 @@ FIRST_PART_LIMIT_S = 45.0  # дольше первого куска не ждё�
 PART_IDLE_S = 20.0  # пауза исполнителя между кусками дольше этого — сбой посреди ответа
 
 
-class Orchestrator:
+class Orchestrator(PartSlots):
     """Ведёт ходы разговора: на каждую реплику — своя задача."""
 
     def __init__(
@@ -72,11 +74,8 @@ class Orchestrator:
         предел первого куска; part_idle_s — следующего; delegate_limit_s — первого куска цели
         передачи; late_limit_s — запоздавшего ответа цели от начала хода; ask_limit_s — хода через API.
         """
+        super().__init__(stt, analyze, executor, tts)
         self._devices = devices
-        self._stt = stt
-        self._analyze = analyze
-        self._executor = executor
-        self._tts = tts
         self._history = history
         self._events = events
         self._accepting = True
@@ -91,25 +90,13 @@ class Orchestrator:
         )
         self._listen_after_question = True
 
-    def use_stt(self, stt: SpeechToText) -> None:
-        """Подменяет распознавание; идущие ходы доделываются прежним."""
-        self._stt = stt
-
-    def use_analyzer(self, analyze: Analyzer) -> None:
-        """Подменяет обработчики; идущие ходы доделываются прежними."""
-        self._analyze = analyze
-
-    def use_executor(self, executor: Executor) -> None:
-        """Подменяет исполнителя; идущие ходы доделываются прежним."""
-        self._executor = executor
-
-    def use_tts(self, tts: TextToSpeech) -> None:
-        """Подменяет синтез речи; идущие ходы доделываются прежним."""
-        self._tts = tts
-
     def use_announcer(self, announcer: Announcer) -> None:
         """Задаёт очередь объявлений: без неё запоздавший ответ не откладывается (TIMEOUT_PHRASE)."""
         self._late.announcer = announcer
+
+    def use_tasks(self, tasks: TaskBoard) -> None:
+        """Задаёт реестр «В работе»: в нём видно ожидание запоздавших ответов."""
+        self._late.tasks = tasks
 
     def set_speech(self, proactive: bool, listen_after_question: bool) -> None:
         """Настройки речи: откладывать ли запоздавший ответ; слушать ли после вопроса Кузи.
@@ -129,11 +116,6 @@ class Orchestrator:
     async def ask(self, question: Question) -> Answer:
         """Ход через API без звука — ответ текстом (asking.ApiTurns); не готово — AskUnavailable."""
         return await self._asking.ask(question)
-
-    @property
-    def ready(self) -> bool:
-        """True, если заданы все четыре части: распознавание, обработчики, исполнитель и синтез."""
-        return self._snapshot() is not None
 
     def stop_accepting(self) -> None:
         """Перестаёт принимать ходы (новые получают сигнал ошибки и пустой ответ) и откладывать ответы."""
@@ -168,18 +150,6 @@ class Orchestrator:
         finally:
             await self._tasks.cancel_all()  # отменённый ход ответ уже не отложит
             await self._late.cancel_all()
-
-    def _snapshot(self) -> Parts | None:
-        """Текущие части одним снимком или None, если какой-то части нет."""
-        stt, analyze, executor, tts = self._stt, self._analyze, self._executor, self._tts
-        if stt is None or analyze is None or executor is None or tts is None:
-            return None
-        return Parts(stt, analyze, executor, tts)
-
-    def _ask_parts(self) -> AskParts | None:
-        """Части для хода через API (синтез не нужен) или None, если обработчиков или исполнителя нет."""
-        analyze, executor = self._analyze, self._executor
-        return None if analyze is None or executor is None else AskParts(self._stt, analyze, executor)
 
     def _publish(self, kind: str, data: dict[str, object]) -> None:
         """Публикует событие хода, если задан приёмник."""

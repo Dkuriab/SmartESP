@@ -23,10 +23,11 @@ from .executor import (
     UsesModels,
     WarmsUp,
 )
-from .notify import Announcer, Preempt
+from .notify import Announcer, Interrupt, Interruption, Preempt
 from .playback import FilePlayback, PlaybackRefusal, PlaybackRefused
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
+from .tasks import TaskBoard, TaskInfo, TaskReport, TaskStatus
 from .tools import ConnectorState, ConnectorStateName, ToolBox, ToolObserver, ToolPhase, ToolResult, ToolUse
 from .tts import TextToSpeech, VoiceInfo, VoiceNotDownloadedError
 
@@ -58,6 +59,8 @@ __all__ = [
     "GuardTag",
     "Handoff",
     "Identified",
+    "Interrupt",
+    "Interruption",
     "ModelNotLoadedError",
     "PlaybackRefusal",
     "PlaybackRefused",
@@ -69,6 +72,10 @@ __all__ = [
     "SpeechToText",
     "Stage",
     "Subscription",
+    "TaskBoard",
+    "TaskInfo",
+    "TaskReport",
+    "TaskStatus",
     "TextToSpeech",
     "ToolBox",
     "ToolCall",
