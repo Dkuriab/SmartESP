@@ -82,7 +82,7 @@ describe('SettingsPanel', () => {
 
   it('обработчик: выключение шлёт список без него', async () => {
     const { actions } = setup({ kind: 'stage', id: 'whisper_detect' })
-    expect(screen.getByText('Шёпот: отвечает тихо, если вопрос сказан шёпотом')).toBeInTheDocument()
+    expect(screen.getByText('Шёпот: замечает, что вопрос сказан шёпотом (видно в ленте)')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('switch', { name: 'Включён' }))
     expect(actions.setStages).toHaveBeenCalledWith([])
   })
@@ -105,6 +105,28 @@ describe('SettingsPanel', () => {
     setup({ kind: 'stage', id: 'whisper_detect' }, { pending: { 3: 'Обработчики' } })
     expect(screen.getByText('Применяется…')).toBeInTheDocument()
     expect(screen.getByRole('switch', { name: 'Включён' })).toBeDisabled()
+  })
+
+  it('шёпот: «Отвечать тише» выключено по умолчанию, с честной подсказкой', () => {
+    setup({ kind: 'stage', id: 'whisper_detect' })
+    expect(screen.getByRole('switch', { name: 'Отвечать тише на шёпот' })).not.toBeChecked()
+    expect(screen.getByText('Это не настоящий шёпот: голос просто тише')).toBeInTheDocument()
+  })
+
+  it('шёпот: включение «Отвечать тише» шлёт stages с quiet_reply', async () => {
+    const { actions } = setup({ kind: 'stage', id: 'whisper_detect' })
+    await userEvent.click(screen.getByRole('switch', { name: 'Отвечать тише на шёпот' }))
+    expect(actions.setStages).toHaveBeenCalledWith([{ kind: 'whisper_detect', timeout_ms: 50, quiet_reply: true }])
+  })
+
+  it('шёпот: выключенный обработчик — «Отвечать тише» заблокировано', () => {
+    setup({ kind: 'stage', id: 'whisper_detect' }, { config: makeConfig({ stages: [] }) })
+    expect(screen.getByRole('switch', { name: 'Отвечать тише на шёпот' })).toBeDisabled()
+  })
+
+  it('время: своих переключателей нет', () => {
+    setup({ kind: 'stage', id: 'clock' })
+    expect(screen.getAllByRole('switch')).toHaveLength(1)
   })
 
   it('колонка со старой прошивкой в сети — подсказка обновить', () => {

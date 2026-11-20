@@ -5,9 +5,17 @@ import type { CoreState, Device } from '../state/model'
 
 /** Известные обработчики: выключенный показывается серым и без связей. */
 export const KNOWN_STAGES = [
-  { kind: 'whisper_detect', title: 'Шёпот', icon: '🤫', description: 'отвечает тихо, если вопрос сказан шёпотом' },
+  { kind: 'whisper_detect', title: 'Шёпот', icon: '🤫', description: 'замечает, что вопрос сказан шёпотом (видно в ленте)' },
   { kind: 'clock', title: 'Время', icon: '🕒', description: 'добавляет к вопросу местное время и дату, чтобы ответ не выдумывал их' },
 ]
+
+/** Флажок обработчика в его записи stages (по умолчанию выключен). */
+export type StageOption = { key: 'quiet_reply'; label: string; hint: string }
+
+/** Флажки обработчиков по kind: показываются в панели настроек обработчика. */
+export const STAGE_OPTIONS: Record<string, StageOption[]> = {
+  whisper_detect: [{ key: 'quiet_reply', label: 'Отвечать тише на шёпот', hint: 'Это не настоящий шёпот: голос просто тише' }],
+}
 
 /** Обработчик в списке: включён ли он в настройках. */
 export type StageItem = { kind: string; title: string; icon: string; description: string; enabled: boolean }
@@ -49,6 +57,16 @@ export function listStages(state: CoreState): StageItem[] {
 export function stagesWith(state: CoreState, kind: string, on: boolean): StageEntry[] {
   const rest = configuredStages(state).filter((s) => s.kind !== kind)
   return on ? [...rest, { kind }] : rest
+}
+
+/** Значение флажка обработчика из настроек; нет обработчика или флажка — false. */
+export function stageOption(state: CoreState, kind: string, key: StageOption['key']): boolean {
+  return configuredStages(state).find((s) => s.kind === kind)?.[key] === true
+}
+
+/** Новый список stages: у записи kind флажок key = value, остальное как было. */
+export function stagesWithOption(state: CoreState, kind: string, key: StageOption['key'], value: boolean): StageEntry[] {
+  return configuredStages(state).map((s) => (s.kind === kind ? { ...s, [key]: value } : s))
 }
 
 /** Текущий голос «вид · голос»: живой из status, иначе из настроек; нет — null. */

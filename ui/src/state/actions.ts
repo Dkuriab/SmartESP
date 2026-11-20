@@ -15,7 +15,7 @@ import { createSentExecutors } from './sentExecutors'
 export type Client = ReturnType<typeof createClient>
 
 /** Обработчик в списке stages (форма config.yaml). */
-export type StageEntry = { kind: string; timeout_ms?: number }
+export type StageEntry = { kind: string; timeout_ms?: number; quiet_reply?: boolean }
 
 export type CoreActions = ExecutorActions &
   FileActions &

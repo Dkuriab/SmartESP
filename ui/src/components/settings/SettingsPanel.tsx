@@ -1,5 +1,5 @@
 // Правая панель: настройки блока, выбранного на схеме или в списке.
-import { isApplying, listDevices, listExecutors, listStages, stagesLocked, stagesWith } from '../../schema/blocks'
+import { STAGE_OPTIONS, isApplying, listDevices, listExecutors, listStages, stageOption, stagesLocked, stagesWith, stagesWithOption } from '../../schema/blocks'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState } from '../../state/model'
 import { ConnectorPanel } from './ConnectorSettings'
@@ -36,7 +36,12 @@ export default function SettingsPanel({ state, actions }: Props) {
     const stage = listStages(state).find((s) => s.kind === selected.id)
     if (!stage) return hint
     const onToggle = (on: boolean) => void actions.setStages(stagesWith(state, stage.kind, on))
-    return <StageSettings stage={stage} applying={isApplying(state)} locked={stagesLocked(state)} onToggle={onToggle} />
+    const options = (STAGE_OPTIONS[stage.kind] ?? []).map((o) => ({
+      ...o,
+      checked: stageOption(state, stage.kind, o.key),
+      onChange: (on: boolean) => void actions.setStages(stagesWithOption(state, stage.kind, o.key, on)),
+    }))
+    return <StageSettings stage={stage} applying={isApplying(state)} locked={stagesLocked(state)} onToggle={onToggle} options={options} />
   }
   if (selected?.kind === 'executor' || selected?.kind === 'dispatcher') {
     // прежний выбор «dispatcher» — это входной исполнитель
