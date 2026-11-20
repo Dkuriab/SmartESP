@@ -123,7 +123,7 @@ async def test_playback_done_ends_turn() -> None:
     await eventually(lambda: not hub.is_active("A", 1))
 
 
-async def test_played_is_ignored_for_now() -> None:
+async def test_played_does_not_end_turn() -> None:
     clock = FakeClock()
     hub = make_hub(clock)
     conn, _ = await accepted_turn(hub, clock, "A")

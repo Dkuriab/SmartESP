@@ -40,6 +40,7 @@ class FakeDevicePort:
         self.listens: list[str] = []  # колонки, которым ушёл listen
         self.listen_afters: list[tuple[str, int]] = []
         self.last_active: str | None = None  # что вернёт last_active_device
+        self.positions: dict[tuple[str, int], int] = {}  # что вернёт played_bytes; нет — None
         self._names = names or {}
         self._utterances: asyncio.Queue[Utterance] = asyncio.Queue()
         self._changed = asyncio.Condition()
@@ -80,6 +81,9 @@ class FakeDevicePort:
         self.plays.append(PlayCall(device_id, turn, b"".join(received), finished))
         async with self._changed:
             self._changed.notify_all()
+
+    def played_bytes(self, device_id: str, turn: int) -> int | None:
+        return self.positions.get((device_id, turn))
 
     async def send_tone(self, device_id: str, name: str) -> None:
         self.tones.append((device_id, name))

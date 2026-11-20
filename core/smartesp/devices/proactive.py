@@ -12,8 +12,8 @@ from typing import Any
 from smartesp.contracts import Delivery
 
 from .arbiter import Arbiter
+from .messages import Played, cancel_turn
 from .messages import announce as announce_frame
-from .messages import cancel_turn
 from .messages import listen as listen_frame
 from .playback import close_audio, send_reply
 from .session import ActiveTurn, Recording, Session
@@ -63,6 +63,13 @@ class CoreTurns:
         """Подключённые колонки с протоколом ≥ 3, по имени (имя — device_name хаба)."""
         found = [d for d, session in self._sessions.items() if session.protocol >= PROACTIVE_PROTOCOL]
         return sorted(found, key=lambda device_id: (self.device_name(device_id), device_id))
+
+    def played_bytes(self, device_id: str, turn: int) -> int | None:
+        """Сколько байт звука ответа хода хаба turn уже прозвучало: по событиям played, а у колонки
+        без них — по оценке темпа. None — ход не активен или его ответ ещё не начат."""
+        session = self._sessions.get(device_id)
+        progress = session.progress if session is not None and session.is_live(turn) else None
+        return progress.position() if progress is not None and progress.turn_id == turn else None
 
     def device_name(self, device_id: str) -> str:
         """Имя колонки; хаб переопределяет его именами из настроек."""
@@ -179,6 +186,13 @@ class CoreTurns:
         if recording is not None and recording.esp_turn == turn:
             session.recording = None
         self._end_turn(session, turn, "busy")
+
+    def _on_played(self, session: Session, played: Played) -> None:
+        """Колонка сообщила, сколько звука ответа активного хода доиграно (чужой ход — мимо)."""
+        active, progress = session.active, session.progress
+        if active is not None and progress is not None and active.esp_turn == played.turn:
+            if progress.turn_id == active.turn_id:
+                progress.played = played.bytes
 
     def _end_turn(self, session: Session, esp_turn: int, outcome: Delivery) -> bool:
         """Заканчивает активный ход колонки esp_turn с итогом и сообщает арбитру. False — не активен."""

@@ -5,9 +5,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterator
 
-from smartesp.contracts import SAMPLE_RATE
-
 from .messages import reply_end, reply_start
+from .progress import BYTES_PER_S, ReplyProgress
 from .session import Session
 
 CHUNK_BYTES = 4096  # размер звукового кадра к колонке
@@ -16,7 +15,6 @@ BURST_S = 1.0  # пока впереди меньше стольких секу�
 BURST_RATE = 4.0  # дальше — не быстрее стольких секунд звука в секунду (сетевой буфер колонки — 2 с)
 PACE_STEP_S = 0.05  # как часто проверять темп и жив ли ход, пока ждём (не реже)
 PACE_MIN_S = 0.002  # самый короткий сон между проверками темпа
-BYTES_PER_S = SAMPLE_RATE * 2  # s16le, моно
 
 
 def _pieces(chunk: bytes) -> Iterator[bytes]:
@@ -82,9 +80,10 @@ async def send_reply(
             return 0.0
         if not await session.send(reply_start(active.esp_turn), turn_id):
             return 0.0
+        progress = session.progress = ReplyProgress(turn_id, pacer.ahead)
         async for chunk in audio:
             for piece in _pieces(chunk):
-                if not await _send_piece(session, turn_id, piece, pacer):
+                if not await _send_piece(session, turn_id, piece, pacer, progress):
                     return max(pacer.ahead(), 0.0)
     finally:
         await close_audio(audio)
@@ -92,13 +91,16 @@ async def send_reply(
     return max(pacer.ahead(), 0.0)
 
 
-async def _send_piece(session: Session, turn_id: int, piece: bytes, pacer: _Pacer) -> bool:
-    """Ждёт, пока темп позволит (см. _Pacer), и шлёт кадр. False — пора прекращать."""
+async def _send_piece(
+    session: Session, turn_id: int, piece: bytes, pacer: _Pacer, progress: ReplyProgress
+) -> bool:
+    """Ждёт, пока темп позволит (см. _Pacer), и шлёт кадр (учитывая в progress). False — пора прекращать."""
     while session.is_live(turn_id) and not pacer.ready():
         await asyncio.sleep(min(max(pacer.wait_s(), PACE_MIN_S), PACE_STEP_S))
     if not await session.send(piece, turn_id):
         return False
     pacer.add(len(piece))
+    progress.sent += len(piece)
     return True
 
 

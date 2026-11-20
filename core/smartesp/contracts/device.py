@@ -41,6 +41,11 @@ class DevicePort(Protocol):
         """Проигрывает поток PCM на колонке в рамках хода turn."""
         ...
 
+    def played_bytes(self, device_id: str, turn: int) -> int | None:
+        """Сколько байт звука ответа хода turn уже прозвучало на колонке (по её событиям played,
+        а без них — по оценке темпа). None — ход не активен или ответ ещё не начат."""
+        ...
+
     async def send_tone(self, device_id: str, name: str) -> None:
         """Просит колонку сыграть короткий сигнал по имени."""
         ...

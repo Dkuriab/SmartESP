@@ -11,7 +11,17 @@ from smartesp.contracts import DeviceInfo, EventSink, Utterance
 
 from .arbiter import Arbiter, Decision
 from .connection import DeviceConnection, close_quietly
-from .messages import BargeIn, Busy, PlaybackDone, UtteranceEnd, Wake, cancel_turn, parse_message, tone
+from .messages import (
+    BargeIn,
+    Busy,
+    PlaybackDone,
+    Played,
+    UtteranceEnd,
+    Wake,
+    cancel_turn,
+    parse_message,
+    tone,
+)
 from .playback import send_reply
 from .proactive import REPLY_GRACE_S, CoreTurns
 from .registry import DeviceRegistry
@@ -209,6 +219,8 @@ class DeviceHub(CoreTurns):
             self._end_turn(session, message.turn, "delivered")
         elif isinstance(message, Busy):
             self._on_busy(session, message.turn)
+        elif isinstance(message, Played):
+            self._on_played(session, message)
 
     def _on_wake(self, session: Session, wake: Wake) -> None:
         """Новый ход: прежний заканчивается, звук копится, решает арбитр. При остановке — сразу отмена."""

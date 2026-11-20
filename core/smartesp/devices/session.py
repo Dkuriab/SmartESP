@@ -10,6 +10,7 @@ from smartesp.contracts import Delivery
 
 from .connection import DeviceConnection
 from .messages import Hello, parse_message
+from .progress import ReplyProgress
 
 CORE_TURN_BIT = 0x80000000  # старший бит: номер хода выдало ядро (announce, listen), а не колонка
 
@@ -43,6 +44,7 @@ class Session:
         self.protocol = protocol
         self.recording: Recording | None = None
         self.active: ActiveTurn | None = None
+        self.progress: ReplyProgress | None = None  # звук последнего начатого ответа
         self.closed = False
         self._send_lock = asyncio.Lock()
         self._core_turns = itertools.count(1)
