@@ -63,6 +63,9 @@ _STATES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = tuple(
         ("переключ", "переключ[её]н"),
     )
 )
+# у «напомни» причастие — только о самом напоминании («Напоминание создано»): на «Напомни, на
+# сколько поставлен будильник» ответ «Будильник поставлен на семь» — правда из истории
+_STATE_SUBJECT = {frozenset({"напомн"}): re.compile(r"\bнапоминани", re.IGNORECASE)}
 # «можешь включить», «могла бы поставить», «надо записать» — но не «можно ли …», «нужно ли …»
 _MODAL = re.compile(
     r"\b(?:можешь|можете|можно|нужно|надо|хочу|пожалуйста|мог(?:ла|ли)?\s+бы|хотел[аи]?\s+бы)\b(?!\s+ли\b)",
@@ -171,7 +174,12 @@ def claims_action(sentence: str, families: frozenset[str] | None = None) -> bool
         return True
     if _HISTORIC.search(sentence):
         return False
-    states = [p for group, p in _STATES if families is None or group & families]
+    states = [
+        p
+        for group, p in _STATES
+        if (families is None or group & families)
+        and (group not in _STATE_SUBJECT or _STATE_SUBJECT[group].search(sentence))
+    ]
     return any(not _hedged(sentence, m.start(), m.end()) for p in states for m in p.finditer(sentence))
 
 
