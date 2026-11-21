@@ -48,7 +48,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 def test_registries_have_known_kinds() -> None:
     assert set(STT_KINDS) == {"mlx_whisper"}
     assert set(TTS_KINDS) == {"piper", "silero", "vosk"}
-    assert set(EXECUTOR_KINDS) == {"ollama"}
+    assert set(EXECUTOR_KINDS) == {"ollama", "cloud"}
     assert set(STAGE_KINDS) == {"whisper_detect", "clock", "system"}
 
 
@@ -56,7 +56,7 @@ def test_ollama_kind_passes_reasoning_level() -> None:
     from smartesp.config import ExecutorConfig
 
     config = ExecutorConfig(id="d", name="Д", model="gpt-oss:20b", reasoning="medium")
-    assert vars(EXECUTOR_KINDS["ollama"](config))["_think"] == "medium"
+    assert vars(EXECUTOR_KINDS["ollama"](config, Config()))["_think"] == "medium"
 
 
 def test_default_voice_is_silero_xenia() -> None:
@@ -112,7 +112,7 @@ def fake_core(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """main() на подделках: сервер на свободном порту 127.0.0.1, голос «скачан»."""
     monkeypatch.setitem(STT_KINDS, "mlx_whisper", lambda c: FakeSTT(""))
     monkeypatch.setitem(TTS_KINDS, "silero", lambda path, voice: FakeTTS())
-    monkeypatch.setitem(EXECUTOR_KINDS, "ollama", lambda c: FakeOllama(["Да."], c.model))
+    monkeypatch.setitem(EXECUTOR_KINDS, "ollama", lambda c, _: FakeOllama(["Да."], c.model))
     monkeypatch.setattr("smartesp.main.OLLAMA", NO_OLLAMA)
     (home / "config.yaml").write_text(NO_CONNECTORS_SERVER, encoding="utf-8")
     put_voice(home)
@@ -196,7 +196,7 @@ def test_stop_requests_merge_and_finish_honest_stop(
     fake_core(home, monkeypatch)
     executors: list[FakeOllama] = []
     monkeypatch.setitem(
-        EXECUTOR_KINDS, "ollama", lambda c: executors.append(FakeOllama(["Да."], c.model)) or executors[-1]
+        EXECUTOR_KINDS, "ollama", lambda c, _: executors.append(FakeOllama(["Да."], c.model)) or executors[-1]
     )
     read_fd, write_fd = os.pipe()
     monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(os.fdopen(read_fd, "rb")))
@@ -252,7 +252,7 @@ from fakes.fake_tts import FakeTTS
 import smartesp.main as m
 m.STT_KINDS["mlx_whisper"] = lambda c: FakeSTT("")
 m.TTS_KINDS["silero"] = lambda path, voice: FakeTTS()
-m.EXECUTOR_KINDS["ollama"] = lambda c: FakeOllama(["Да."], c.model)
+m.EXECUTOR_KINDS["ollama"] = lambda c, _: FakeOllama(["Да."], c.model)
 m.OLLAMA = NO_OLLAMA
 m.main(sys.argv[1:])
 """

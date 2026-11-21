@@ -31,6 +31,7 @@ from .redact import declared_secrets, mask_connector_secrets
 from .schemas import (
     AccessOut,
     ChangeOut,
+    CloudModelOut,
     ConfigOut,
     ConnectorDetailOut,
     DownloadIn,
@@ -72,6 +73,7 @@ def create_api(
     router = APIRouter(prefix="/api/v1")
     secured = APIRouter(dependencies=[Depends(require_token(token))], responses=_UNAUTHORIZED)
     _add_resource_routes(secured, core)
+    _add_cloud_route(secured, core)
     _add_voice_routes(secured, core)
     add_ask_routes(secured, core)
     add_play_routes(secured, files)
@@ -123,6 +125,18 @@ def _add_resource_routes(secured: APIRouter, core: CorePort) -> None:
     @secured.post("/restart", status_code=202)
     def restart() -> None:
         core.request_restart()
+
+
+def _add_cloud_route(secured: APIRouter, core: CorePort) -> None:
+    """Модели облачного сервиса для выбора в настройках исполнителя."""
+
+    @secured.get("/cloud/models", responses={502: {"model": ErrorOut}})
+    async def get_cloud_models() -> list[CloudModelOut]:
+        try:
+            items = await core.cloud_models()
+        except ExecutorError as error:
+            raise HTTPException(status_code=502, detail=str(error)) from error
+        return [CloudModelOut.model_validate(item) for item in items]
 
 
 def _add_access_route(secured: APIRouter, token: str, port: int) -> None:

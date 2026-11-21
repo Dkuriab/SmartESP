@@ -246,3 +246,15 @@ async def test_access_lists_lan_urls_without_loopback(
 
 async def test_access_requires_token(client: httpx.AsyncClient) -> None:
     assert (await client.get(f"{P}/access")).status_code == 401
+
+
+async def test_config_masks_cloud_key_and_lists_cloud_models(
+    client: httpx.AsyncClient, core: FakeCore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cloud = {"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "api_key": "sk-or-1"}
+    full = {**core.config(), "effective": {"cloud": cloud}}
+    monkeypatch.setattr(core, "config", lambda: full)
+    shown = (await client.get(f"{P}/config", headers=HEADERS)).json()["effective"]["cloud"]
+    assert shown == {**cloud, "api_key": "•••"} and cloud["api_key"] == "sk-or-1"
+    models = (await client.get(f"{P}/cloud/models", headers=HEADERS)).json()
+    assert models[0]["id"] == "google/gemini-2.5-flash" and models[0]["tools"] is True

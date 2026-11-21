@@ -14,6 +14,7 @@ from typing import cast
 
 from smartesp.config import Config, ExecutorConfig, StageConfig, SttConfig
 from smartesp.contracts import (
+    CLOUD_MODEL_PREFIX,
     Analyzer,
     Executor,
     SpeechToText,
@@ -26,6 +27,8 @@ from smartesp.network import ExecutorNetwork, MemberSpec, build_network
 from smartesp.stages import run_stages
 from smartesp.tools import ConnectorSpec
 
+CLOUD_KIND = "cloud"  # вид исполнителя на модели облачного сервиса (раздел cloud)
+
 
 class StartupError(Exception):
     """Ядро не может стартовать: понятное сообщение для человека."""
@@ -37,7 +40,8 @@ class Kinds:
 
     stt: Mapping[str, Callable[[SttConfig], SpeechToText]]
     tts: Mapping[str, Callable[[Path, str], TextToSpeech]]  # (путь голоса, голос)
-    executors: Mapping[str, Callable[[ExecutorConfig], Executor]]
+    # (настройки исполнителя, настройки целиком — для общих разделов вроде cloud) → исполнитель
+    executors: Mapping[str, Callable[[ExecutorConfig, Config], Executor]]
     stages: Mapping[str, Callable[[StageConfig], Stage]]
 
 
@@ -81,11 +85,21 @@ def kinds_validator(kinds: Kinds) -> Callable[[object], None]:
     return validate
 
 
+def model_key(executor: ExecutorConfig) -> str:
+    """Имя модели в сети: облачная — «@cloud/<id>» (её возможности не спрашивают у Ollama)."""
+    return CLOUD_MODEL_PREFIX + executor.model if executor.kind == CLOUD_KIND else executor.model
+
+
 def member_specs(config: Config) -> list[MemberSpec]:
     """Исполнители из настроек — описания участников сети."""
     return [
         MemberSpec(
-            e.id, e.name, e.description, e.model, e.system_prompt, tuple((d.to, d.when) for d in e.delegates)
+            e.id,
+            e.name,
+            e.description,
+            model_key(e),
+            e.system_prompt,
+            tuple((d.to, d.when) for d in e.delegates),
         )
         for e in config.executors
     ]
@@ -109,7 +123,7 @@ def _maker(config: Config, kinds: Kinds) -> Callable[[str, str], Executor]:
     def make(executor_id: str, prompt: str) -> Executor:
         executor = by_id[executor_id]
         factory = pick(kinds.executors, executor.kind, "executor")
-        return factory(executor.model_copy(update={"system_prompt": prompt}))
+        return factory(executor.model_copy(update={"system_prompt": prompt}), config)
 
     return make
 

@@ -34,6 +34,7 @@ CONFIG_VERSION = 5
 # замер волны 3: честнее всех и первый текст p90 < 1 с — только с рассуждением «low»
 DEFAULT_MODEL = "gpt-oss:20b"
 DEFAULT_REASONING: Reasoning = "low"
+OPENROUTER_URL = "https://openrouter.ai/api/v1"
 BIG_WHEN = "сложные вопросы: рассуждения, расчёты, подробные объяснения, знания, которых может не быть у тебя"
 BIG_SYSTEM_PROMPT = (
     "Ты отвечаешь голосом через колонку: по-русски, без разметки и списков, связно, до 6–8 предложений."
@@ -87,7 +88,7 @@ class ExecutorConfig(BaseModel):
 
     id: str
     name: str
-    kind: str = "ollama"
+    kind: str = "ollama"  # ollama — модель на Mac; cloud — модель облачного сервиса (раздел cloud)
     model: str
     entry: bool = False
     system_prompt: str = ""
@@ -96,6 +97,18 @@ class ExecutorConfig(BaseModel):
     reasoning: Reasoning = "off"
     description: str = ""
     delegates: list[DelegateLink] = Field(default_factory=list)
+
+
+class CloudConfig(BaseModel):
+    """Облачный сервис моделей с OpenAI-совместимым API (исполнители kind: cloud).
+
+    api_key — ключ сервиса (только в config.yaml; API отдаёт его как «•••»). base_url и name
+    меняются только в config.yaml: через API ключ нельзя увести на чужой адрес.
+    """
+
+    name: str = "OpenRouter"
+    base_url: str = OPENROUTER_URL
+    api_key: str = ""
 
 
 class StageConfig(BaseModel):
@@ -162,6 +175,7 @@ class Config(BaseModel):
     )
     history: HistoryConfig = Field(default_factory=HistoryConfig)
     speech: SpeechConfig = Field(default_factory=SpeechConfig)
+    cloud: CloudConfig = Field(default_factory=CloudConfig)
     # записи владельца сливаются с умолчаниями по id (см. config/connectors.py)
     connectors: list[ConnectorConfig] = Field(default_factory=default_connectors)
 

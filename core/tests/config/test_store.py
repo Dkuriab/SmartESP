@@ -190,3 +190,21 @@ def test_speech_patch_is_merged_and_unknown_key_rejected(tmp_path: Path) -> None
     assert config.speech.listen_after_question is True
     with pytest.raises(ValueError, match="speech.volume"):
         store.merge({"speech": {"volume": 3}})
+
+
+def test_api_sets_only_cloud_key_and_mask_keeps_it(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    config = store.merge({"cloud": {"api_key": "  sk-or-1  "}})
+    assert config.cloud.api_key == "sk-or-1" and config.cloud.base_url == "https://openrouter.ai/api/v1"
+    store.save(config)
+    assert store.merge({"cloud": {"api_key": "•••"}}).cloud.api_key == "sk-or-1"
+    assert store.merge({"cloud": {"api_key": ""}}).cloud.api_key == ""
+
+
+@pytest.mark.parametrize(
+    "cloud",
+    [{"base_url": "https://evil.test"}, {"name": "X"}, {"api_key": "a\nb"}, {"api_key": 5}, "ключ"],
+)
+def test_api_cannot_move_cloud_key_elsewhere(tmp_path: Path, cloud: object) -> None:
+    with pytest.raises(ValueError):
+        _store(tmp_path).merge({"cloud": cloud})

@@ -136,6 +136,19 @@ class FakeCore:
             raise self.models_error
         return [{"name": "qwen", "size_bytes": 42, "supports_tools": True}]
 
+    async def cloud_models(self) -> list[dict[str, Any]]:
+        if self.models_error:
+            raise self.models_error
+        return [
+            {
+                "id": "google/gemini-2.5-flash",
+                "name": "Gemini 2.5 Flash",
+                "tools": True,
+                "prompt_price": 0.3,
+                "completion_price": 2.5,
+            },
+        ]
+
     def voices(self) -> list[dict[str, Any]]:
         return [
             {

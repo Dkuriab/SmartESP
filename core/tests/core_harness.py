@@ -72,7 +72,7 @@ def fake_kinds(
     return Kinds(
         stt={"mlx_whisper": lambda c: FakeSTT(text)},
         tts={"silero": lambda path, name: voice},
-        executors={"ollama": executor},
+        executors={"ollama": lambda c, _: executor(c)},
         stages=STAGE_KINDS,
     )
 

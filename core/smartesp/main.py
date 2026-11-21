@@ -30,8 +30,16 @@ from smartesp.config import (
     data_dir,
 )
 from smartesp.contracts import Executor, SpeechToText, Stage, TextToSpeech
-from smartesp.executors import OllamaExecutor, list_models, loaded_models, model_capabilities, unload_model
-from smartesp.kinds import Kinds, StartupError, check_kinds
+from smartesp.executors import (
+    CloudExecutor,
+    OllamaExecutor,
+    list_models,
+    loaded_models,
+    model_capabilities,
+    unload_model,
+    with_cloud,
+)
+from smartesp.kinds import CLOUD_KIND, Kinds, StartupError, check_kinds
 from smartesp.lifecycle import GracefulServer, exit_code, run_loop, watch_parent
 from smartesp.stages import Clock, SystemState, WhisperDetect
 from smartesp.stt import MlxWhisperSTT
@@ -56,9 +64,18 @@ TTS_KINDS: dict[str, Callable[[Path, str], TextToSpeech]] = {
     "silero": lambda path, voice: SileroTTS(path, voice),
     "vosk": lambda path, voice: VoskTTS(path, voice),
 }
-EXECUTOR_KINDS: dict[str, Callable[[ExecutorConfig], Executor]] = {
-    "ollama": lambda c: OllamaExecutor(
+EXECUTOR_KINDS: dict[str, Callable[[ExecutorConfig, Config], Executor]] = {
+    "ollama": lambda c, _: OllamaExecutor(
         c.model, c.system_prompt, c.keep_alive, id=c.id, reasoning=c.reasoning
+    ),
+    CLOUD_KIND: lambda c, config: CloudExecutor(
+        c.model,
+        c.system_prompt,
+        config.cloud.base_url,
+        config.cloud.api_key,
+        id=c.id,
+        reasoning=c.reasoning,
+        service=config.cloud.name,
     ),
 }
 STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
@@ -67,7 +84,7 @@ STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
     "system": lambda c: SystemState(),
 }
 KINDS = Kinds(STT_KINDS, TTS_KINDS, EXECUTOR_KINDS, STAGE_KINDS)
-OLLAMA = Ollama(list_models, loaded_models, model_capabilities, unload_model)
+OLLAMA = Ollama(list_models, loaded_models, with_cloud(model_capabilities), unload_model)
 
 
 def _setup_logging(logs: Path, *, quiet_console: bool = False) -> LogBuffer:

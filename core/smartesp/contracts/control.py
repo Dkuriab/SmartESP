@@ -126,6 +126,11 @@ class CorePort(Protocol):
         """Возвращает модели Ollama: [{name, size_bytes, supports_tools}]; нет Ollama — ExecutorError."""
         ...
 
+    def cloud_models(self) -> Awaitable[list[dict[str, Any]]]:
+        """Модели облачного сервиса: [{id, name, tools, prompt_price, completion_price}] (цены — $ за
+        1 млн токенов или None); сервис недоступен — ExecutorError."""
+        ...
+
     def voices(self) -> list[dict[str, Any]]:
         """Возвращает каталог голосов в форме API."""
         ...

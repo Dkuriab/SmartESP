@@ -23,6 +23,26 @@ MAX_VALUE = 500  # символов в значении настройки
 _BAD_CATEGORIES = ("Cc", "Zl", "Zp")
 
 
+CLOUD_API_FIELDS = frozenset({"api_key"})
+CLOUD_ONLY_TEXT = "Адрес и имя облачного сервиса меняют только в config.yaml; через API — только ключ"
+
+
+def check_cloud_patch(cloud: object) -> dict[str, object]:
+    """Правка cloud из API: только api_key (строка в одну строку); «•••» — не менять, убирается."""
+    if not isinstance(cloud, dict) or not set(cast(dict[str, object], cloud)) <= CLOUD_API_FIELDS:
+        raise ValueError(CLOUD_ONLY_TEXT)
+    key = cast(dict[str, object], cloud).get("api_key")
+    if key is None or key == MASK:
+        return {}
+    if (
+        not isinstance(key, str)
+        or len(key) > MAX_VALUE
+        or any(unicodedata.category(c) in _BAD_CATEGORIES for c in key)
+    ):
+        raise ValueError(f"api_key: строка в одну строку, не длиннее {MAX_VALUE} символов")
+    return {"api_key": key.strip()}
+
+
 def check_api_entries(entries: object, connectors: Sequence[ConnectorConfig]) -> list[object]:
     """Проверяет правку connectors из API; возвращает её же без неизменённых секретов.
 

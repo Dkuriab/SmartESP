@@ -55,8 +55,10 @@ def mask_connector_secrets(
     """Копия ответа GET /config, где непустые значения env-секретов коннекторов — «•••».
 
     Секрет — ключ, в имени которого есть TOKEN, KEY, SECRET или PASSWORD (без учёта регистра),
-    или объявленный коннектором секретом: declared — {id: {ключ}}. Назад «•••» значит «не менять».
+    или объявленный коннектором секретом: declared — {id: {ключ}}. Ключ облачного сервиса
+    (cloud.api_key) — тоже «•••». Назад «•••» значит «не менять».
     """
+    config = _mask_cloud_key(config)
     effective = config.get("effective")
     connectors = effective.get("connectors") if isinstance(effective, dict) else None
     if not isinstance(connectors, list):
@@ -64,6 +66,16 @@ def mask_connector_secrets(
     secrets = declared or {}
     masked = [_masked(item, secrets) for item in cast(list[object], connectors)]
     return {**config, "effective": {**cast(dict[str, Any], effective), "connectors": masked}}
+
+
+def _mask_cloud_key(config: dict[str, Any]) -> dict[str, Any]:
+    """Копия, где непустой ключ облачного сервиса (effective.cloud.api_key) — «•••»."""
+    effective = config.get("effective")
+    cloud = effective.get("cloud") if isinstance(effective, dict) else None
+    if not isinstance(cloud, dict) or not cast(dict[str, object], cloud).get("api_key"):
+        return config
+    hidden = {**cast(dict[str, object], cloud), "api_key": MASKED}
+    return {**config, "effective": {**cast(dict[str, Any], effective), "cloud": hidden}}
 
 
 def _masked(item: object, declared: Mapping[str, Set[str]]) -> object:

@@ -28,7 +28,7 @@ async def with_tools(model: str) -> frozenset[str]:
 
 
 def kinds(made: list[FakeOllama]) -> Kinds:
-    def make(config: ExecutorConfig) -> Executor:
+    def make(config: ExecutorConfig, _: Config) -> Executor:
         made.append(FakeOllama([], config.model, prompt=config.system_prompt))
         return made[-1]
 
@@ -117,3 +117,22 @@ async def test_default_settings_have_no_whisper_style_rule() -> None:
     made: list[FakeOllama] = []
     await build_answering(Config(), kinds(made), with_tools)
     assert all("[style:quiet]" not in m.prompt for m in made)
+
+
+def test_cloud_executor_gets_service_settings_and_cloud_model_key() -> None:
+    from smartesp.executors import CloudExecutor
+    from smartesp.main import EXECUTOR_KINDS
+
+    big = ExecutorConfig(id="big", name="Б", kind="cloud", model="google/gemini-2.5-flash")
+    config = Config(executors=[*Config().executors[:1], big]).model_copy(
+        update={"cloud": Config().cloud.model_copy(update={"api_key": "k"})}
+    )
+    assert [s.model for s in member_specs(config)] == ["gpt-oss:20b", "@cloud/google/gemini-2.5-flash"]
+    executor = EXECUTOR_KINDS["cloud"](big, config)
+    assert isinstance(executor, CloudExecutor) and executor.models() == frozenset(
+        {"@cloud/google/gemini-2.5-flash"}
+    )
+    assert (
+        vars(executor)["_key"] == "k"
+        and vars(executor)["_url"] == "https://openrouter.ai/api/v1/chat/completions"
+    )

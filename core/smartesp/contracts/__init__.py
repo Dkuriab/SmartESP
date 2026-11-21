@@ -6,6 +6,7 @@ from .control import ChangeResult, ConfigStore, CorePort, Section, VoicePort
 from .device import Delivery, DeviceInfo, DevicePort
 from .events import CoreEvent, EventFeed, EventSink, Subscription
 from .executor import (
+    CLOUD_MODEL_PREFIX,
     DELEGATE_TOOL,
     ChatMessage,
     ChoosesThinking,
@@ -32,6 +33,7 @@ from .tools import ConnectorState, ConnectorStateName, ToolBox, ToolObserver, To
 from .tts import TextToSpeech, VoiceInfo, VoiceNotDownloadedError
 
 __all__ = [
+    "CLOUD_MODEL_PREFIX",
     "DELEGATE_TOOL",
     "SAMPLE_RATE",
     "Analyzer",

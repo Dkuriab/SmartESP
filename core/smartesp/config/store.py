@@ -8,7 +8,7 @@ from typing import Any, get_args, get_origin
 from pydantic import BaseModel, ValidationError
 
 from ._files import owner_changes, write_overrides
-from .api_patch import check_api_entries
+from .api_patch import check_api_entries, check_cloud_patch
 from .connectors import merge_connector_entries
 from .loader import load_with_overrides
 from .manifest import manifest_note, settings_view
@@ -61,7 +61,8 @@ class ConfigFile:
         Словари сливаются вглубь, списки заменяются целиком (кроме connectors: те
         сливаются по id, см. config/connectors.py), null сбрасывает ключ к умолчанию.
         Правка идёт из API, поэтому в connectors — только [{id, enabled, env}] уже известных
-        коннекторов, а в env — только ключи, объявленные коннектором (config/api_patch.py).
+        коннекторов, а в env — только ключи, объявленные коннектором; в cloud — только api_key
+        (config/api_patch.py).
         Неизвестный ключ в правке или неверный результат — ValueError с понятным текстом;
         неизвестные ключи, уже лежащие в файле, правке не мешают.
         """
@@ -77,6 +78,9 @@ class ConfigFile:
                 **patch,
                 "connectors": check_api_entries(patch["connectors"], self._current().connectors),
             }
+        if "cloud" in patch:
+            cloud = check_cloud_patch(patch["cloud"])
+            patch = {**patch, "cloud": cloud} if cloud else {k: v for k, v in patch.items() if k != "cloud"}
         merged = _merge(self._overrides, _by_id(self._overrides, patch))
         try:
             return Config.model_validate(merged)

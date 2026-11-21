@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
 DELEGATE_TOOL = "delegate"  # имя инструмента передачи задачи другому исполнителю
+# модель облачного сервиса в сети исполнителей: «@cloud/<id>» (в именах Ollama «@» не бывает)
+CLOUD_MODEL_PREFIX = "@cloud/"
 # уровень рассуждения модели перед ответом: off — не рассуждать (если модель умеет)
 type Reasoning = Literal["off", "low", "medium", "high"]
 # метка страховки честности: ответ повторного прогона или честная фраза вместо ответа ("" — нет)

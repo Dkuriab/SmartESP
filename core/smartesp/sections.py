@@ -73,6 +73,7 @@ def live_sections(
         "history": Section(_history_limits, lambda new: history.set_limits(*cast(tuple[int, int], new))),
         "executors": answering,
         "stages": answering,  # правила обработчиков в промптах: пересобираем и сеть
+        "cloud": answering,  # ключ облачного сервиса: исполнители kind cloud собираются заново
         "speech": Section(_speech, lambda speech: use_speech(cast(SpeechConfig, speech))),
         "connectors": Section(_connectors, lambda specs: tools.apply_soon(cast(list[ConnectorSpec], specs))),
     }

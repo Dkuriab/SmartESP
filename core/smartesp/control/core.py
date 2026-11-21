@@ -32,6 +32,10 @@ _log = logging.getLogger(__name__)
 STATES = ("warming", "ready", "stopping")
 
 
+async def _no_cloud() -> list[dict[str, Any]]:
+    return []
+
+
 async def _no_tools(model: str) -> bool:
     """По умолчанию модели считаются не умеющими инструменты."""
     return False
@@ -76,6 +80,7 @@ class Core:
         ask: Callable[[Question], Awaitable[Answer]] = _no_asking,
         decode: Callable[[bytes], Awaitable[bytes]] = _no_decoding,
         unload: Callable[[str], Awaitable[None]] = no_unload,
+        cloud_models: Callable[[], Awaitable[list[dict[str, Any]]]] = _no_cloud,
         data_dir: str = "",
     ) -> None:
         """validate(настройки) — проверка правки целиком; ValueError — status invalid.
@@ -86,7 +91,8 @@ class Core:
         executor_states() — итог фонового прогрева исполнителей: {id: None — готов, иначе ошибка};
         connectors() — состояния MCP-коннекторов в порядке настроек;
         ask(вопрос) — ход через API; decode(звук) — OGG/Opus или WAV в PCM 16 кГц моно;
-        unload(модель) — выгрузить модель из памяти Ollama; data_dir — папка данных (для info).
+        unload(модель) — выгрузить модель из памяти Ollama; data_dir — папка данных (для info);
+        cloud_models() — модели облачного сервиса (сбой — ExecutorError).
         """
         self._store = store
         self._events = events
@@ -104,6 +110,7 @@ class Core:
         self._ask = ask
         self._decode = decode
         self._unload = unload
+        self.cloud_models = cloud_models  # GET /cloud/models: [{id, name, tools, prompt_price, …}]
         self._data_dir = data_dir
         self._clock = clock
         self._started = clock()
