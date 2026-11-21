@@ -31,10 +31,9 @@ from .asking import ASK_LIMIT_S, ApiTurns
 from .history import History
 from .late import LATE_LIMIT_S, LateAnswers
 from .pausing import RESUME_WAIT_S, Pauses, Remainder, agrees, remainder_sentences, resume_style
-from .sentences import is_meaningless
 from .slots import PartSlots
 from .speaking import speak_answer, speak_text
-from .steps import begin, end, hear, remember, settle, understand
+from .steps import begin, end, hear, nothing_to_answer, remember, settle, understand
 from .streams import closing, first_part, no_audio
 from .turn import Parts, Turn, asks_question
 from .turn_tasks import TurnTasks
@@ -195,8 +194,7 @@ class Orchestrator(PartSlots):
     async def _converse(self, turn: Turn, parts: Parts) -> None:
         """Распознаёт, понимает, отвечает и записывает ход в историю; «да» — продолжение остатка."""
         await hear(turn, parts.stt, self._publish)
-        if is_meaningless(turn.text):
-            turn.meaningless = True
+        if nothing_to_answer(turn):
             await self._play(turn, no_audio())
             return
         if not self._is_live(turn):

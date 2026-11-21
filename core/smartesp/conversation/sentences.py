@@ -19,6 +19,14 @@ _STYLE_TAG = re.compile(r"^\s*\[\s*style\s*:\s*([\w-]+)\s*\]\s*", re.IGNORECASE)
 
 DEFAULT_STYLE = "normal"
 
+# Вопрос-предложение помощи в конце ответа («Чем могу помочь?», «Что-нибудь ещё?»): после него
+# колонка ждёт ответа и разговор не кончается — такие вопросы не озвучиваем.
+_OFFER = re.compile(
+    r"(?:^|(?<=[.!?…])\s+)(?:[^.!?…]{0,60}?\b(?:помочь|помогу|полезн\w*)\b[^.!?…]{0,30}"
+    r"|(?:что|чем)[- ]?(?:нибудь|то) ещё(?: нужно| надо)?|ещё что[- ]?(?:нибудь|то)(?: нужно| надо)?)\?\s*$",
+    re.IGNORECASE,
+)
+
 # Известные «галлюцинации» Whisper на тишине и шуме (сравниваем без учёта регистра).
 _HALLUCINATIONS = (
     "продолжение следует",
@@ -75,6 +83,11 @@ def clean_for_speech(text: str) -> str:
     text = _HYPHEN_AFTER_COLON.sub(" ", text)
     lines = (_SPACES.sub(" ", line).strip() for line in text.split("\n"))
     return "\n".join(line for line in lines if line)
+
+
+def drop_offer(text: str) -> str:
+    """Убирает с конца текста вопрос-предложение помощи; весь текст — такой вопрос → «»."""
+    return _OFFER.sub("", text).rstrip()
 
 
 def is_meaningless(text: str) -> bool:

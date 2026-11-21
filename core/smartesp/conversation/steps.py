@@ -7,8 +7,10 @@ from collections.abc import Sequence
 from smartesp.contracts import Analyzer, Annotation, ChatMessage, SpeechToText
 
 from .activity import Publish, TurnActivity
+from .farewell import is_farewell
 from .history import History
 from .prompt import build_messages
+from .sentences import is_meaningless
 from .turn import Turn, answer_text, history_question, log_turn
 from .turn_events import finished_data, heard_data, started_data
 from .turn_messages import turn_messages
@@ -51,6 +53,24 @@ async def understand(
     """
     turn.annotations = await analyze(dataclasses.replace(turn.utterance, text=turn.text))
     return build_messages([*turn.annotations, *context], history.messages(), turn.text, device_name)
+
+
+def nothing_to_answer(turn: Turn) -> bool:
+    """True, если модели отвечать не на что: реплика пустая или бессмысленная (meaningless)
+    либо это прощание — тогда ход кончается молча, без вопроса и без записи в историю."""
+    if is_meaningless(turn.text):
+        turn.meaningless = True
+        return True
+    return says_goodbye(turn)
+
+
+def says_goodbye(turn: Turn) -> bool:
+    """True, если реплика — прощание: ход отмечается farewell и кончается без ответа модели."""
+    if not is_farewell(turn.text):
+        return False
+    _log.info("%s: прощание «%s» — без ответа", turn.device_name, turn.text)
+    turn.completed = turn.farewell = True
+    return True
 
 
 def settle(turn: Turn) -> None:

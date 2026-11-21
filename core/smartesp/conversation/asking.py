@@ -32,7 +32,7 @@ from . import handoffs
 from .activity import Publish, watched
 from .history import History
 from .sentences import is_meaningless
-from .steps import begin, end, hear, remember, settle, understand
+from .steps import begin, end, hear, remember, says_goodbye, settle, understand
 from .streams import closing, first_part
 from .turn import API_ORIGIN, Turn, answer_text, turn_id
 from .turn_tasks import TurnTasks
@@ -42,6 +42,7 @@ _log = logging.getLogger(__name__)
 ASK_LIMIT_S = 55.0  # весь ход через API, включая передачу задачи: клиент (бот) ждёт 60 с
 API_DEVICE = "api"  # device_id ходов через API в событиях
 LATE_PHRASE = "Не успела ответить, спроси попозже."  # ход не уложился в limit_s
+FAREWELL = "Пока!"  # клиенту нужен хоть какой-то текст ответа на прощание
 NOT_HEARD = "Не расслышала."  # в голосовом нечего распознать или распознано бессмысленное
 FAILED_PHRASE = "Не получилось ответить, попробуй ещё раз."  # сбой без единого слова ответа
 NOT_READY = "Кузя ещё не готов: части ядра греются"
@@ -70,6 +71,8 @@ def reply_text(turn: Turn) -> str:
     """Ответ клиенту: текст ответа хода; нечего распознать — NOT_HEARD; сбой без слов — FAILED_PHRASE."""
     if turn.meaningless:
         return NOT_HEARD
+    if turn.farewell:
+        return FAREWELL
     return answer_text(turn) or FAILED_PHRASE
 
 
@@ -211,6 +214,8 @@ class ApiTurns:
             if is_meaningless(turn.text):
                 turn.meaningless = True
                 return
+        if says_goodbye(turn):
+            return
         messages = await understand(turn, parts.analyze, self._history, "", _context(turn))
         await self._reply(turn, parts.executor, messages)
         remember(turn, self._history)

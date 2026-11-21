@@ -58,6 +58,7 @@ class Turn:
     first_text_ms: float | None = None
     first_audio_ms: float | None = None
     completed: bool = False  # ответ отдан целиком, ход ещё актуален
+    farewell: bool = False  # человек попрощался: ход кончился молча (conversation/farewell.py)
     failed: bool = False  # ход сорвался из-за ошибки (исполнитель, TTS, STT…)
     meaningless: bool = False  # распознан бессмысленный текст — ответ пустой
     play_started: bool = False  # хабу уже отдан поток (он сам закончит ответ reply_end)

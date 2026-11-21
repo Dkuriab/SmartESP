@@ -14,7 +14,14 @@ from dataclasses import dataclass
 
 from smartesp.contracts import Executor, ExecutorError, Handoff, Identified, ReplyPart
 
-from .sentences import DEFAULT_STYLE, clean_for_speech, split_sentences, strip_style_tag, take_style
+from .sentences import (
+    DEFAULT_STYLE,
+    clean_for_speech,
+    drop_offer,
+    split_sentences,
+    strip_style_tag,
+    take_style,
+)
 from .streams import LateFirstPart, closing, drop, first_part_or_late, next_part
 from .turn import Turn
 
@@ -246,14 +253,17 @@ async def answer_sentences(parts: AsyncIterator[ReplyPart]) -> AsyncIterator[Sen
     Ответ — куски исполнителя до передачи или фраза об ошибке. На их границе
     недоговорённое предложение отдаётся сразу (фраза «Сейчас спрошу…» звучит,
     пока ждём цель), а следующий ответ начинается с нового предложения с
-    opens_answer=True.
+    opens_answer=True. Вопрос-предложение помощи («Чем могу помочь?») не озвучивается,
+    если в ответе есть что-то ещё: иначе колонка ждёт ответа и разговор не кончается.
     """
     segments = _Segments(parts)
     while segments.more:
         async with closing(split_sentences(segments.next())) as sentences:
             opens = True
             async for text in sentences:
-                yield Sentence(text, opens)
+                kept = drop_offer(text)
+                if kept or opens:
+                    yield Sentence(kept or text, opens)
                 opens = False
 
 
