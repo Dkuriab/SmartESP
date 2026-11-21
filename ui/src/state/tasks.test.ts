@@ -2,7 +2,7 @@ import type { CoreEvent } from '../api/events'
 import type { Task } from './model'
 import { initialState } from './model'
 import { reduce } from './reducer'
-import { FINISHED_VISIBLE_MS, fading, shortDuration, sourceLabel, taskTiming, visibleTasks } from './tasks'
+import { FINISHED_VISIBLE_MS, MAX_TASKS, fading, shortDuration, sourceLabel, taskTiming, trimTasks, visibleTasks } from './tasks'
 
 function task(over: Partial<Task> = {}): Task {
   return {
@@ -25,6 +25,18 @@ function task(over: Partial<Task> = {}): Task {
 const event = (kind: string, data: Task): CoreEvent => ({ kind, data: data as unknown as Record<string, unknown>, at: 0 })
 
 describe('tasks', () => {
+  it('лишние задачи — самые старые законченные; идущая не выпадает', () => {
+    const running = task({ key: 'connector:timers/old', started_at: 1 })
+    const finished = Array.from({ length: MAX_TASKS + 5 }, (_, i) =>
+      task({ key: `connector:timers/f${i}`, status: 'done', finished_at: 2000 + i }),
+    )
+    const kept = trimTasks([running, ...finished])
+    expect(kept).toHaveLength(MAX_TASKS)
+    expect(kept.some((t) => t.key === 'connector:timers/old')).toBe(true)
+    expect(kept.some((t) => t.key === 'connector:timers/f0')).toBe(false)
+    expect(kept.some((t) => t.key === `connector:timers/f${MAX_TASKS + 4}`)).toBe(true)
+  })
+
   it('события task_*: новая в конец, обновление и конец — на месте по ключу', () => {
     let state = reduce(initialState(), { type: 'event', event: event('task_started', task()) })
     state = reduce(state, { type: 'event', event: event('task_started', task({ key: 'late_answer/k#1', source: 'late_answer' })) })

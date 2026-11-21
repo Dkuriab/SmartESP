@@ -6,8 +6,8 @@ import type { CoreState, Task } from './model'
 export const FINISHED_VISIBLE_MS = 30_000
 /** Последние столько мс видимости законченная задача угасает. */
 export const FADE_MS = 5_000
-/** Больше задач список не держит. */
-const MAX_TASKS = 50
+/** Больше задач список не держит: лишние — самые старые законченные, идущие не выпадают. */
+export const MAX_TASKS = 200
 
 const STATUSES = new Set<Task['status']>(['running', 'done', 'failed', 'cancelled'])
 
@@ -25,7 +25,19 @@ export function applyTaskEvent(state: CoreState, e: CoreEvent): CoreState {
   if (!task) return state
   const known = state.tasks.some((t) => t.key === task.key)
   const tasks = known ? state.tasks.map((t) => (t.key === task.key ? task : t)) : [...state.tasks, task]
-  return { ...state, tasks: tasks.slice(-MAX_TASKS) }
+  return { ...state, tasks: trimTasks(tasks) }
+}
+
+/** Не больше MAX_TASKS: убираются самые давно законченные; идущие задачи остаются всегда. */
+export function trimTasks(tasks: Task[]): Task[] {
+  const extra = tasks.length - MAX_TASKS
+  if (extra <= 0) return tasks
+  const finished = tasks
+    .filter((t) => t.status !== 'running')
+    .sort((a, b) => (a.finished_at ?? 0) - (b.finished_at ?? 0))
+    .slice(0, extra)
+  const drop = new Set(finished.map((t) => t.key))
+  return tasks.filter((t) => !drop.has(t.key))
 }
 
 /** Задачи для списка на момент nowMs: идущие (старые первыми), затем недавно законченные. */
