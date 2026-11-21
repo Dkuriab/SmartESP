@@ -33,7 +33,7 @@ from smartesp.contracts import Executor, SpeechToText, Stage, TextToSpeech
 from smartesp.executors import OllamaExecutor, list_models, loaded_models, model_capabilities, unload_model
 from smartesp.kinds import Kinds, StartupError, check_kinds
 from smartesp.lifecycle import GracefulServer, exit_code, run_loop, watch_parent
-from smartesp.stages import Clock, WhisperDetect
+from smartesp.stages import Clock, SystemState, WhisperDetect
 from smartesp.stt import MlxWhisperSTT
 from smartesp.tts import PiperTTS, SileroTTS, VoskTTS
 from smartesp.wiring import Ollama, assemble, stop
@@ -64,6 +64,7 @@ EXECUTOR_KINDS: dict[str, Callable[[ExecutorConfig], Executor]] = {
 STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
     "whisper_detect": lambda c: WhisperDetect(c.quiet_reply),
     "clock": lambda c: Clock(),
+    "system": lambda c: SystemState(),
 }
 KINDS = Kinds(STT_KINDS, TTS_KINDS, EXECUTOR_KINDS, STAGE_KINDS)
 OLLAMA = Ollama(list_models, loaded_models, model_capabilities, unload_model)

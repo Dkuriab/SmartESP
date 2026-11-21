@@ -43,6 +43,7 @@ from smartesp.parts import (
     live_answering,
     voice_manager,
 )
+from smartesp.stages import SYSTEM_FACTS, SystemSnapshot
 from smartesp.tasks import TaskRegistry
 from smartesp.tools import McpHub
 
@@ -80,6 +81,12 @@ async def _build_answering(
     return await live.build(part, WARM_UP_TIMEOUT_S, warm=warm)
 
 
+def _system_snapshot(tasks: TaskRegistry, tools: McpHub) -> SystemSnapshot:
+    """Снимок для обработчика «система»: идущие задачи и готовые коннекторы."""
+    running = [(t.title, t.eta) for t in tasks.tasks() if t.status == "running"]
+    return SystemSnapshot(running, [c.name for c in tools.states() if c.state == "ready"])
+
+
 def assemble(
     store: ConfigFile,
     config: Config,
@@ -108,6 +115,7 @@ def assemble(
         tasks=tasks,
         on_tools=lambda: parts.refresh.changed(),
     )
+    SYSTEM_FACTS.use(functools.partial(_system_snapshot, tasks, tools))  # обработчик «система»
     voices, voice_ready = voice_manager(home, kinds, orchestrator, bus)
     run_file = RunFile(home / "run" / "core.json")
     parts = Assembly(

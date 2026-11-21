@@ -90,7 +90,7 @@ def test_config_before_load_raises(tmp_path: Path) -> None:
         ConfigFile(tmp_path / "config.yaml").config  # noqa: B018
 
 
-@pytest.mark.parametrize("version", ["99", "5", "abc", "true", "3.5", "1"])
+@pytest.mark.parametrize("version", ["99", "6", "abc", "true", "3.5", "1"])
 def test_unknown_version_rejected_untouched(tmp_path: Path, version: str) -> None:
     path = tmp_path / "config.yaml"
     path.write_text(f"version: {version}\ntts:\n  kind: piper\n", encoding="utf-8")

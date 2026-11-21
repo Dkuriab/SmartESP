@@ -36,10 +36,17 @@ _NO_ACCESS_PROMPT = (
     " Нет данных или инструмента — скажи: «У меня нет доступа к …»."
     " Не говори, что что-то сделал, если инструмент этого не сделал."
 )
+# умолчание волны 3 (до правил по пунктам)
+_WAVE3_PROMPT = (
+    _KUZYA_PROMPT + " Время, погоду, новости и состояние устройств бери только из сообщения,"
+    " пометок и ответов инструментов — не выдумывай их."
+    " Не говори, что что-то сделал, если инструмент этого не сделал."
+)
 # модель диспетчера по умолчанию прежних версий (до волны 3): в старом файле значит «не меняли»
 _LEGACY_MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
 _LEGACY_PROMPTS = (
     DEFAULT_SYSTEM_PROMPT,
+    _WAVE3_PROMPT,
     _NO_ACCESS_PROMPT,
     _KUZYA_PROMPT,
     _OLD_PROMPT,
@@ -65,8 +72,8 @@ def load_with_overrides(path: Path) -> tuple[Config, dict[str, Any]]:
     Нет файла — создаёт пустой (с подсказками). Файл прежнего формата (все
     настройки целиком, без version) один раз переводится: остаются только
     отличия от значений по умолчанию, старый файл сохраняется как config.yaml.bak.
-    Файл версии 2 или 3 так же сохраняется в .bak и переписывается как версия 4 (tts без
-    kind остаётся piper — прежнее умолчание; к сохранённым stages добавляется clock).
+    Файл версии 2–4 так же сохраняется в .bak и переписывается как версия 5 (tts без
+    kind остаётся piper — прежнее умолчание; к сохранённым stages добавляются clock и system).
     Рядом пишется config.defaults.yaml. Файл не читается, не разбирается как YAML
     или настройки неверные — ValueError с понятным сообщением и путём к файлу.
     Возвращает настройки и изменения владельца (содержимое файла без version).
@@ -78,7 +85,7 @@ def load_with_overrides(path: Path) -> tuple[Config, dict[str, Any]]:
         return Config(), {}
     raw = read_yaml(path)
     version = raw.get("version")
-    if version is not None and (isinstance(version, bool) or version not in (2, 3, CONFIG_VERSION)):
+    if version is not None and (isinstance(version, bool) or version not in (2, 3, 4, CONFIG_VERSION)):
         raise ValueError(f"файл настроек от более новой версии ядра: {path} (version: {version!r})")
     if version != CONFIG_VERSION:
         shutil.copyfile(path, path.with_name(path.name + ".bak"))
@@ -86,7 +93,9 @@ def load_with_overrides(path: Path) -> tuple[Config, dict[str, Any]]:
             raw = _migrate(raw)
         if version in (None, 2):
             raw = _migrate_v2(raw)
-        raw = _migrate_v3(raw)  # версии идут цепочкой: 2 → 3 → 4
+        if version in (None, 2, 3):
+            raw = _add_stage(raw, "clock")  # версии идут цепочкой: 2 → 3 → 4 → 5
+        raw = _add_stage(raw, "system")
         write_overrides(path, raw)
     try:
         config = Config.model_validate(raw)
@@ -95,16 +104,16 @@ def load_with_overrides(path: Path) -> tuple[Config, dict[str, Any]]:
     return config, {k: v for k, v in raw.items() if k != "version"}
 
 
-def _migrate_v3(raw: dict[str, Any]) -> dict[str, Any]:
-    """Версия 3 → 4: в сохранённый список stages добавляем clock (один раз, по версии).
+def _add_stage(raw: dict[str, Any], kind: str) -> dict[str, Any]:
+    """Переход версии: в сохранённый список stages добавляем новый обработчик kind (один раз).
 
-    После перехода владелец, убравший clock, этот выбор сохраняет. Список, ставший
-    равным умолчанию, из файла убирается.
+    3 → 4 — clock, 4 → 5 — system. После перехода владелец, убравший обработчик, этот
+    выбор сохраняет. Список, ставший равным умолчанию, из файла убирается.
     """
     raw = {k: v for k, v in raw.items() if k != "version"}
     stages = raw.get("stages")
-    if isinstance(stages, list) and not any(isinstance(s, dict) and s.get("kind") == "clock" for s in stages):
-        raw["stages"] = [*stages, {"kind": "clock"}]
+    if isinstance(stages, list) and not any(isinstance(s, dict) and s.get("kind") == kind for s in stages):
+        raw["stages"] = [*stages, {"kind": kind}]
         raw = owner_changes(raw, effective=False)
     return raw
 

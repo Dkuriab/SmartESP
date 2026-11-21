@@ -49,7 +49,7 @@ def test_registries_have_known_kinds() -> None:
     assert set(STT_KINDS) == {"mlx_whisper"}
     assert set(TTS_KINDS) == {"piper", "silero", "vosk"}
     assert set(EXECUTOR_KINDS) == {"ollama"}
-    assert set(STAGE_KINDS) == {"whisper_detect", "clock"}
+    assert set(STAGE_KINDS) == {"whisper_detect", "clock", "system"}
 
 
 def test_ollama_kind_passes_reasoning_level() -> None:

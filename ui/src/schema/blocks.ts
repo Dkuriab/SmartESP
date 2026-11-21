@@ -13,6 +13,7 @@ export const REASONING_LEVELS: readonly Reasoning[] = ['off', 'low', 'medium', '
 export const KNOWN_STAGES = [
   { kind: 'whisper_detect', title: 'Шёпот', icon: '🤫', description: 'замечает, что вопрос сказан шёпотом (видно в ленте)' },
   { kind: 'clock', title: 'Время', icon: '🕒', description: 'добавляет к вопросу местное время и дату, чтобы ответ не выдумывал их' },
+  { kind: 'system', title: 'Система', icon: '🧭', description: 'подсказывает модели, что сейчас в работе и какие навыки подключены' },
 ]
 
 /** Флажок обработчика в его записи stages (по умолчанию выключен). */
