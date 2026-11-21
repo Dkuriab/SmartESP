@@ -275,6 +275,48 @@
         }
       }
     },
+    "/api/v1/cloud/models": {
+      "get": {
+        "summary": "Get Cloud Models",
+        "operationId": "get_cloud_models_api_v1_cloud_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CloudModelOut"
+                  },
+                  "type": "array",
+                  "title": "Response Get Cloud Models Api V1 Cloud Models Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/voices": {
       "get": {
         "summary": "Get Voices",
@@ -1060,6 +1102,54 @@
         ],
         "title": "ChangeOut",
         "description": "Ответ на изменение."
+      },
+      "CloudModelOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "tools": {
+            "type": "boolean",
+            "title": "Tools"
+          },
+          "prompt_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Price"
+          },
+          "completion_price": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Price"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "tools",
+          "prompt_price",
+          "completion_price"
+        ],
+        "title": "CloudModelOut",
+        "description": "Модель облачного сервиса (цены — доллары за 1 млн токенов; неизвестно — null)."
       },
       "ConfigOut": {
         "properties": {

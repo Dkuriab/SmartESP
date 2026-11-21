@@ -6,7 +6,7 @@ import type { ExecutorActions } from './executorActions'
 import { createExecutorActions } from './executorActions'
 import type { FileActions } from './fileActions'
 import { createFileActions } from './fileActions'
-import type { Config, Notice, Selection } from './model'
+import type { CloudModel, Config, Notice, Selection } from './model'
 import type { Dispatch } from './request'
 import { send, sendNotify } from './request'
 import type { SentExecutors } from './sentExecutors'
@@ -38,6 +38,10 @@ export type CoreActions = ExecutorActions &
   restart(): Promise<void>
   /** Адреса для входа из сети; ошибка — пустой список. */
   loadAccess(): Promise<string[]>
+  /** Модели облачного сервиса; ошибка — уведомление и пустой список. */
+  loadCloudModels(): Promise<CloudModel[]>
+  /** Ключ облачного сервиса (пусто — убрать). */
+  setCloudKey(key: string): Promise<void>
   setToken(token: string): void
   /** Выбор на схеме или в списке (null — снять). */
   select(selected: Selection | null): void
@@ -114,6 +118,11 @@ export function createActions(deps: ActionDeps): CoreActions {
     return outcome.ok ? outcome.data.urls : []
   }
 
+  async function loadCloudModels(): Promise<CloudModel[]> {
+    const outcome = await sendNotify(dispatch, () => client.GET('/api/v1/cloud/models'))
+    return outcome.ok ? outcome.data : []
+  }
+
   const sent = deps.sentExecutors ?? createSentExecutors(now)
   return {
     ...createExecutorActions({ dispatch, getConfig, sent }, sendPatch),
@@ -123,6 +132,8 @@ export function createActions(deps: ActionDeps): CoreActions {
     saveConnectorEnv,
     previewVoice,
     loadAccess,
+    loadCloudModels,
+    setCloudKey: (key) => patch({ cloud: { api_key: key } }, key ? 'Ключ облачного сервиса' : 'Ключ облачного сервиса убран'),
     async downloadVoice(kind, voice) {
       dispatch({ type: 'downloadRequested', kind, voice })
       await sendNotify(dispatch, () => client.POST('/api/v1/voices/download', { body: { kind, voice } }))

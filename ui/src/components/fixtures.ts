@@ -87,6 +87,8 @@ export function makeActions(): CoreActions {
     setLink: vi.fn(),
     restart: vi.fn(),
     loadAccess: vi.fn().mockResolvedValue([]),
+    loadCloudModels: vi.fn().mockResolvedValue([]),
+    setCloudKey: vi.fn(),
     setToken: vi.fn(),
     select: vi.fn(),
     selectTurn: vi.fn(),

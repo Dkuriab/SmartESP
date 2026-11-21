@@ -12,6 +12,8 @@ export type Executor = Record<string, unknown>
 /** Правка исполнителя: только заданные поля (undefined не затирает). */
 export type ExecutorPatch = {
   name?: string
+  /** ollama — модель на Mac; cloud — облачный сервис (раздел cloud настроек). */
+  kind?: string
   model?: string
   description?: string
   systemPrompt?: string
@@ -20,6 +22,7 @@ export type ExecutorPatch = {
 
 const FIELDS: Record<keyof ExecutorPatch, string> = {
   name: 'name',
+  kind: 'kind',
   model: 'model',
   description: 'description',
   systemPrompt: 'system_prompt',

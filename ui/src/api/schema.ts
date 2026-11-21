@@ -107,6 +107,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cloud/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Cloud Models */
+        get: operations["get_cloud_models_api_v1_cloud_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/voices": {
         parameters: {
             query?: never;
@@ -388,6 +405,22 @@ export interface components {
              * @default
              */
             error: string;
+        };
+        /**
+         * CloudModelOut
+         * @description Модель облачного сервиса (цены — доллары за 1 млн токенов; неизвестно — null).
+         */
+        CloudModelOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Tools */
+            tools: boolean;
+            /** Prompt Price */
+            prompt_price: number | null;
+            /** Completion Price */
+            completion_price: number | null;
         };
         /**
          * ConfigOut
@@ -1111,6 +1144,44 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    get_cloud_models_api_v1_cloud_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudModelOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

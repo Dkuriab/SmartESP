@@ -102,6 +102,8 @@ export type LinkItem = { to: string; when: string; active: boolean }
 export type ExecutorItem = {
   id: string
   name: string
+  /** ollama — модель на Mac; cloud — облачный сервис. */
+  kind: string
   model: string
   description: string
   systemPrompt: string
@@ -123,6 +125,7 @@ export function listExecutors(state: CoreState): ExecutorItem[] {
   const items = raw.map((e) => ({
     id: str(e.id),
     name: str(e.name),
+    kind: str(e.kind) || 'ollama',
     model: str(e.model),
     description: str(e.description),
     systemPrompt: str(e.system_prompt),

@@ -148,7 +148,7 @@ function executorNodes(state: CoreState, executors: ExecutorItem[], path: string
     const now = state.live.executors[e.id]
     const data = {
       label: e.name || e.id,
-      model: e.model,
+      model: e.kind === 'cloud' ? `☁️ ${e.model}` : e.model,
       noTools: modelWithoutTools(state, e.model),
       unavailable: executorUnavailable(state, e.id),
       inMemory: modelInMemory(state, e.model),

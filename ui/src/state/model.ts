@@ -9,6 +9,8 @@ export type Status = Schemas['StatusOut']
 export type Config = Schemas['ConfigOut']
 export type Voice = Schemas['VoiceOut']
 export type Model = Schemas['ModelOut']
+/** Модель облачного сервиса (цены — $ за 1 млн токенов). */
+export type CloudModel = Schemas['CloudModelOut']
 export type Turn = Schemas['TurnOut']
 export type Device = Schemas['DeviceOut']
 export type Connector = Schemas['ConnectorOut']

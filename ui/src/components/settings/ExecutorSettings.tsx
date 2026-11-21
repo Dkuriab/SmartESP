@@ -6,6 +6,7 @@ import { executorUnavailable, isApplying, listExecutors, modelWithoutTools } fro
 import type { CoreActions } from '../../state/actions'
 import type { ExecutorPatch } from '../../state/executors'
 import type { CoreState } from '../../state/model'
+import { CLOUD, CloudKeyField, CloudModelField, KindField, modelForKind } from './CloudFields'
 import { APPLYING, CommitField, FinalPrompt, ModelField, PromptField, ReasoningField } from './ExecutorFields'
 import LinkRows from './LinkRows'
 import SpeechSettings from './SpeechSettings'
@@ -40,11 +41,41 @@ function RemoveButton({ name, disabled, onRemove }: RemoveProps) {
   )
 }
 
-export default function ExecutorSettings({ state, actions, executor: e }: Props) {
+/** Ошибка прогрева исполнителя из status (нет — пусто). */
+function warmError(state: CoreState, id: string): string {
+  return state.status?.executors?.find((x) => x.id === id)?.error ?? ''
+}
+
+type ModelProps = Props & { applying: boolean }
+
+/** Где работает, модель и (для облака) ключ сервиса; предупреждения о недоступности. */
+function ModelBlock({ state, actions, executor: e, applying }: ModelProps) {
   const reachable = state.status?.ollama.reachable ?? true
+  const cloud = e.kind === CLOUD
+  const settings = (state.config?.effective.cloud ?? {}) as { name?: unknown; api_key?: unknown }
+  const service = typeof settings.name === 'string' && settings.name ? settings.name : 'OpenRouter'
+  const update = (patch: ExecutorPatch) => void actions.updateExecutor(e.id, patch)
+  const pickKind = (kind: string) => update({ kind, model: modelForKind(kind, state.models ?? []) })
+  const unavailable = executorUnavailable(state, e.id)
+  return (
+    <>
+      <KindField kind={e.kind} service={service} disabled={applying} onPick={pickKind} />
+      {cloud ? (
+        <CloudModelField key={e.model} current={e.model} disabled={applying} load={actions.loadCloudModels} onPick={(model) => update({ model })} />
+      ) : (
+        <ModelField current={e.model} models={state.models ?? []} disabled={!reachable || applying} onPick={(model) => update({ model })} />
+      )}
+      {!cloud && !reachable && <div className="set-note warn">Ollama недоступна</div>}
+      {!cloud && reachable && unavailable && <div className="set-note warn">модель недоступна</div>}
+      {cloud && unavailable && <div className="set-note warn">{warmError(state, e.id) || 'модель недоступна'}</div>}
+      {cloud && <CloudKeyField service={service} isSet={Boolean(settings.api_key)} disabled={applying} onSave={(key) => void actions.setCloudKey(key)} />}
+    </>
+  )
+}
+
+export default function ExecutorSettings({ state, actions, executor: e }: Props) {
   // пока изменение применяется, executors в настройках старые: новая правка затёрла бы его
   const applying = isApplying(state)
-  const models = state.models ?? []
   const noTools = modelWithoutTools(state, e.model)
   const update = (patch: ExecutorPatch) => void actions.updateExecutor(e.id, patch)
   const final = state.config?.executor_prompts[e.id] ?? (e.entry ? state.config?.dispatcher_prompt : undefined)
@@ -55,9 +86,7 @@ export default function ExecutorSettings({ state, actions, executor: e }: Props)
       <div className="set-sub">{e.entry ? 'Исполнитель · отвечает первым' : 'Исполнитель'}</div>
       {/* key: после применения или отказа черновик берёт сохранённое значение */}
       <CommitField key={`name:${e.name}`} label="Имя" value={e.name} placeholder={e.id} required disabled={applying} onCommit={(name) => update({ name })} />
-      <ModelField current={e.model} models={models} disabled={!reachable || applying} onPick={(model) => update({ model })} />
-      {!reachable && <div className="set-note warn">Ollama недоступна</div>}
-      {reachable && executorUnavailable(state, e.id) && <div className="set-note warn">модель недоступна</div>}
+      <ModelBlock state={state} actions={actions} executor={e} applying={applying} />
       {applying && <div className="set-note">{APPLYING}</div>}
       <ReasoningField current={e.reasoning} model={e.model} disabled={applying} onPick={(reasoning) => update({ reasoning })} />
       <CommitField key={`desc:${e.description}`} label="Описание" value={e.description} placeholder="Когда ко мне обращаться" disabled={applying} onCommit={(description) => update({ description })} />
