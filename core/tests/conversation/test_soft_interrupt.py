@@ -114,3 +114,16 @@ def test_agrees() -> None:
         assert agrees(text), text
     for text in ("Нет", "не надо", "Да нет", "Какая погода завтра в Москве будет?", "", "Потом"):
         assert not agrees(text), text
+
+
+def test_agrees_only_pure_agreement() -> None:
+    for text in ("Ну давай", "Да, вернёмся к тому, о чём говорили", "Продолжай, пожалуйста"):
+        assert agrees(text), text
+    new_requests = (
+        "давай лучше про погоду",
+        "да, а сколько сейчас времени?",
+        "ок, включи свет",
+        "вернёмся к погоде",
+    )
+    for text in new_requests:
+        assert not agrees(text), text

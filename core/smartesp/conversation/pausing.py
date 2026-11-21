@@ -39,19 +39,27 @@ _YES = frozenset(
     "да давай давайте ага угу конечно продолжай продолжи продолжим продолжайте вернёмся вернемся "
     "можно хорошо ок окей".split()
 )
-_NO = frozenset("нет не неа потом хватит стоп".split())
+# связки и вежливость: не меняют смысл согласия («ну давай», «да, вернёмся к тому, о чём говорили»)
+_FILLER = frozenset("ну и так же уж пожалуйста к тому этому о чём чем говорили разговору".split())
 _WORDS = re.compile(r"[а-яёa-z]+")
-_MAX_WORDS = 5  # длиннее — это уже новая просьба, а не согласие
+_MAX_WORDS = 8  # длиннее — это уже новая просьба, а не согласие
+
+
+def _agreeing(word: str) -> bool:
+    """Слово согласия: «да», «давай», формы «продолжай», «вернёмся»."""
+    return word in _YES or word.startswith(("продолж", "вернём", "вернем"))
 
 
 def agrees(text: str) -> bool:
-    """True, если реплика — согласие продолжить («да», «давай», «продолжай»)."""
+    """True, если реплика — только согласие продолжить («да», «давай», «продолжай»).
+
+    Каждое слово — согласие или связка; есть хоть одно слово сверх них («да, а сколько
+    времени?», «давай лучше про погоду», «вернёмся к погоде») — это новая просьба.
+    """
     words = _WORDS.findall(text.lower())
-    if not words or any(word in _NO for word in words):
+    if not words or len(words) > _MAX_WORDS:
         return False
-    if any(word.startswith(("продолж", "вернём", "вернем")) for word in words):
-        return True
-    return len(words) <= _MAX_WORDS and words[0] in _YES
+    return any(_agreeing(w) for w in words) and all(_agreeing(w) or w in _FILLER for w in words)
 
 
 @dataclass
