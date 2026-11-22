@@ -1,0 +1,7 @@
+{
+  "include": ["wakeword_trainer", "tests"],
+  "exclude": ["vendor", ".venv"],
+  "extraPaths": ["vendor"],
+  "typeCheckingMode": "standard",
+  "pythonVersion": "3.12"
+}
