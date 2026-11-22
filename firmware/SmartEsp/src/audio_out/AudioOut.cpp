@@ -2,6 +2,7 @@
 
 #include <string.h>
 #include "SoundData.h"
+#include "esp_heap_caps.h"
 #include "freertos/idf_additions.h"
 
 namespace {
@@ -10,6 +11,15 @@ constexpr uint32_t SAMPLE_RATE = 16000;
 constexpr size_t CHUNK = 256;  // отсчётов за одну запись в I2S (16 мс)
 constexpr uint32_t IDLE_START_MS = 100;  // начать играть, если новых данных нет столько
 constexpr uint32_t OVERFLOW_LOG_PERIOD_MS = 1000;
+constexpr size_t TONES = 5;         // сигналов в Tone (размер custom_ в AudioOut.h)
+constexpr UBaseType_t SWAPS = 10;   // подмен в очереди: пять при загрузке и запас
+
+// Подмена звука сигнала (setSound → задача воспроизведения).
+struct Swap {
+  uint8_t tone;
+  int16_t* pcm;
+  size_t samples;
+};
 
 // Звук — образец из SoundData.cpp (уровень уже внутри).
 struct Sound {
@@ -17,7 +27,7 @@ struct Sound {
   size_t len;
 };
 
-Sound soundOf(Tone tone) {
+Sound builtinOf(Tone tone) {
   switch (tone) {
     case Tone::Wake: return {SOUND_WAKE, SOUND_WAKE_LEN};
     case Tone::Listen: return {SOUND_LISTEN, SOUND_LISTEN_LEN};
@@ -40,7 +50,8 @@ bool AudioOut::begin(const AudioOutConfig& config) {
   const size_t queueBytes = msToSamples(config_.queueSeconds * 1000) * sizeof(int16_t);
   queue_ = xStreamBufferCreateWithCaps(queueBytes, 1, MALLOC_CAP_SPIRAM);
   reference_ = xStreamBufferCreate(SAMPLE_RATE * sizeof(int16_t), 1);  // 1 с образца
-  if (!queue_ || !reference_) {
+  sounds_ = xQueueCreate(SWAPS, sizeof(Swap));
+  if (!queue_ || !reference_ || !sounds_) {
     Serial.println("audio_out: нет памяти под буферы");
     return false;
   }
@@ -67,6 +78,15 @@ size_t AudioOut::write(const int16_t* pcm, size_t samples) {
 
 void AudioOut::playTone(Tone tone) {
   toneRequest_ = static_cast<int>(tone);
+}
+
+bool AudioOut::setSound(Tone tone, int16_t* pcm, size_t samples) {
+  const Swap swap{static_cast<uint8_t>(tone), pcm, pcm ? samples : 0};
+  if (swap.tone >= TONES || !sounds_ || xQueueSend(sounds_, &swap, 0) != pdTRUE) {
+    heap_caps_free(pcm);  // nullptr — ничего не делает
+    return false;
+  }
+  return true;
 }
 
 void AudioOut::stop() {
@@ -114,8 +134,21 @@ void AudioOut::pushRefSilence(uint32_t ms) {
   }
 }
 
+// Подмены звуков — только в задаче воспроизведения и пока тон не звучит: читает custom_ тоже
+// только она, поэтому старый буфер освобождается без гонок.
+void AudioOut::applySounds() {
+  Swap swap;
+  while (xQueueReceive(sounds_, &swap, 0) == pdTRUE) {
+    heap_caps_free(custom_[swap.tone]);
+    custom_[swap.tone] = swap.samples > 0 ? swap.pcm : nullptr;
+    customLen_[swap.tone] = swap.samples;
+    if (swap.pcm && swap.samples == 0) heap_caps_free(swap.pcm);
+  }
+}
+
 size_t AudioOut::renderTone(int16_t* dst, size_t samples) {
-  const Sound sound = soundOf(tone_);
+  const size_t index = static_cast<size_t>(tone_);
+  const Sound sound = index < TONES && custom_[index] ? Sound{custom_[index], customLen_[index]} : builtinOf(tone_);
   const float volume = volume_;
   size_t n = 0;
   while (n < samples && tonePos_ < sound.len) {
@@ -142,6 +175,10 @@ void AudioOut::run() {
       xStreamBufferReset(queue_);
       toneActive_ = false;
       queueStarted_ = false;
+    }
+
+    if (!toneActive_) {
+      applySounds();
     }
 
     const int request = toneRequest_;

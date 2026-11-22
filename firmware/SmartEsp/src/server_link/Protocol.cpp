@@ -7,7 +7,7 @@
 namespace {
 
 constexpr int SAMPLE_RATE = 16000;
-constexpr int PROTOCOL_VERSION = 4;  // 4: команда update и событие update_status
+constexpr int PROTOCOL_VERSION = 4;  // 4: команда update и событие update_status; звуки — возможность sounds
 
 const char* eventTypeName(ClientEventType type) {
   switch (type) {
@@ -23,7 +23,20 @@ const char* eventTypeName(ClientEventType type) {
 }
 
 const char* updateKindName(UpdateKind kind) {
-  return kind == UpdateKind::Firmware ? "firmware" : "model";
+  switch (kind) {
+    case UpdateKind::Firmware: return "firmware";
+    case UpdateKind::Model: return "model";
+    case UpdateKind::Sound: return "sound";
+  }
+  return "";
+}
+
+// Имена сигналов по порядку Tone (для hello и update_status).
+const char* const TONE_NAMES[TONE_COUNT] = {"wake", "error", "thinking", "listen", "attention"};
+
+const char* toneName(Tone tone) {
+  const size_t index = static_cast<size_t>(tone);
+  return index < TONE_COUNT ? TONE_NAMES[index] : "";
 }
 
 const char* updateStateName(UpdateState state) {
@@ -67,6 +80,16 @@ bool isHex64(const char* text) {
   return true;
 }
 
+bool readTone(const char* name, Tone& tone) {
+  for (size_t i = 0; i < TONE_COUNT; ++i) {
+    if (strcmp(name, TONE_NAMES[i]) == 0) {
+      tone = static_cast<Tone>(i);
+      return true;
+    }
+  }
+  return false;
+}
+
 // Команда update: что, путь к файлу, размер, SHA-256; для модели — порог, окно, арена, слово.
 bool readUpdate(const JsonDocument& doc, UpdateRequest& out) {
   const char* what = doc["what"] | "";
@@ -74,15 +97,20 @@ bool readUpdate(const JsonDocument& doc, UpdateRequest& out) {
     out.kind = UpdateKind::Firmware;
   } else if (strcmp(what, "model") == 0) {
     out.kind = UpdateKind::Model;
+  } else if (strcmp(what, "sound") == 0) {
+    out.kind = UpdateKind::Sound;
+    const char* tone = doc["tone"] | "";
+    if (!readTone(tone, out.tone)) return false;
   } else {
     return false;
   }
   JsonVariantConst size = doc["size"];
-  if (!size.is<uint32_t>() || size.as<uint32_t>() == 0) return false;
+  if (!size.is<uint32_t>()) return false;
   out.size = size.as<uint32_t>();
+  if (out.size == 0) return out.kind == UpdateKind::Sound;  // звук без файла — вернуть встроенный
   if (!readText(doc, "path", out.path, sizeof(out.path)) || out.path[0] != '/') return false;
   if (!readText(doc, "sha256", out.sha256, sizeof(out.sha256)) || !isHex64(out.sha256)) return false;
-  if (out.kind == UpdateKind::Firmware) return true;
+  if (out.kind != UpdateKind::Model) return true;
   JsonVariantConst cutoff = doc["cutoff"];
   JsonVariantConst window = doc["window"];
   JsonVariantConst arena = doc["arena"];
@@ -122,26 +150,10 @@ bool readTurn(const JsonDocument& doc, uint32_t& turn) {
   return true;
 }
 
-bool readTone(const char* name, Tone& tone) {
-  if (strcmp(name, "wake") == 0) {
-    tone = Tone::Wake;
-  } else if (strcmp(name, "error") == 0) {
-    tone = Tone::Error;
-  } else if (strcmp(name, "thinking") == 0) {
-    tone = Tone::Thinking;
-  } else if (strcmp(name, "listen") == 0) {
-    tone = Tone::Listen;
-  } else if (strcmp(name, "attention") == 0) {
-    tone = Tone::Attention;
-  } else {
-    return false;
-  }
-  return true;
-}
-
 }  // namespace
 
-size_t encodeHello(const char* fwVersion, const char* deviceId, char* out, size_t capacity) {
+size_t encodeHello(const char* fwVersion, const char* deviceId, char* out, size_t capacity,
+                   const char (*sounds)[65]) {
   JsonDocument doc;
   doc["type"] = "hello";
   doc["fw"] = fwVersion;
@@ -150,6 +162,11 @@ size_t encodeHello(const char* fwVersion, const char* deviceId, char* out, size_
   doc["sample_rate"] = SAMPLE_RATE;
   doc["format"] = "pcm_s16le";
   doc["channels"] = 1;
+  doc["caps"].add("sounds");
+  JsonObject stored = doc["sounds"].to<JsonObject>();
+  for (size_t i = 0; sounds && i < TONE_COUNT; ++i) {
+    if (sounds[i][0] != '\0') stored[TONE_NAMES[i]] = sounds[i];
+  }
   return serializeInto(doc, out, capacity);
 }
 
@@ -173,6 +190,7 @@ size_t encodeClientEvent(const ClientEvent& event, char* out, size_t capacity) {
     doc["done"] = event.bytes;
     doc["total"] = event.total;
     doc["error"] = updateErrorName(event.updateError);
+    if (event.updateKind == UpdateKind::Sound) doc["tone"] = toneName(event.updateTone);
   }
   return serializeInto(doc, out, capacity);
 }

@@ -14,7 +14,7 @@
 #include "src/session/Session.h"
 #include "src/updater/Updater.h"
 
-constexpr const char* FW_VERSION = "0.5.0";
+constexpr const char* FW_VERSION = "0.6.0";
 constexpr size_t AUDIO_BLOCK = 512;  // 32 мс
 
 AudioOut audioOut;
@@ -29,6 +29,15 @@ Updater updater;
 int16_t micBlock[AUDIO_BLOCK];
 int16_t refBlock[AUDIO_BLOCK];
 int16_t audioBlock[AUDIO_BLOCK];
+
+// Свои звуки сигналов (сохранённые и присланные ядром) → динамик и hello.
+void passSounds() {
+  StoredSound sound;
+  while (updater.pollSound(sound)) {
+    serverLink.setSoundHash(sound.tone, sound.sha256);
+    audioOut.setSound(sound.tone, sound.pcm, sound.samples);
+  }
+}
 
 void setup() {
   Serial.begin(115200);
@@ -56,6 +65,7 @@ void setup() {
                     .cutoff = WAKE_MODEL_CUTOFF,
                     .window = WAKE_MODEL_WINDOW});
   }
+  passSounds();  // до первого hello: в нём хэши сохранённых звуков
   wifiLink.begin(WIFI_SSID, WIFI_PASSWORD);
   serverLink.begin(SERVER_HOST, SERVER_PORT, "/device", FW_VERSION);
   session.begin({});
@@ -112,12 +122,14 @@ void loop() {
     }
   }
 
-  // Ход и итог обновления → сервер; после успеха updater перезагрузит колонку.
+  // Ход и итог обновления → сервер; после прошивки или модели updater перезагрузит колонку,
+  // новый звук сразу уходит в audio_out.
   ClientEvent updateEvent;
   while (updater.pollStatus(updateEvent)) {
     serverLink.sendEvent(updateEvent);
   }
   updater.loop(millis());
+  passSounds();
 
   // Действия сценария → модули: каждое действие — один вызов одного модуля.
   Action action;

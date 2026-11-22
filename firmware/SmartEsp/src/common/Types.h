@@ -45,6 +45,7 @@ enum class UtteranceEndReason : uint8_t {
 enum class UpdateKind : uint8_t {
   Firmware,  // новая прошивка: пишется во вторую половину флеша, затем перезагрузка
   Model,     // новая модель слова: в LittleFS, затем перезагрузка
+  Sound,     // свой звук сигнала: в LittleFS и сразу вместо встроенного, без перезагрузки
 };
 
 enum class UpdateState : uint8_t {
@@ -69,6 +70,7 @@ struct UpdateRequest {
   uint32_t size;      // байт
   char path[96];      // «/device/files/<токен>»
   char sha256[65];    // 64 шестнадцатеричных символа
+  Tone tone;          // только для Sound: какой сигнал; size == 0 — вернуть встроенный
   // только для Model — параметры из манифеста
   float cutoff;
   uint8_t window;
@@ -84,6 +86,16 @@ struct StoredModel {
   float cutoff;
   uint8_t window;
   char word[48];
+};
+
+// Свой звук сигнала (updater.pollSound → audio_out.setSound, server_link.setSoundHash).
+// pcm — PCM 16 кГц моно в PSRAM (heap_caps_malloc); новый владелец — audio_out.
+// pcm == nullptr — звука нет, играет встроенный (sha256 пустая).
+struct StoredSound {
+  Tone tone;
+  int16_t* pcm;
+  size_t samples;
+  char sha256[65];
 };
 
 // hello шлёт сам server_link при подключении, поэтому его здесь нет.
@@ -108,6 +120,7 @@ struct ClientEvent {
   UpdateState updateState;
   UpdateError updateError;
   uint32_t total;             // размер файла обновления, байт
+  Tone updateTone;            // для звука (updateKind == Sound): какой сигнал
 };
 
 // ---------- команды сервер → ESP ----------
