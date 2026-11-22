@@ -221,7 +221,8 @@ class TurnOut(BaseModel):
     # слово, прослушивание после вопроса, ядро само, вопрос через API
     origin: Literal["wake", "listen", "core", "api"] = "wake"
     source: str = ""  # ход через API: откуда вопрос ("telegram"); иначе пусто
-    person: str = ""  # ход через API: кто спрашивает; иначе пусто
+    person: str = ""  # кто спрашивает (имя): назван каналом API или узнан по голосу; иначе пусто
+    person_id: str = ""  # его постоянный id (как в _meta.person скиллов); иначе пусто
     kind: Literal["turn", "announcement"] = "turn"  # ход разговора или объявление ядра
     # мягкое прерывание: ответ уступил результату отложенной задачи / ход продолжает прерванный ответ
     interruption: Literal["paused", "resumed"] | None = None
@@ -247,26 +248,6 @@ class AccessOut(BaseModel):
     """Адреса для входа в интерфейс с других компьютеров сети (с токеном)."""
 
     urls: list[str]
-
-
-PERSON_PATTERN = r"^[^\x00-\x1f\x7f]*$"  # без управляющих символов: имя — одна строка промпта
-Person = Annotated[str, StringConstraints(strip_whitespace=True, max_length=64, pattern=PERSON_PATTERN)]
-Source = Annotated[str, StringConstraints(pattern=r"^[a-z0-9_-]{1,32}$")]
-
-
-class AskIn(BaseModel):
-    """Вопрос через API текстом: текст, кто спрашивает ("" — неизвестно) и откуда (для ленты)."""
-
-    text: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=8000)]
-    person: Person = ""
-    source: Source = "api"
-
-
-class AskOut(BaseModel):
-    """Ответ на вопрос через API: текст ответа и номер хода в ленте."""
-
-    answer: str
-    turn_id: str
 
 
 class PlayOut(BaseModel):

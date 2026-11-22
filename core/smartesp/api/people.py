@@ -22,9 +22,16 @@ from .schemas import ErrorOut
 
 
 class PersonIn(BaseModel):
-    """Имя человека: идёт в справку модели и в _meta.person инструментов."""
+    """Имя человека: идёт в справку модели, в ленту и в _meta.person_name скиллов."""
 
     name: str = Field(max_length=64)
+
+
+class LinkIO(BaseModel):
+    """Связь с аккаунтом канала: channel — как source хода ("telegram"), account — id в канале."""
+
+    channel: str = Field(max_length=32)
+    account: str = Field(max_length=64)
 
 
 class SampleIn(BaseModel):
@@ -44,13 +51,15 @@ class SampleOut(BaseModel):
 
 
 class PersonOut(BaseModel):
-    """Человек: образцы текущей модели и сколько устаревших (другой модели, в узнавании не участвуют)."""
+    """Человек: постоянный id (скиллам — _meta.person), имя, образцы текущей модели, сколько устаревших
+    (другой модели, в узнавании не участвуют) и связи с аккаунтами каналов."""
 
     id: str
     name: str
     created_at: float
     samples: list[SampleOut]
     stale_samples: int
+    links: list[LinkIO]
 
 
 class RecognitionOut(BaseModel):
@@ -94,8 +103,14 @@ def _sample(sample: VoiceSample) -> SampleOut:
 def _person(person: Person, model: str) -> PersonOut:
     current = [_sample(s) for s in person.samples if s.model == model]
     stale = len(person.samples) - len(current)
+    links = [LinkIO(channel=k.channel, account=k.account) for k in person.links]
     return PersonOut(
-        id=person.id, name=person.name, created_at=person.created_at, samples=current, stale_samples=stale
+        id=person.id,
+        name=person.name,
+        created_at=person.created_at,
+        samples=current,
+        stale_samples=stale,
+        links=links,
     )
 
 
@@ -152,7 +167,25 @@ def add_people_routes(secured: APIRouter, people: PeoplePort | None) -> None:
         with _http_errors():
             port().delete_sample(person_id, sample_id)
 
+    _add_link_routes(secured, port)
     _add_status_routes(secured, port)
+
+
+def _add_link_routes(secured: APIRouter, port: Callable[[], PeoplePort]) -> None:
+    """Связи человека с аккаунтами каналов: добавить и убрать (ответ — человек после правки)."""
+
+    def out(person: Person) -> PersonOut:
+        return _person(person, port().model_state().model)
+
+    @secured.post("/people/{person_id}/links", responses=_ERRORS)
+    def add_link(person_id: str, body: LinkIO) -> PersonOut:
+        with _http_errors():
+            return out(port().add_link(person_id, body.channel, body.account))
+
+    @secured.delete("/people/{person_id}/links/{channel}/{account}", responses=_ERRORS)
+    def remove_link(person_id: str, channel: str, account: str) -> PersonOut:
+        with _http_errors():
+            return out(port().remove_link(person_id, channel, account))
 
 
 def _add_status_routes(secured: APIRouter, port: Callable[[], PeoplePort]) -> None:

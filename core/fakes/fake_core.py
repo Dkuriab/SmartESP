@@ -90,7 +90,7 @@ class FakeCore:
             },
         ]
         self.questions: list[Question] = []  # вопросы /ask
-        self.voices_asked: list[tuple[bytes, str, str]] = []  # (звук, человек, источник) /ask/voice
+        self.voices_asked: list[tuple[bytes, str, str, str]] = []  # (звук, человек, источник, аккаунт)
         self.ask_error: Exception | None = None  # бросается из ask и ask_voice
 
     async def status(self) -> dict[str, Any]:
@@ -204,8 +204,8 @@ class FakeCore:
             raise self.ask_error
         return Answer(f"Ответ на «{question.text}»", f"api{len(self.questions)}")
 
-    async def ask_voice(self, audio: bytes, person: str, source: str) -> Answer:
-        self.voices_asked.append((audio, person, source))
+    async def ask_voice(self, audio: bytes, person: str, source: str, account: str = "") -> Answer:
+        self.voices_asked.append((audio, person, source, account))
         if self.ask_error:
             raise self.ask_error
         return Answer("Голос услышан", f"api{len(self.voices_asked)}")
