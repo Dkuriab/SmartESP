@@ -1,8 +1,10 @@
-// Настройки колонки: имя (Enter или потеря фокуса — сохранить), сведения о ней и файл на ней.
+// Настройки колонки: имя (Enter или потеря фокуса — сохранить), сведения, файл, обновление и звуки.
 import { useState } from 'react'
 import type { Device, FilePhase } from '../../state/model'
+import type { SoundActions } from '../../state/soundActions'
 import { formatClock } from '../feed/time'
 import DeviceFile, { MIN_SPEECH_PROTOCOL } from './DeviceFile'
+import DeviceSounds from './DeviceSounds'
 import DeviceUpdate from './DeviceUpdate'
 
 type Props = {
@@ -14,6 +16,8 @@ type Props = {
   onStopFile: () => void
   /** Прошивка (.bin) на колонку по воздуху. */
   onInstallFirmware: (file: File) => void
+  /** Свои звуки сигналов: tick растёт с событиями sounds. */
+  sounds: { tick: number; actions: SoundActions }
 }
 
 /** Адрес без порта: «IP:port» и «[IPv6]:port»; голый IPv6 (много «:») — как есть. */
@@ -29,7 +33,7 @@ function presence(d: Device): string {
   return d.last_seen ? `была в ${formatClock(d.last_seen)}` : 'не подключалась'
 }
 
-export default function DeviceSettings({ device, onRename, filePhase, onPlayFile, onStopFile, onInstallFirmware }: Props) {
+export default function DeviceSettings({ device, onRename, filePhase, onPlayFile, onStopFile, onInstallFirmware, sounds }: Props) {
   const [draft, setDraft] = useState(device.name)
   const save = () => {
     const name = draft.trim()
@@ -69,6 +73,7 @@ export default function DeviceSettings({ device, onRename, filePhase, onPlayFile
       )}
       <DeviceFile device={device} phase={filePhase} onPlay={onPlayFile} onStop={onStopFile} />
       <DeviceUpdate device={device} onInstall={onInstallFirmware} />
+      <DeviceSounds device={device} tick={sounds.tick} actions={sounds.actions} />
     </div>
   )
 }

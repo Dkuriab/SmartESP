@@ -60,6 +60,8 @@ export type CoreState = {
   files: Record<string, FilePhase>
   /** «В работе»: идущие и недавно законченные задачи (GET /tasks и события task_*). */
   tasks: Task[]
+  /** Растёт с каждым событием sounds: панель звуков колонки перечитывает обзор. */
+  soundsTick: number
   // --- служебное, компоненты не читают ---
   /**
    * turn_id ходов, полученных при текущем подключении (событием или загрузкой).
@@ -133,6 +135,7 @@ export function initialState(connection: Connection = 'connecting'): CoreState {
     live: NO_LIVE,
     files: {},
     tasks: [],
+    soundsTick: 0,
     currentTurnIds: [],
     pendingSince: {},
     voiceFailures: {},

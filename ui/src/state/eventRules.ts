@@ -138,6 +138,8 @@ export function applyEvent(state: CoreState, e: CoreEvent): CoreState {
     case 'playback_started':
     case 'playback_finished':
       return applyFileEvent(state, e)
+    case 'sounds':
+      return { ...state, soundsTick: state.soundsTick + 1 }
     case 'task_started':
     case 'task_updated':
     case 'task_finished':

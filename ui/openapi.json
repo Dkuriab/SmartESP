@@ -1713,6 +1713,364 @@
         }
       }
     },
+    "/api/v1/sounds": {
+      "get": {
+        "summary": "Get Sounds",
+        "operationId": "get_sounds_api_v1_sounds_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SoundsOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sounds/files/{sha256}": {
+      "get": {
+        "summary": "Sound File",
+        "operationId": "sound_file_api_v1_sounds_files__sha256__get",
+        "parameters": [
+          {
+            "name": "sha256",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sha256"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "audio/wav": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sounds/sync": {
+      "post": {
+        "summary": "Resync",
+        "operationId": "resync_api_v1_sounds_sync_post",
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sounds/{tone}": {
+      "post": {
+        "summary": "Set Sound",
+        "operationId": "set_sound_api_v1_sounds__tone__post",
+        "parameters": [
+          {
+            "name": "tone",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "wake",
+                "error",
+                "thinking",
+                "listen",
+                "attention"
+              ],
+              "type": "string",
+              "title": "Tone"
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)",
+              "title": "Device Id"
+            },
+            "description": "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_set_sound_api_v1_sounds__tone__post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SoundSetOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Reset Sound",
+        "operationId": "reset_sound_api_v1_sounds__tone__delete",
+        "parameters": [
+          {
+            "name": "tone",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "wake",
+                "error",
+                "thinking",
+                "listen",
+                "attention"
+              ],
+              "type": "string",
+              "title": "Tone"
+            }
+          },
+          {
+            "name": "device_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)",
+              "title": "Device Id"
+            },
+            "description": "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/api/v1/core": {
       "get": {
         "summary": "Get Core",
@@ -2001,6 +2359,21 @@
         ],
         "title": "Body_play_file_api_v1_devices__device_id__play_post"
       },
+      "Body_set_sound_api_v1_sounds__tone__post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "звук: MP3, WAV, OGG, M4A или FLAC; длиннее 3 с — обрежется"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_set_sound_api_v1_sounds__tone__post"
+      },
       "ChangeOut": {
         "properties": {
           "change_id": {
@@ -2078,6 +2451,38 @@
         ],
         "title": "CloudModelOut",
         "description": "Модель облачного сервиса (цены — доллары за 1 млн токенов; неизвестно — null)."
+      },
+      "CommonSoundOut": {
+        "properties": {
+          "tone": {
+            "type": "string",
+            "enum": [
+              "wake",
+              "error",
+              "thinking",
+              "listen",
+              "attention"
+            ],
+            "title": "Tone"
+          },
+          "sound": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SoundRefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "tone",
+          "sound"
+        ],
+        "title": "CommonSoundOut",
+        "description": "Общий звук сигнала (для всех колонок); None — встроенный."
       },
       "ConfigOut": {
         "properties": {
@@ -2441,6 +2846,100 @@
         ],
         "title": "DeviceOut",
         "description": "Колонка в сводке."
+      },
+      "DeviceSoundOut": {
+        "properties": {
+          "tone": {
+            "type": "string",
+            "enum": [
+              "wake",
+              "error",
+              "thinking",
+              "listen",
+              "attention"
+            ],
+            "title": "Tone"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "builtin",
+              "all",
+              "device"
+            ],
+            "title": "Source"
+          },
+          "sound": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SoundRefOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "delivery": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "pending",
+              "sending",
+              "failed",
+              "unsupported",
+              "offline"
+            ],
+            "title": "Delivery"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "tone",
+          "source",
+          "sound",
+          "delivery"
+        ],
+        "title": "DeviceSoundOut",
+        "description": "Сигнал на колонке: source — builtin | all (общий) | device (свой); sound — None у встроенного;\ndelivery — ok | pending | sending | failed | unsupported (прошивка без звуков) | offline."
+      },
+      "DeviceSoundsOut": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          },
+          "supported": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supported"
+          },
+          "tones": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceSoundOut"
+            },
+            "type": "array",
+            "title": "Tones"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "supported",
+          "tones"
+        ],
+        "title": "DeviceSoundsOut",
+        "description": "Звуки колонки; supported — прошивка умеет звуки (None — колонка ещё не подключалась)."
       },
       "DownloadIn": {
         "properties": {
@@ -2841,6 +3340,73 @@
         ],
         "title": "RecordingOut",
         "description": "Запись: имя файла, длительность, пик громкости (дБ; тише −30 — запись тихая)."
+      },
+      "SoundRefOut": {
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "duration_s": {
+            "type": "number",
+            "title": "Duration S"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sha256",
+          "name",
+          "duration_s"
+        ],
+        "title": "SoundRefOut",
+        "description": "Подготовленный звук: SHA-256 (для прослушивания), имя загруженного файла, длина в секундах."
+      },
+      "SoundSetOut": {
+        "properties": {
+          "sound": {
+            "$ref": "#/components/schemas/SoundRefOut"
+          },
+          "trimmed": {
+            "type": "boolean",
+            "title": "Trimmed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sound",
+          "trimmed"
+        ],
+        "title": "SoundSetOut",
+        "description": "Итог загрузки: звук и обрезан ли он до 3 с."
+      },
+      "SoundsOut": {
+        "properties": {
+          "common": {
+            "items": {
+              "$ref": "#/components/schemas/CommonSoundOut"
+            },
+            "type": "array",
+            "title": "Common"
+          },
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceSoundsOut"
+            },
+            "type": "array",
+            "title": "Devices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "common",
+          "devices"
+        ],
+        "title": "SoundsOut",
+        "description": "Общие звуки и звуки каждой известной колонки."
       },
       "StatusOut": {
         "properties": {
