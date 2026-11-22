@@ -29,8 +29,9 @@ DEFAULT_SYSTEM_PROMPT = (
 # на разговор и общие знания отвечать как обычно.
 # 2 — в config.yaml только изменения владельца; 3 — умолчание tts стало silero;
 # 4 — в сохранённый список stages добавлен обработчик clock (по умолчанию включён);
-# 5 — так же добавлен обработчик system (что в работе и какие навыки)
-CONFIG_VERSION = 5
+# 5 — так же добавлен обработчик system (что в работе и какие навыки);
+# 6 — так же добавлен обработчик people (кто говорит — по голосу)
+CONFIG_VERSION = 6
 # замер волны 3: честнее всех и первый текст p90 < 1 с — только с рассуждением «low»
 DEFAULT_MODEL = "gpt-oss:20b"
 DEFAULT_REASONING: Reasoning = "low"
@@ -171,6 +172,7 @@ class Config(BaseModel):
             StageConfig(kind="whisper_detect"),
             StageConfig(kind="clock"),
             StageConfig(kind="system"),
+            StageConfig(kind="people"),
         ]
     )
     history: HistoryConfig = Field(default_factory=HistoryConfig)

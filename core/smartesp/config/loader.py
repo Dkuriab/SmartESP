@@ -85,7 +85,7 @@ def load_with_overrides(path: Path) -> tuple[Config, dict[str, Any]]:
         return Config(), {}
     raw = read_yaml(path)
     version = raw.get("version")
-    if version is not None and (isinstance(version, bool) or version not in (2, 3, 4, CONFIG_VERSION)):
+    if version is not None and (isinstance(version, bool) or version not in (2, 3, 4, 5, CONFIG_VERSION)):
         raise ValueError(f"файл настроек от более новой версии ядра: {path} (version: {version!r})")
     if version != CONFIG_VERSION:
         shutil.copyfile(path, path.with_name(path.name + ".bak"))
@@ -94,8 +94,10 @@ def load_with_overrides(path: Path) -> tuple[Config, dict[str, Any]]:
         if version in (None, 2):
             raw = _migrate_v2(raw)
         if version in (None, 2, 3):
-            raw = _add_stage(raw, "clock")  # версии идут цепочкой: 2 → 3 → 4 → 5
-        raw = _add_stage(raw, "system")
+            raw = _add_stage(raw, "clock")  # версии идут цепочкой: 2 → 3 → 4 → 5 → 6
+        if version in (None, 2, 3, 4):
+            raw = _add_stage(raw, "system")
+        raw = _add_stage(raw, "people")
         write_overrides(path, raw)
     try:
         config = Config.model_validate(raw)
@@ -107,7 +109,7 @@ def load_with_overrides(path: Path) -> tuple[Config, dict[str, Any]]:
 def _add_stage(raw: dict[str, Any], kind: str) -> dict[str, Any]:
     """Переход версии: в сохранённый список stages добавляем новый обработчик kind (один раз).
 
-    3 → 4 — clock, 4 → 5 — system. После перехода владелец, убравший обработчик, этот
+    3 → 4 — clock, 4 → 5 — system, 5 → 6 — people. После перехода владелец, убравший обработчик, этот
     выбор сохраняет. Список, ставший равным умолчанию, из файла убирается.
     """
     raw = {k: v for k, v in raw.items() if k != "version"}
