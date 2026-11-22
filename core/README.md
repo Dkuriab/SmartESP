@@ -270,6 +270,10 @@ executors:
 объявленную настройку-список (тип `pairs`, «ключ=значение;…»): в приложении — «Добавить».
 Бот по умолчанию выключен.
 
+**API ядра для коннектора.** MCP-коннектор, которому нужен API ядра, пишет в своём `smartesp.json`
+`"core_api": true` — хаб передаёт ему те же `SMARTESP_URL` и `SMARTESP_TOKEN`, что клиенту
+(сейчас — `music`: очередь музыки на колонке). Остальные коннекторы токена не получают.
+
 Дизайн: `../docs/superpowers/specs/2026-11-19-mcp-hub-design.md`.
 
 Возможности (заметки, счёт, таймеры, погода, питание) — MCP-коннекторы: отдельные
@@ -288,7 +292,8 @@ connectors:
 ```
 
 По умолчанию — наши из `connectors/` репозитория: `notes`, `calc`,
-`timers`, `weather`, `food`, `web` (поиск в интернете и чтение страниц) и выключенные `mac_media` (музыка и звук Mac) и
+`timers`, `weather`, `food`, `web` (поиск в интернете и чтение страниц), `music` (музыка, радио и звук Mac
+на колонках, см. «Музыка на колонках») и выключенные `mac_media` (музыка и звук Mac) и
 `claude_tasks` (задачи Клоду). `mac_media` выключен, потому что модель зовёт его и
 без просьбы (на «включи свет на кухне» — переключить звук на «кухню»); включают его
 переключателем на панели коннектора или `{id: mac_media, enabled: true}` в
@@ -447,12 +452,16 @@ curl -X PATCH -H "Authorization: Bearer $(cat ~/SmartEsp/token)" \
 | `POST /ask/voice` | ход через API голосом: multipart `audio` (OGG/Opus или WAV, до 10 МБ), `person`, `source` → `{answer, turn_id}` |
 | `POST /devices/{id}/play` | звуковой файл на колонке: multipart `audio` (MP3, WAV, OGG, M4A, FLAC; до 50 МБ) → 202 `{status: "started"}` (см. «Файл на колонке») |
 | `DELETE /devices/{id}/play` | остановить файл на колонке → `{stopped}` (`false` — файл не играл); колонки нет — 404 |
+| `GET /streams` | колонки, умеющие музыку (протокол 5), и колонки с потоком: `{device_id, name, available, state, title, index, count, position_s, live, volume, error}`, `state` — `idle`, `playing`, `paused` (см. «Музыка на колонках») |
+| `POST /streams` | `{device_id?, items: [{source, title}], index=0, start_s=0, volume?}` → поток колонки; `source` — полный путь к звуковому файлу, ссылка `http(s)` или `capture:<часть имени устройства ввода>` (звук Mac) |
+| `POST /streams/control` | `{device_id?, action}`, `action` — `pause`, `resume`, `next`, `previous`, `stop` → поток колонки |
+| `POST /streams/volume` | `{device_id?, volume?, delta=0}` — громкость музыки 0..1 (относительно общей громкости колонки) → поток колонки |
 | `GET /access` | `{urls}` — адреса `http://<ip>:<порт>/?token=…` для входа с других компьютеров сети (без `127.*`) |
 | `GET /core` | `{version, uptime_s, state, port, data_dir}`; `port` — из настроек `server.port` |
 | `POST /restart` | перезапуск ядра, ответ 202 |
 | `POST /core/stop` | честная остановка и выход с кодом 0, ответ 202; приложение такое ядро не перезапускает |
 | `WS /logs?token=` | журнал ядра: сначала последние 500 строк, затем новые; сообщение — JSON `{"at", "level", "text"}` (`level` — `INFO`, `WARNING`, `ERROR`…; токен из `?token=` спрятан). Медленный клиент теряет самые старые строки (очередь — 1000), память не растёт |
-| `WS /events?token=` | поток событий JSON `{"kind", "data", "at"}`: `core_state`, `device_connected`, `device_disconnected`, `wake`, `arbitration`, `turn_started`, `turn_heard`, `executor_active`, `tool_call`, `turn_finished`, `change_applied`, `voice_download`, `voice_ready`, `playback_started`, `playback_finished` |
+| `WS /events?token=` | поток событий JSON `{"kind", "data", "at"}`: `core_state`, `device_connected`, `device_disconnected`, `wake`, `arbitration`, `turn_started`, `turn_heard`, `executor_active`, `tool_call`, `turn_finished`, `change_applied`, `voice_download`, `voice_ready`, `playback_started`, `playback_finished`, `stream` (поток колонки изменился: данные — как в `GET /streams`) |
 
 Схема OpenAPI для интерфейса: `uv run python -m smartesp --openapi ../ui/openapi.json`.
 
@@ -539,6 +548,36 @@ curl -H "Authorization: Bearer $(cat ~/SmartEsp/token)" -F audio=@voice.ogg -F p
 ```
 curl -H "Authorization: Bearer $(cat ~/SmartEsp/token)" -F audio=@song.mp3 \
   http://127.0.0.1:8765/api/v1/devices/AA:BB:CC:DD:EE:FF/play
+```
+
+### Музыка на колонках
+
+Общий механизм ядра — **поток звука на колонке** (модуль `streams/`): очередь источников, пауза,
+продолжение, дальше/назад, громкость. Что играть, выбирает коннектор `music`
+(`../connectors/music/README.md`); про папки и станции ядро не знает. Дизайн —
+`../docs/superpowers/specs/2026-11-22-music-design.md`.
+
+- **Источники:** звуковой файл (MP3, M4A, AAC, FLAC, WAV, OGG/Opus, AIFF; с перемоткой), ссылка
+  `http(s)` (радио, HLS; с переподключением) и `capture:<имя>` — **звук Mac** с устройства ввода
+  (BlackHole) через AVFoundation. Разбор — `ffmpeg` в PCM 16 кГц моно с белыми списками протоколов
+  и форматов.
+- **Как играет:** колонка (прошивка 0.6.0+, протокол 5) получает `stream_start` с одноразовой
+  ссылкой и сама тянет `GET /device/stream/<токен>` (без токена API, HTTP/1.0, конец — закрытие
+  соединения). Это не ход: колонка свободна, объявления и разговор идут как обычно.
+- **Слово пробуждения:** колонка сама глушит музыку, пока идёт разговор, и возвращает её через
+  1,5 с покоя. Файл стоит на паузе; радио и звук Mac (`live`) идут дальше без звука.
+- **Отчёты колонки** `stream_status` ведут позицию; `ended` — следующий элемент, `failed` — пропуск
+  (три подряд — стоп с ошибкой), нет отчёта за 20 с — стоп. Колонка отключилась — пауза.
+- **Колонка без `device_id`:** для новой очереди — колонка последнего разговора, иначе единственная
+  умеющая; для управления — единственная с потоком, иначе колонка последнего разговора.
+- **Звук Mac:** перед стартом ядро проверяет устройство ввода (`ffmpeg -f avfoundation
+  -list_devices`) и объясняет, если нет BlackHole или доступа к микрофону. Доступ «Микрофон» нужен
+  тому, кто запустил ядро: приложению SmartESP (`NSMicrophoneUsageDescription` есть в его
+  `Info.plist`) или Терминалу.
+
+```
+curl -H "Authorization: Bearer $(cat ~/SmartEsp/token)" -H "Content-Type: application/json" \
+  -d '{"items":[{"source":"/Users/я/Music/song.mp3"}]}' http://127.0.0.1:8765/api/v1/streams
 ```
 
 ## Остановка и перезапуск
