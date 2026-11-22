@@ -19,7 +19,7 @@ from smartesp.api import BodyLimit, LogBuffer, add_device_files, create_api, mou
 from smartesp.config import Config, ConfigFile
 from smartesp.config.connectors import REPO_DIR
 from smartesp.contracts import Analyzer
-from smartesp.conversation import tool_observer
+from smartesp.conversation import current_person, tool_observer
 from smartesp.devices import DeviceHub, WebSocketConnection
 from smartesp.events import EventBus
 from smartesp.kinds import Kinds, Ollama, build_answering, connector_specs
@@ -42,13 +42,14 @@ from smartesp.parts import (
     control,
     conversation,
     live_answering,
+    people_registry,
     voice_manager,
 )
 from smartesp.sounds import Sounds
-from smartesp.stages import SYSTEM_FACTS, SystemSnapshot
+from smartesp.stages import PEOPLE_VOICES, SYSTEM_FACTS, SystemSnapshot
 from smartesp.stt import decode_file
 from smartesp.tasks import TaskRegistry
-from smartesp.tools import McpHub
+from smartesp.tools import McpHub, with_person
 from smartesp.training import Training
 from smartesp.updates import Updates
 
@@ -68,9 +69,11 @@ logger = logging.getLogger("smartesp")
 async def _answering(
     config: Config, kinds: Kinds, capabilities: CapabilityCache, tools: McpHub
 ) -> tuple[Analyzer, ExecutorNetwork]:
-    """Обработчики и сеть из настроек; вызовы инструментов сети — в живую подсветку хода."""
+    """Обработчики и сеть из настроек; вызовы инструментов сети — в живую подсветку хода,
+    человек хода — в `_meta.person` вызовов."""
     observe = tool_observer(tools.connector_of)
-    return await build_answering(config, kinds, capabilities.get, tools, observe)
+    toolbox = with_person(tools, current_person)
+    return await build_answering(config, kinds, capabilities.get, toolbox, observe)
 
 
 async def _build_answering(
@@ -162,6 +165,8 @@ def assemble(
         lambda device_id: hub.supports_proactive(device_id) and not hub.is_busy(device_id),
         parts.updates.install,  # модель прогона — на колонку по воздуху
     )
+    parts.people = people_registry(home, hub)  # люди дома: образцы голоса — с колонки
+    PEOPLE_VOICES.use(parts.people.recognize)  # обработчик «люди»
     parts.app = _build_app(parts, token, ui_dir, version, logs)
     return parts
 
@@ -194,6 +199,7 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str, logs: Lo
         training=parts.training,
         updates=parts.updates,
         sounds=parts.sounds,
+        people=parts.people,
     )
     app.include_router(api)
     app.add_middleware(BodyLimit, token=token)  # предел тела и токен ходов через API — до чтения тела
@@ -223,6 +229,7 @@ async def warm_up(parts: Assembly, voice: asyncio.Task[bool]) -> None:
     Сбой одного шага пишется в журнал и не мешает остальным.
     """
     await timed("STT", _warm_stt(parts))
+    await timed("Узнавание голоса", parts.people.warm_up())
     answering = await guarded(
         "исполнитель", _answering(parts.config, parts.kinds, parts.capabilities, parts.tools)
     )
@@ -268,6 +275,7 @@ async def stop(parts: Assembly) -> None:
     await parts.live.unload_all()
     await parts.voices.aclose()
     await parts.training.aclose()  # шаг обучения (подпроцесс) не переживает ядро
+    await parts.people.aclose()
     parts.run_file.remove()
     logger.info("Остановка: готово")
 
@@ -281,4 +289,5 @@ async def finish(parts: Assembly) -> None:
     await parts.voices.aclose()
     await parts.training.aclose()
     await parts.sounds.aclose()
+    await parts.people.aclose()
     await parts.hub.aclose()

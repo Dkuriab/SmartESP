@@ -30,6 +30,7 @@ from smartesp.lifecycle import (
 )
 from smartesp.network import NetworkPrompts
 from smartesp.notify import Announcer
+from smartesp.people import OnnxVoicePrint, People, download_model, model_path
 from smartesp.sections import BuildAnswering, live_sections, speech_settings
 from smartesp.sounds import Sounds
 from smartesp.stt import decode_audio, decode_file
@@ -67,6 +68,7 @@ class Assembly:
     training: Training = field(init=False)  # обучение моделей: наборы, цели, записи с колонок
     updates: Updates = field(init=False)  # обновления колонок по воздуху: прошивка и модель слова
     sounds: Sounds = field(init=False)  # свои звуки сигналов колонок: библиотека и доставка
+    people: People = field(init=False)  # люди дома и узнавание голоса
     app: FastAPI = field(init=False)
     running: asyncio.Task[None] | None = None  # оркестратор
     warming: asyncio.Task[None] | None = None  # прогрев частей
@@ -94,6 +96,20 @@ def conversation(
     use_speech = speech_settings(orchestrator, announcer)
     use_speech(config.speech)
     return hub, history, orchestrator, announcer, files, use_speech
+
+
+def people_registry(home: Path, hub: DeviceHub) -> People:
+    """Люди: реестр в <home>/people, модель отпечатков в <home>/models/speaker (качается по просьбе),
+    образцы — с колонки тем же способом, что записи «Обучения»."""
+    model = model_path(home)
+    return People(
+        home / "people",
+        model,
+        OnnxVoicePrint(model),
+        lambda progress: download_model(home, progress=progress),
+        hub.record,
+        lambda device_id: hub.supports_proactive(device_id) and not hub.is_busy(device_id),
+    )
 
 
 def live_answering(

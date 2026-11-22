@@ -41,7 +41,7 @@ from smartesp.executors import (
 )
 from smartesp.kinds import CLOUD_KIND, Kinds, StartupError, check_kinds
 from smartesp.lifecycle import GracefulServer, exit_code, run_loop, watch_parent
-from smartesp.stages import Clock, SystemState, WhisperDetect
+from smartesp.stages import Clock, PeopleStage, SystemState, WhisperDetect
 from smartesp.stt import MlxWhisperSTT
 from smartesp.tts import PiperTTS, SileroTTS, VoskTTS
 from smartesp.wiring import Ollama, assemble, stop
@@ -82,6 +82,7 @@ STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
     "whisper_detect": lambda c: WhisperDetect(c.quiet_reply),
     "clock": lambda c: Clock(),
     "system": lambda c: SystemState(),
+    "people": lambda c: PeopleStage(),
 }
 KINDS = Kinds(STT_KINDS, TTS_KINDS, EXECUTOR_KINDS, STAGE_KINDS)
 OLLAMA = Ollama(list_models, loaded_models, with_cloud(model_capabilities), unload_model)

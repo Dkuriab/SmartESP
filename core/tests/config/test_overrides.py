@@ -49,7 +49,7 @@ def read(path: Path) -> object:
 def test_new_file_holds_no_settings_and_defaults_file_is_written(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     assert load_config(path) == Config()
-    assert read(path) == {"version": 5}
+    assert read(path) == {"version": 6}
     defaults = read(tmp_path / "config.defaults.yaml")
     assert isinstance(defaults, dict)
     assert defaults["server"] == {"host": "0.0.0.0", "port": 8765}
@@ -57,19 +57,19 @@ def test_new_file_holds_no_settings_and_defaults_file_is_written(tmp_path: Path)
 
 def test_partial_file_is_merged_with_code_defaults(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
-    write(path, {"version": 5, "devices": {"AA:BB:CC:DD:EE:FF": {"name": "Кухня"}}})
+    write(path, {"version": 6, "devices": {"AA:BB:CC:DD:EE:FF": {"name": "Кухня"}}})
     config = load_config(path)
     assert config.devices["AA:BB:CC:DD:EE:FF"].name == "Кухня"
-    assert [s.kind for s in config.stages] == ["whisper_detect", "clock", "system"]
-    assert read(path) == {"version": 5, "devices": {"AA:BB:CC:DD:EE:FF": {"name": "Кухня"}}}
+    assert [s.kind for s in config.stages] == ["whisper_detect", "clock", "system", "people"]
+    assert read(path) == {"version": 6, "devices": {"AA:BB:CC:DD:EE:FF": {"name": "Кухня"}}}
 
 
 def test_legacy_full_dump_is_pruned_to_owner_changes(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     write(path, legacy_dump(devices={"1C:DB:D4:4A:91:D0": {"name": "Кухня"}}))
     config = load_config(path)
-    assert read(path) == {"version": 5, "devices": {"1C:DB:D4:4A:91:D0": {"name": "Кухня"}}}
-    assert [s.kind for s in config.stages] == ["whisper_detect", "clock", "system"]
+    assert read(path) == {"version": 6, "devices": {"1C:DB:D4:4A:91:D0": {"name": "Кухня"}}}
+    assert [s.kind for s in config.stages] == ["whisper_detect", "clock", "system", "people"]
     assert config.entry_executor().system_prompt == Config().entry_executor().system_prompt
     assert (tmp_path / "config.yaml.bak").exists()
 
@@ -78,7 +78,7 @@ def test_legacy_untouched_dump_becomes_empty(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     write(path, legacy_dump())
     assert load_config(path) == Config()
-    assert read(path) == {"version": 5}
+    assert read(path) == {"version": 6}
 
 
 def test_legacy_custom_prompt_is_kept(tmp_path: Path) -> None:
@@ -94,7 +94,7 @@ def test_legacy_custom_prompt_is_kept(tmp_path: Path) -> None:
 
 def test_current_file_is_not_rewritten(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
-    text = "version: 5\n# мой комментарий\nhistory:\n  max_turns: 4\n"
+    text = "version: 6\n# мой комментарий\nhistory:\n  max_turns: 4\n"
     path.write_text(text, "utf-8")
     assert load_config(path).history.max_turns == 4
     assert path.read_text("utf-8") == text
@@ -115,14 +115,14 @@ def test_legacy_custom_tts_is_kept(tmp_path: Path) -> None:
     write(path, data)
     config = load_config(path)
     assert config.tts == Config().tts.model_copy(update={"kind": "piper", "voice": "ru_RU-denis-medium"})
-    assert read(path) == {"version": 5, "tts": {"kind": "piper", "voice": "ru_RU-denis-medium"}}
+    assert read(path) == {"version": 6, "tts": {"kind": "piper", "voice": "ru_RU-denis-medium"}}
 
 
 def test_current_file_with_explicit_piper_is_kept(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
-    write(path, {"version": 5, "tts": {"kind": "piper"}})
+    write(path, {"version": 6, "tts": {"kind": "piper"}})
     assert load_config(path).tts.kind == "piper"
-    assert read(path) == {"version": 5, "tts": {"kind": "piper"}}
+    assert read(path) == {"version": 6, "tts": {"kind": "piper"}}
 
 
 def test_v2_tts_without_kind_becomes_piper(tmp_path: Path) -> None:
@@ -130,7 +130,7 @@ def test_v2_tts_without_kind_becomes_piper(tmp_path: Path) -> None:
     write(path, {"version": 2, "tts": {"voice": "ru_RU-denis-medium"}})
     config = load_config(path)
     assert (config.tts.kind, config.tts.voice) == ("piper", "ru_RU-denis-medium")
-    assert read(path) == {"version": 5, "tts": {"kind": "piper", "voice": "ru_RU-denis-medium"}}
+    assert read(path) == {"version": 6, "tts": {"kind": "piper", "voice": "ru_RU-denis-medium"}}
     assert (tmp_path / "config.yaml.bak").exists()
 
 
@@ -139,7 +139,7 @@ def test_v2_without_tts_gets_new_default_and_version(tmp_path: Path) -> None:
     write(path, {"version": 2, "history": {"max_turns": 4}})
     config = load_config(path)
     assert config.tts.kind == "silero"
-    assert read(path) == {"version": 5, "history": {"max_turns": 4}}
+    assert read(path) == {"version": 6, "history": {"max_turns": 4}}
     assert (tmp_path / "config.yaml.bak").exists()
 
 
@@ -157,7 +157,7 @@ def test_legacy_whisper_variant_prompt_is_pruned(tmp_path: Path) -> None:
     )
     write(path, legacy_dump(prompt=whisper))
     assert load_config(path) == Config()
-    assert read(path) == {"version": 5}
+    assert read(path) == {"version": 6}
 
 
 def test_v3_without_executors_gets_new_prompt(tmp_path: Path) -> None:
@@ -176,7 +176,7 @@ def test_legacy_kuzya_prompt_without_honesty_rule_is_pruned(tmp_path: Path) -> N
     write(path, legacy_dump(prompt=kuzya))
     config = load_config(path)
     assert config == Config() and "не выдумывай" in config.entry_executor().system_prompt
-    assert read(path) == {"version": 5}
+    assert read(path) == {"version": 6}
 
 
 def test_legacy_no_access_prompt_is_pruned(tmp_path: Path) -> None:
@@ -191,7 +191,7 @@ def test_legacy_no_access_prompt_is_pruned(tmp_path: Path) -> None:
     )
     write(path, legacy_dump(prompt=no_access))
     assert load_config(path) == Config()
-    assert read(path) == {"version": 5}
+    assert read(path) == {"version": 6}
 
 
 def test_default_prompt_has_honesty_rule_but_no_push_to_no_access() -> None:
@@ -214,43 +214,52 @@ def test_legacy_wave3_prompt_is_pruned(tmp_path: Path) -> None:
     assert load_config(path) == Config()
 
 
-def test_v3_explicit_stages_get_clock_and_system_once(tmp_path: Path) -> None:
+def test_v3_explicit_stages_get_clock_system_and_people_once(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     write(path, {"version": 3, "stages": [{"kind": "whisper_detect"}]})
     config = load_config(path)
-    assert [s.kind for s in config.stages] == ["whisper_detect", "clock", "system"]
-    stages = [{"kind": "whisper_detect"}, {"kind": "clock"}, {"kind": "system"}]
-    assert read(path) == {"version": 5, "stages": stages}
+    assert [s.kind for s in config.stages] == ["whisper_detect", "clock", "system", "people"]
+    stages = [{"kind": "whisper_detect"}, {"kind": "clock"}, {"kind": "system"}, {"kind": "people"}]
+    assert read(path) == {"version": 6, "stages": stages}
     assert (tmp_path / "config.yaml.bak").exists()
 
 
-def test_v4_without_clock_gets_only_system(tmp_path: Path) -> None:
+def test_v4_without_clock_gets_only_system_and_people(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     write(path, {"version": 4, "stages": [{"kind": "whisper_detect"}]})
-    assert [s.kind for s in load_config(path).stages] == ["whisper_detect", "system"]
-    assert read(path) == {"version": 5, "stages": [{"kind": "whisper_detect"}, {"kind": "system"}]}
+    assert [s.kind for s in load_config(path).stages] == ["whisper_detect", "system", "people"]
+    stages = [{"kind": "whisper_detect"}, {"kind": "system"}, {"kind": "people"}]
+    assert read(path) == {"version": 6, "stages": stages}
     assert (tmp_path / "config.yaml.bak").exists()
 
 
-def test_v5_without_system_stays_without(tmp_path: Path) -> None:
+def test_v5_without_system_gets_only_people(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     write(path, {"version": 5, "stages": [{"kind": "clock"}]})
+    assert [s.kind for s in load_config(path).stages] == ["clock", "people"]
+    assert read(path) == {"version": 6, "stages": [{"kind": "clock"}, {"kind": "people"}]}
+    assert (tmp_path / "config.yaml.bak").exists()
+
+
+def test_v6_without_people_stays_without(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    write(path, {"version": 6, "stages": [{"kind": "clock"}]})
     assert [s.kind for s in load_config(path).stages] == ["clock"]
-    assert read(path) == {"version": 5, "stages": [{"kind": "clock"}]}
+    assert read(path) == {"version": 6, "stages": [{"kind": "clock"}]}
 
 
-def test_v2_migrates_through_to_v5(tmp_path: Path) -> None:
+def test_v2_migrates_through_to_v6(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     write(path, {"version": 2, "tts": {"voice": "x"}, "stages": [{"kind": "whisper_detect"}]})
     config = load_config(path)
     assert config.tts.kind == "piper"
-    assert [s.kind for s in config.stages] == ["whisper_detect", "clock", "system"]
-    assert yaml.safe_load(path.read_text(encoding="utf-8"))["version"] == 5
+    assert [s.kind for s in config.stages] == ["whisper_detect", "clock", "system", "people"]
+    assert yaml.safe_load(path.read_text(encoding="utf-8"))["version"] == 6
 
 
 def test_v3_without_stages_unaffected(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     write(path, {"version": 3, "history": {"max_turns": 4}})
     config = load_config(path)
-    assert [s.kind for s in config.stages] == ["whisper_detect", "clock", "system"]
-    assert read(path) == {"version": 5, "history": {"max_turns": 4}}
+    assert [s.kind for s in config.stages] == ["whisper_detect", "clock", "system", "people"]
+    assert read(path) == {"version": 6, "history": {"max_turns": 4}}

@@ -74,7 +74,8 @@ def test_member_specs_and_prompt_stages_follow_settings() -> None:
         MemberSpec("a", "А", "", "m", f"{identity_rule('А', 'male', True)}\nП.", (("b", "x"),)),
         MemberSpec("b", "Б", "описание", "n", identity_rule("А", "male", False), ()),
     ]
-    assert [s.name for s in prompt_stages(config, kinds([]))] == ["whisper_detect", "clock", "system"]
+    names = [s.name for s in prompt_stages(config, kinds([]))]
+    assert names == ["whisper_detect", "clock", "system", "people"]
 
 
 class Box:

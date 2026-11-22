@@ -14,7 +14,7 @@ def test_missing_file_creates_default(tmp_path: Path) -> None:
     assert path.exists()
     assert config.entry_executor().id == "dispatcher"
     assert config.server.port == 8765
-    assert [s.kind for s in config.stages] == ["whisper_detect", "clock", "system"]
+    assert [s.kind for s in config.stages] == ["whisper_detect", "clock", "system", "people"]
 
 
 def test_default_file_has_quoted_mac_example_and_loads(tmp_path: Path) -> None:

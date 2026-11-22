@@ -46,13 +46,20 @@ async def understand(
     device_name: str,
     context: Sequence[Annotation] = (),
 ) -> list[ChatMessage]:
-    """Пометки обработчиков (в turn.annotations) и диалог для исполнителя.
+    """Пометки обработчиков (в turn.annotations), человек хода по голосу и диалог для исполнителя.
 
     context — пометки только для промпта (в ленту не идут); device_name — имя колонки
     для справки (пусто — без него).
     """
     turn.annotations = await analyze(dataclasses.replace(turn.utterance, text=turn.text))
+    take_person(turn)
     return build_messages([*turn.annotations, *context], history.messages(), turn.text, device_name)
+
+
+def take_person(turn: Turn) -> None:
+    """Человек хода из пометок (обработчик узнал голос), если его ещё нет: канал API главнее."""
+    if not turn.person:
+        turn.person = next((a.person for a in turn.annotations if a.person), "")
 
 
 def nothing_to_answer(turn: Turn) -> bool:
