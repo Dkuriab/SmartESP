@@ -1,4 +1,5 @@
-"""Синтезирует мягкие звуки колонки и пишет SoundData.cpp для прошивки.
+"""Синтезирует мягкие звуки колонки и пишет SoundData.cpp для прошивки (и те же звуки WAV для
+прослушивания «встроенного» в приложении: ui/public/sounds/<имя>.wav).
 
 Каждый звук — «колокольчик»: сумма гармоник с быстрой атакой и
 экспоненциальным затуханием, в конце — косинусный спад (без щелчков).
@@ -21,7 +22,9 @@ RATE = 16000
 ATTACK_S = 0.008  # атака ноты (не короче 5 мс, иначе щелчок)
 FADE_S = 0.04  # косинусный спад в конце звука
 PARTIALS = ((1.0, 1.0), (2.0, 0.30), (3.0, 0.10))  # (кратность частоты, амплитуда)
-OUT_CPP = Path(__file__).resolve().parent.parent / "firmware" / "SmartEsp" / "src" / "audio_out" / "SoundData.cpp"
+ROOT = Path(__file__).resolve().parent.parent
+OUT_CPP = ROOT / "firmware" / "SmartEsp" / "src" / "audio_out" / "SoundData.cpp"
+OUT_UI = ROOT / "ui" / "public" / "sounds"  # встроенные звуки для «Прослушать» в приложении
 
 # Ноты: (старт с, частота Гц, постоянная затухания с, относительная громкость).
 # Затем — длина звука в секундах и пиковый уровень (доля полной шкалы, ≤ 0,5).
@@ -97,13 +100,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--out", type=Path, default=OUT_CPP, help="куда записать SoundData.cpp")
     parser.add_argument("--wav-dir", type=Path, help="сохранить ещё и WAV для прослушивания")
+    parser.add_argument("--ui-dir", type=Path, default=OUT_UI, help="WAV встроенных звуков для приложения")
     args = parser.parse_args()
     write_cpp(args.out)
     print(f"{args.out}: {len(NAMES)} звуков")
-    if args.wav_dir:
-        args.wav_dir.mkdir(parents=True, exist_ok=True)
+    for folder in [args.ui_dir, *([args.wav_dir] if args.wav_dir else [])]:
+        folder.mkdir(parents=True, exist_ok=True)
         for name in NAMES:
-            write_wav(args.wav_dir / f"{name}.wav", render(name))
+            write_wav(folder / f"{name}.wav", render(name))
 
 
 if __name__ == "__main__":

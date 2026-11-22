@@ -4,21 +4,29 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from typing import Any
 
 MAX_TURN = 0xFFFFFFFF  # ход — uint32
 MAX_BYTES = 0xFFFFFFFF  # счётчик доигранного в played — uint32
 LOWEST_LEVEL = -1000.0  # громкость для NaN/бесконечности/переполнения: слово участвует, но проигрывает
+SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 @dataclass(frozen=True)
 class Hello:
-    """Приветствие колонки. Прошивка v1 не шлёт device_id: тогда None и protocol=1."""
+    """Приветствие колонки. Прошивка v1 не шлёт device_id: тогда None и protocol=1.
+
+    caps — возможности сверх протокола («sounds» — свои звуки, прошивка 0.6.0); sounds — SHA-256
+    своих звуков по сигналу (нет сигнала — встроенный). Неверные элементы пропускаются.
+    """
 
     device_id: str | None
     fw: str
     protocol: int
+    caps: frozenset[str] = frozenset()
+    sounds: dict[str, str] = field(default_factory=dict[str, str])
 
 
 @dataclass(frozen=True)
@@ -72,14 +80,16 @@ class Played:
 
 @dataclass(frozen=True)
 class UpdateStatus:
-    """Ход или итог обновления по воздуху (протокол 4): what — firmware | model; state — progress |
-    done | failed; done/total — байт; error — busy, download, size, hash, write, storage или ""."""
+    """Ход или итог обновления по воздуху (протокол 4): what — firmware | model | sound; state —
+    progress | done | failed; done/total — байт; error — busy, download, size, hash, write, storage
+    или ""; tone — сигнал звука (только для sound)."""
 
     what: str
     state: str
     done: int
     total: int
     error: str
+    tone: str = ""
 
 
 DeviceMessage = Hello | Wake | UtteranceEnd | BargeIn | PlaybackDone | Busy | Played | UpdateStatus
@@ -123,7 +133,21 @@ def _parse_hello(data: dict[str, Any]) -> Hello | None:
     protocol = data.get("protocol", 1)
     if isinstance(protocol, bool) or not isinstance(protocol, int):
         return None
-    return Hello(device_id=device_id, fw=fw, protocol=protocol)
+    return Hello(device_id, fw, protocol, _caps(data.get("caps")), _sounds(data.get("sounds")))
+
+
+def _caps(value: Any) -> frozenset[str]:
+    """Возможности из hello: только строки; не список — пусто."""
+    items: list[Any] = value if isinstance(value, list) else []  # pyright: ignore[reportUnknownVariableType]
+    return frozenset(item for item in items if isinstance(item, str))
+
+
+def _sounds(value: Any) -> dict[str, str]:
+    """Хэши звуков из hello: сигнал → SHA-256 (64 строчных шестнадцатеричных); прочее пропускается."""
+    items: dict[Any, Any] = value if isinstance(value, dict) else {}  # pyright: ignore[reportUnknownVariableType]
+    return {
+        k: v for k, v in items.items() if isinstance(k, str) and isinstance(v, str) and SHA256.fullmatch(v)
+    }
 
 
 def _parse_wake(data: dict[str, Any]) -> Wake | None:
@@ -176,12 +200,20 @@ def _parse_update_status(data: dict[str, Any]) -> UpdateStatus | None:
     ):
         return None
     if (
-        what not in ("firmware", "model")
+        what not in ("firmware", "model", "sound")
         or state not in ("progress", "done", "failed")
         or not 0 <= done <= MAX_BYTES
     ):
         return None
-    return UpdateStatus(str(what), str(state), done, total, error if isinstance(error, str) else "")
+    tone = data.get("tone", "")
+    return UpdateStatus(
+        str(what),
+        str(state),
+        done,
+        total,
+        error if isinstance(error, str) else "",
+        tone if isinstance(tone, str) else "",
+    )
 
 
 _PARSERS = {
@@ -249,7 +281,8 @@ def stop_playback() -> str:
 
 
 def update(payload: dict[str, Any]) -> str:
-    """Кадр «обнови себя» (протокол 4): what, path, size, sha256 и для модели cutoff, window, arena, word."""
+    """Кадр «обнови себя» (протокол 4): what, path, size, sha256 и для модели cutoff, window, arena, word;
+    для звука — tone (size 0 без path и sha256 — вернуть встроенный)."""
     return _encode({"type": "update", **payload})
 
 

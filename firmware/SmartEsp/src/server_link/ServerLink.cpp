@@ -17,6 +17,8 @@ constexpr UBaseType_t COMMAND_LENGTH = 16;
 constexpr size_t AUDIO_BUFFER_SAMPLES = 16000 * 2;  // 2 с принятого звука
 constexpr size_t SEND_PER_PASS = 8;  // сообщений за проход, чтобы приём не простаивал
 constexpr size_t JSON_BUFFER = 192;
+constexpr size_t HELLO_BUFFER = 640;  // hello с хэшами пяти звуков
+static_assert(TONE_COUNT == 5, "soundHashes_ в ServerLink.h — по строке на сигнал");
 constexpr uint32_t LOG_PERIOD_MS = 1000;
 
 }  // namespace
@@ -39,6 +41,17 @@ bool ServerLink::begin(const char* host, uint16_t port, const char* path, const 
   socket_.enableHeartbeat(PING_INTERVAL_MS, PONG_TIMEOUT_MS, MISSED_PONGS);
   socket_.onEvent([this](WStype_t type, uint8_t* payload, size_t length) { onSocketEvent(type, payload, length); });
   return xTaskCreatePinnedToCore(taskEntry, "server_link", 8192, this, 4, nullptr, 1) == pdPASS;
+}
+
+void ServerLink::setSoundHash(Tone tone, const char* sha256) {
+  const size_t index = static_cast<size_t>(tone);
+  if (index >= TONE_COUNT) {
+    return;
+  }
+  taskENTER_CRITICAL(&soundLock_);
+  strncpy(soundHashes_[index], sha256 ? sha256 : "", sizeof(soundHashes_[index]) - 1);
+  soundHashes_[index][sizeof(soundHashes_[index]) - 1] = '\0';
+  taskEXIT_CRITICAL(&soundLock_);
 }
 
 bool ServerLink::isConnected() const {
@@ -158,8 +171,12 @@ void ServerLink::onSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
     case WStype_CONNECTED: {
       Serial.println("server_link: connected");
       connected_ = true;
-      char json[JSON_BUFFER];
-      const size_t n = encodeHello(fwVersion_, WiFi.macAddress().c_str(), json, sizeof(json));
+      char sounds[TONE_COUNT][65];
+      taskENTER_CRITICAL(&soundLock_);
+      memcpy(sounds, soundHashes_, sizeof(sounds));
+      taskEXIT_CRITICAL(&soundLock_);
+      char json[HELLO_BUFFER];
+      const size_t n = encodeHello(fwVersion_, WiFi.macAddress().c_str(), json, sizeof(json), sounds);
       if (n > 0) {
         socket_.sendTXT(json, n);
       }

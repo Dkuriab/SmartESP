@@ -6,6 +6,7 @@
 #include <WiFi.h>
 #include <string.h>
 
+#include "SoundFiles.h"
 #include "esp_heap_caps.h"
 #include "mbedtls/sha256.h"
 
@@ -21,6 +22,8 @@ constexpr uint32_t REPORT_MS = 500;
 constexpr uint32_t RESTART_DELAY_MS = 1500;  // успеть отправить итог
 constexpr uint32_t HTTP_TIMEOUT_MS = 15000;
 constexpr size_t MAX_MODEL = 1024 * 1024;  // модель слова — десятки КБ; больше — ошибка
+constexpr UBaseType_t SOUND_QUEUE = 10;     // пять звуков при загрузке и запас на обновления
+const Tone ALL_TONES[] = {Tone::Wake, Tone::Error, Tone::Thinking, Tone::Listen, Tone::Attention};
 
 // Параметры сохранённой модели (файл MODEL_META).
 struct Meta {
@@ -46,11 +49,20 @@ void toHex(const uint8_t* digest, char* out) {
 bool Updater::begin(const UpdaterConfig& config) {
   config_ = config;
   events_ = xQueueCreate(8, sizeof(ClientEvent));
+  sounds_ = xQueueCreate(SOUND_QUEUE, sizeof(StoredSound));
   storage_ = LittleFS.begin(true, "/littlefs", 10, PARTITION);
   if (!storage_) {
-    Serial.println("updater: нет LittleFS — модель по воздуху не сохранить");
+    Serial.println("updater: нет LittleFS — модель и звуки по воздуху не сохранить");
+    return false;
   }
-  return storage_ && events_ != nullptr;
+  prepareSoundFolder();
+  for (Tone tone : ALL_TONES) {
+    StoredSound sound{};
+    if (sounds_ && loadSoundFile(tone, sound) && xQueueSend(sounds_, &sound, 0) != pdTRUE) {
+      heap_caps_free(sound.pcm);
+    }
+  }
+  return events_ != nullptr && sounds_ != nullptr;
 }
 
 bool Updater::loadModel(StoredModel& out) {
@@ -93,6 +105,7 @@ bool Updater::start(const UpdateRequest& request) {
     ClientEvent event{};
     event.type = ClientEventType::UpdateStatus;
     event.updateKind = request.kind;
+    event.updateTone = request.tone;
     event.updateState = UpdateState::Failed;
     event.updateError = UpdateError::Busy;
     event.total = request.size;
@@ -117,25 +130,64 @@ void Updater::taskEntry(void* self) {
 }
 
 void Updater::run() {
-  Serial.printf("updater: %s, %u байт\n", request_.kind == UpdateKind::Firmware ? "прошивка" : "модель",
-                (unsigned)request_.size);
+  static const char* const KINDS[] = {"прошивка", "модель", "звук"};
+  Serial.printf("updater: %s, %u байт\n", KINDS[static_cast<int>(request_.kind)], (unsigned)request_.size);
   UpdateError error = UpdateError::None;
-  const bool ok = download(error) && (request_.kind == UpdateKind::Firmware || finishModel(error));
+  const bool sound = request_.kind == UpdateKind::Sound;
+  // звук размера 0 — не качаем: удалить свой, вернуть встроенный
+  const bool ok = (sound && request_.size == 0) ? finishSound(error) : download(error) && finish(error);
   report(ok ? UpdateState::Done : UpdateState::Failed, error, true);
-  Serial.printf("updater: %s\n", ok ? "готово, перезагрузка" : "не удалось");
-  if (ok) {
+  Serial.printf("updater: %s\n", !ok ? "не удалось" : sound ? "готово" : "готово, перезагрузка");
+  if (ok && !sound) {
     restartAt_ = millis() + RESTART_DELAY_MS;
   }
   busy_ = false;
 }
 
-// Скачивает файл и пишет его (прошивку — через Update, модель — во временный файл), считая SHA-256.
+// Скачанный и проверенный файл — на место: прошивку уже закончил Update.end().
+bool Updater::finish(UpdateError& error) {
+  switch (request_.kind) {
+    case UpdateKind::Firmware: return true;
+    case UpdateKind::Model: return finishModel(error);
+    case UpdateKind::Sound: return finishSound(error);
+  }
+  return false;
+}
+
+// Звук: временный файл — на место и в PSRAM (его заберёт pollSound); размер 0 — удалить свой.
+bool Updater::finishSound(UpdateError& error) {
+  const Tone tone = request_.tone;
+  StoredSound sound{tone, nullptr, 0, {}};
+  if (!storage_) {
+    error = UpdateError::Storage;
+    return false;
+  }
+  if (request_.size == 0) {
+    removeSoundFile(tone);
+  } else if (!commitSoundFile(tone, request_.sha256) || !loadSoundFile(tone, sound)) {
+    error = UpdateError::Storage;
+    return false;
+  }
+  if (xQueueSend(sounds_, &sound, pdMS_TO_TICKS(1000)) != pdTRUE) {
+    heap_caps_free(sound.pcm);  // loop() не забирает звуки — заиграет после перезагрузки
+  }
+  return true;
+}
+
+bool Updater::pollSound(StoredSound& sound) {
+  return sounds_ && xQueueReceive(sounds_, &sound, 0) == pdTRUE;
+}
+
+// Скачивает файл и пишет его (прошивку — через Update, модель и звук — во временный файл), считая SHA-256.
 bool Updater::download(UpdateError& error) {
   const bool firmware = request_.kind == UpdateKind::Firmware;
-  if (!firmware && (!storage_ || request_.size > MAX_MODEL)) {
+  const bool sound = request_.kind == UpdateKind::Sound;
+  const bool fits = sound ? request_.size <= MAX_SOUND_BYTES && request_.size % 2 == 0 : request_.size <= MAX_MODEL;
+  if (!firmware && (!storage_ || !fits)) {
     error = storage_ ? UpdateError::Size : UpdateError::Storage;
     return false;
   }
+  const char* tempPath = sound ? soundTempPath(request_.tone) : MODEL_TEMP;
   WiFiClient client;
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
@@ -154,7 +206,7 @@ bool Updater::download(UpdateError& error) {
     http.end();
     return false;
   }
-  File temp = firmware ? File() : LittleFS.open(MODEL_TEMP, "w");
+  File temp = firmware ? File() : LittleFS.open(tempPath, "w");
   uint8_t* buffer = (uint8_t*)malloc(CHUNK);
   mbedtls_sha256_context sha;
   mbedtls_sha256_init(&sha);
@@ -199,7 +251,7 @@ bool Updater::download(UpdateError& error) {
       ok = false;
     }
   } else if (!ok) {
-    LittleFS.remove(MODEL_TEMP);
+    LittleFS.remove(tempPath);
   }
   if (!ok && error == UpdateError::None) {
     error = UpdateError::Write;
@@ -234,6 +286,7 @@ void Updater::report(UpdateState state, UpdateError error, bool force) {
   ClientEvent event{};
   event.type = ClientEventType::UpdateStatus;
   event.updateKind = request_.kind;
+  event.updateTone = request_.tone;
   event.updateState = state;
   event.updateError = error;
   event.bytes = done_;

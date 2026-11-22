@@ -102,8 +102,7 @@ class DeviceHub(CoreTurns):
 
     async def send_tone(self, device_id: str, name: str) -> None:
         """Просит колонку сыграть сигнал name; нет колонки или связи — ничего не делает."""
-        session = self._sessions.get(device_id)
-        if session is not None:
+        if (session := self._sessions.get(device_id)) is not None:
             await session.send(tone(name))
 
     def device_name(self, device_id: str) -> str:
@@ -185,6 +184,7 @@ class DeviceHub(CoreTurns):
         if old is not None:
             self._end_session(old)
             self._spawn(close_quietly(old.conn), f"closing old session of {old.device_id}")
+        self._connected(session.device_id)
 
     def _close(self, session: Session) -> None:
         """Колонка отключилась: убрать сессию (если её не заменили) и закончить ход."""

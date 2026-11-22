@@ -31,6 +31,7 @@ export default function SettingsPanel({ state, actions }: Props) {
         onStopFile={() => void actions.stopFile(id)}
         onInstallFirmware={(file) => void actions.installFirmware(id, file)}
         onVolume={(volume) => void actions.patchConfig({ devices: { [id]: { volume } } }, `Громкость «${device.name || id}»: ${volume} %`)}
+        sounds={{ tick: state.soundsTick, actions }}
       />
     )
   }

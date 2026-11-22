@@ -416,6 +416,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Sounds */
+        get: operations["get_sounds_api_v1_sounds_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sounds/files/{sha256}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sound File */
+        get: operations["sound_file_api_v1_sounds_files__sha256__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sounds/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resync */
+        post: operations["resync_api_v1_sounds_sync_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sounds/{tone}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Set Sound */
+        post: operations["set_sound_api_v1_sounds__tone__post"];
+        /** Reset Sound */
+        delete: operations["reset_sound_api_v1_sounds__tone__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/core": {
         parameters: {
             query?: never;
@@ -568,6 +637,14 @@ export interface components {
              */
             audio: string;
         };
+        /** Body_set_sound_api_v1_sounds__tone__post */
+        Body_set_sound_api_v1_sounds__tone__post: {
+            /**
+             * File
+             * @description звук: MP3, WAV, OGG, M4A или FLAC; длиннее 3 с — обрежется
+             */
+            file: string;
+        };
         /**
          * ChangeOut
          * @description Ответ на изменение.
@@ -601,6 +678,18 @@ export interface components {
             prompt_price: number | null;
             /** Completion Price */
             completion_price: number | null;
+        };
+        /**
+         * CommonSoundOut
+         * @description Общий звук сигнала (для всех колонок); None — встроенный.
+         */
+        CommonSoundOut: {
+            /**
+             * Tone
+             * @enum {string}
+             */
+            tone: "wake" | "error" | "thinking" | "listen" | "attention";
+            sound: components["schemas"]["SoundRefOut"] | null;
         };
         /**
          * ConfigOut
@@ -797,6 +886,46 @@ export interface components {
             volume: number;
         };
         /**
+         * DeviceSoundOut
+         * @description Сигнал на колонке: source — builtin | all (общий) | device (свой); sound — None у встроенного;
+         *     delivery — ok | pending | sending | failed | unsupported (прошивка без звуков) | offline.
+         */
+        DeviceSoundOut: {
+            /**
+             * Tone
+             * @enum {string}
+             */
+            tone: "wake" | "error" | "thinking" | "listen" | "attention";
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "builtin" | "all" | "device";
+            sound: components["schemas"]["SoundRefOut"] | null;
+            /**
+             * Delivery
+             * @enum {string}
+             */
+            delivery: "ok" | "pending" | "sending" | "failed" | "unsupported" | "offline";
+            /**
+             * Error
+             * @default
+             */
+            error: string;
+        };
+        /**
+         * DeviceSoundsOut
+         * @description Звуки колонки; supported — прошивка умеет звуки (None — колонка ещё не подключалась).
+         */
+        DeviceSoundsOut: {
+            /** Device Id */
+            device_id: string;
+            /** Supported */
+            supported: boolean | null;
+            /** Tones */
+            tones: components["schemas"]["DeviceSoundOut"][];
+        };
+        /**
          * DownloadIn
          * @description Тело запроса на скачивание голоса.
          */
@@ -980,6 +1109,37 @@ export interface components {
             seconds: number;
             /** Peak Db */
             peak_db: number;
+        };
+        /**
+         * SoundRefOut
+         * @description Подготовленный звук: SHA-256 (для прослушивания), имя загруженного файла, длина в секундах.
+         */
+        SoundRefOut: {
+            /** Sha256 */
+            sha256: string;
+            /** Name */
+            name: string;
+            /** Duration S */
+            duration_s: number;
+        };
+        /**
+         * SoundSetOut
+         * @description Итог загрузки: звук и обрезан ли он до 3 с.
+         */
+        SoundSetOut: {
+            sound: components["schemas"]["SoundRefOut"];
+            /** Trimmed */
+            trimmed: boolean;
+        };
+        /**
+         * SoundsOut
+         * @description Общие звуки и звуки каждой известной колонки.
+         */
+        SoundsOut: {
+            /** Common */
+            common: components["schemas"]["CommonSoundOut"][];
+            /** Devices */
+            devices: components["schemas"]["DeviceSoundsOut"][];
         };
         /**
          * StatusOut
@@ -2680,6 +2840,291 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    get_sounds_api_v1_sounds_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SoundsOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    sound_file_api_v1_sounds_files__sha256__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                sha256: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "audio/wav": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resync_api_v1_sounds_sync_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    set_sound_api_v1_sounds__tone__post: {
+        parameters: {
+            query?: {
+                /** @description только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются) */
+                device_id?: string | null;
+            };
+            header?: never;
+            path: {
+                tone: "wake" | "error" | "thinking" | "listen" | "attention";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_set_sound_api_v1_sounds__tone__post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SoundSetOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    reset_sound_api_v1_sounds__tone__delete: {
+        parameters: {
+            query?: {
+                /** @description только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются) */
+                device_id?: string | null;
+            };
+            header?: never;
+            path: {
+                tone: "wake" | "error" | "thinking" | "listen" | "attention";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

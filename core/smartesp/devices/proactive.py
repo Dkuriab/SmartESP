@@ -7,26 +7,22 @@ import asyncio
 import itertools
 import logging
 from collections.abc import AsyncIterator, Callable, Coroutine
-from dataclasses import replace
 from typing import Any
 
-from smartesp.contracts import Delivery, DeviceInfo
+from smartesp.contracts import Delivery
 
 from .arbiter import Arbiter
 from .messages import Played, cancel_turn
 from .messages import announce as announce_frame
 from .messages import listen as listen_frame
-from .messages import update as update_frame
-from .messages import volume as volume_frame
 from .playback import close_audio, send_reply
 from .session import ActiveTurn, Recording, Session
-from .updates import UPDATE_PROTOCOL, UpdateStates
+from .speaker_settings import SpeakerSettings
 
 PROACTIVE_PROTOCOL = 3  # с этой версии колонка понимает listen и отвечает busy
 REPLY_GRACE_S = 15.0  # нет playback_done за длительность звука + столько секунд — объявление потеряно
 LISTEN_WAIT_S = 30.0  # сколько ждать playback_done хода перед listen
 LISTEN_ORIGIN = "listen"  # Utterance.origin хода, начатого командой listen
-DEFAULT_VOLUME = 50  # %, как у прошивки по умолчанию
 RECORD_TIMEOUT_S = 15.0  # запись для обучения: дольше фразы не ждём (колонка ушла, связь оборвалась)
 
 
@@ -39,7 +35,7 @@ async def _no_audio() -> AsyncIterator[bytes]:
 logger = logging.getLogger(__name__)
 
 
-class CoreTurns:
+class CoreTurns(SpeakerSettings):
     """Основа DeviceHub: общее состояние хаба (его читает и hub.py) и ходы, которые начинает ядро.
 
     Ход объявления в арбитраже не участвует: слово на другой колонке его не обрывает.
@@ -49,6 +45,7 @@ class CoreTurns:
 
     def __init__(self, arbiter: Arbiter, clock: Callable[[], float], reply_grace_s: float) -> None:
         """arbiter — арбитр слов; clock — часы (секунды); reply_grace_s — запас ожидания playback_done."""
+        super().__init__()
         self._arbiter = arbiter
         self._clock = clock
         self._reply_grace_s = reply_grace_s
@@ -57,11 +54,6 @@ class CoreTurns:
         self._turn_ids = itertools.count(1)
         self._last_active: str | None = None
         self._background: set[asyncio.Task[object]] = set()  # отправки, которых никто не ждёт
-        self._volumes: dict[str, int] = {}  # громкость колонок из настроек, %
-        self._updates = UpdateStates()  # обновления по воздуху: что отправлено и что ответила колонка
-        self._updates.on_change = lambda device, progress: self._publish(
-            "device_update", {"device_id": device, **vars(progress)}
-        )
 
     def supports_proactive(self, device_id: str) -> bool:
         """True, если колонка подключена и её протокол ≥ 3."""
@@ -146,47 +138,6 @@ class CoreTurns:
         self._arbiter.on_turn_started(device_id, esp_turn)
         self._last_active = device_id
         return await session.send(listen_frame(esp_turn), turn_id)
-
-    def volume_of(self, device_id: str) -> int:
-        """Громкость колонки из настроек, % (не задана — как у прошивки по умолчанию)."""
-        return self._volumes.get(device_id, DEFAULT_VOLUME)
-
-    def set_volumes(self, volumes: dict[str, int]) -> None:
-        """Громкость колонок из настроек; подключённым с изменившейся — сразу кадр volume."""
-        old, self._volumes = self._volumes, dict(volumes)
-        for device_id, session in self._sessions.items():
-            if self.volume_of(device_id) != old.get(device_id, DEFAULT_VOLUME):
-                self._send_volume(session)
-
-    def _with_state(self, devices: list[DeviceInfo]) -> list[DeviceInfo]:
-        """Сведения о колонках с громкостью из настроек и последним обновлением по воздуху."""
-        return [
-            replace(d, update=self._updates.get(d.device_id), volume=self.volume_of(d.device_id))
-            for d in devices
-        ]
-
-    def _send_volume(self, session: Session) -> None:
-        """Громкость — колонке (при подключении: колонка после перезагрузки её не помнит)."""
-        frame = volume_frame(self.volume_of(session.device_id))
-        self._spawn(session.send(frame), f"volume to {session.device_id}")
-
-    def _publish(self, kind: str, data: dict[str, object]) -> None:
-        """Событие для интерфейса; хаб переопределяет (у него приёмник событий)."""
-
-    def supports_update(self, device_id: str) -> bool:
-        """Колонка подключена и умеет обновляться по воздуху (протокол ≥ 4, прошивка 0.5.0+)."""
-        session = self._sessions.get(device_id)
-        return session is not None and session.protocol >= UPDATE_PROTOCOL
-
-    async def send_update(self, device_id: str, payload: dict[str, object]) -> bool:
-        """Шлёт колонке команду update (см. messages.update); False — не умеет или не подключена."""
-        session = self._sessions.get(device_id)
-        if session is None or not self.supports_update(device_id):
-            return False
-        if not await session.send(update_frame(payload)):
-            return False
-        self._updates.sent(device_id, str(payload.get("what", "")), int(payload.get("size", 0)))  # type: ignore[call-overload]
-        return True
 
     async def record(self, device_id: str, timeout_s: float = RECORD_TIMEOUT_S) -> bytes | None:
         """Пишет одну фразу с колонки мимо разговора (для обучения): listen новым ходом ядра, колонка

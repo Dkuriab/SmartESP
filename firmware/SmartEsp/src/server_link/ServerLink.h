@@ -40,6 +40,10 @@ class ServerLink {
   // Текущий ход: звук ответа на другие ходы отбрасывается. 0 — ни один.
   void setActiveTurn(uint32_t turn);
 
+  // SHA-256 своего звука сигнала tone (64 символа) для следующего hello; пустая строка —
+  // встроенный. По хэшам ядро досылает только изменившиеся звуки. Безопасно из loop().
+  void setSoundHash(Tone tone, const char* sha256);
+
  private:
   static constexpr size_t OUT_SAMPLES = 512;  // кадр звука на отправку (32 мс)
 
@@ -68,6 +72,9 @@ class ServerLink {
 
   ReplyGate gate_;  // доступ — под gateLock_ (loop() и задача связи)
   portMUX_TYPE gateLock_ = portMUX_INITIALIZER_UNLOCKED;
+
+  char soundHashes_[5][65] = {};  // по сигналу (порядок Tone); доступ — под soundLock_
+  portMUX_TYPE soundLock_ = portMUX_INITIALIZER_UNLOCKED;
 
   QueueHandle_t outgoing_ = nullptr;    // loop() → задача
   QueueHandle_t commands_ = nullptr;    // задача → loop()

@@ -374,3 +374,80 @@ TEST(decode_tone_listen_attention) {
   CHECK(decode(R"({"type":"tone","name":"attention"})", cmd));
   CHECK(cmd.tone == Tone::Attention);
 }
+
+// ---------- свои звуки (возможность sounds) ----------
+
+TEST(hello_caps_and_sounds) {
+  char sounds[TONE_COUNT][65] = {};
+  const std::string sha(64, 'b');
+  std::strcpy(sounds[static_cast<size_t>(Tone::Attention)], sha.c_str());
+  char buffer[640];
+  const size_t length = encodeHello("0.6.0", "AA:BB:CC:DD:EE:FF", buffer, sizeof(buffer), sounds);
+  CHECK(length > 0);
+  JsonDocument doc;
+  CHECK(!deserializeJson(doc, buffer, length));
+  CHECK_EQ(doc["protocol"].as<int>(), 4);  // номер протокола тот же: звуки — возможность
+  CHECK_EQ(std::string(doc["caps"][0] | ""), "sounds");
+  CHECK_EQ(std::string(doc["sounds"]["attention"] | ""), sha);
+  CHECK(doc["sounds"]["wake"].isNull());  // встроенный — не пишется
+  CHECK_EQ(doc["sounds"].size(), 1u);
+}
+
+TEST(hello_all_sounds_fit) {
+  char sounds[TONE_COUNT][65];
+  for (auto& sha : sounds) std::strcpy(sha, std::string(64, 'c').c_str());
+  char buffer[640];  // HELLO_BUFFER в ServerLink.cpp
+  CHECK(encodeHello("0.6.0", "AA:BB:CC:DD:EE:FF", buffer, sizeof(buffer), sounds) > 0);
+}
+
+TEST(decode_update_sound) {
+  const std::string sha(64, 'd');
+  ServerCommand cmd{};
+  const std::string sound =
+      R"({"type":"update","what":"sound","tone":"thinking","path":"/device/files/t","size":32000,"sha256":")" + sha + "\"}";
+  CHECK(decode(sound.c_str(), cmd));
+  CHECK(cmd.type == ServerCommandType::Update);
+  CHECK(cmd.update.kind == UpdateKind::Sound);
+  CHECK(cmd.update.tone == Tone::Thinking);
+  CHECK_EQ(cmd.update.size, 32000u);
+  CHECK_EQ(std::string(cmd.update.path), "/device/files/t");
+}
+
+TEST(decode_update_sound_remove) {
+  ServerCommand cmd{};
+  CHECK(decode(R"({"type":"update","what":"sound","tone":"wake","size":0})", cmd));
+  CHECK(cmd.update.kind == UpdateKind::Sound);
+  CHECK(cmd.update.tone == Tone::Wake);
+  CHECK_EQ(cmd.update.size, 0u);
+}
+
+TEST(decode_update_sound_rejects_bad) {
+  ServerCommand cmd{};
+  CHECK(!decode(R"({"type":"update","what":"sound","size":0})", cmd));  // нет tone
+  CHECK(!decode(R"({"type":"update","what":"sound","tone":"bell","size":0})", cmd));
+  CHECK(!decode(R"({"type":"update","what":"sound","tone":"wake","size":10})", cmd));  // нет пути и хэша
+  CHECK(!decode(R"({"type":"update","what":"firmware","size":0})", cmd));  // пустая прошивка — нет
+}
+
+TEST(encode_update_status_sound) {
+  ClientEvent event{};
+  event.type = ClientEventType::UpdateStatus;
+  event.updateKind = UpdateKind::Sound;
+  event.updateTone = Tone::Error;
+  event.updateState = UpdateState::Done;
+  event.bytes = 9600;
+  event.total = 9600;
+  JsonDocument doc = encodeAndParse(event);
+  CHECK_EQ(std::string(doc["what"] | ""), "sound");
+  CHECK_EQ(std::string(doc["tone"] | ""), "error");
+  CHECK_EQ(std::string(doc["state"] | ""), "done");
+}
+
+TEST(encode_update_status_firmware_has_no_tone) {
+  ClientEvent event{};
+  event.type = ClientEventType::UpdateStatus;
+  event.updateKind = UpdateKind::Firmware;
+  event.updateState = UpdateState::Progress;
+  JsonDocument doc = encodeAndParse(event);
+  CHECK(doc["tone"].isNull());
+}
