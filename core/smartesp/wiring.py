@@ -86,7 +86,7 @@ async def _build_answering(
 def _system_snapshot(tasks: TaskRegistry, tools: McpHub) -> SystemSnapshot:
     """Снимок для обработчика «система»: идущие задачи и готовые коннекторы."""
     running = [(t.title, t.eta) for t in tasks.tasks() if t.status == "running"]
-    return SystemSnapshot(running, [c.name for c in tools.states() if c.state == "ready"])
+    return SystemSnapshot(running, [c.name for c in tools.states() if c.state == "ready" and c.kind == "mcp"])
 
 
 def assemble(
@@ -116,6 +116,8 @@ def assemble(
         on_announce=lambda text, person, connector: announcer.say(NO_DEVICE, text, connector),
         tasks=tasks,
         on_tools=lambda: parts.refresh.changed(),
+        # клиенты ядра (бот) ходят в его API: адрес и токен — им в окружение
+        client_env={"SMARTESP_URL": f"http://127.0.0.1:{config.server.port}", "SMARTESP_TOKEN": token},
     )
     SYSTEM_FACTS.use(functools.partial(_system_snapshot, tasks, tools))  # обработчик «система»
     voices, voice_ready = voice_manager(home, kinds, orchestrator, bus)

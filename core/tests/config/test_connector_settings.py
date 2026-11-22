@@ -384,3 +384,18 @@ def test_note_read_from_manifest(tmp_path: Path) -> None:
     )
     assert manifest_note(connector(folder)) == {"note": "Только руками", "example": "env: {A: b}"}
     assert manifest_note(ConnectorConfig(id="x", name="X", command="/bin/x")) == {"note": "", "example": ""}
+
+
+def test_telegram_client_settings_are_declared_and_pairs_are_checked() -> None:
+    from smartesp.config import Config
+    from smartesp.config.api_patch import check_api_entries
+    from smartesp.config.manifest import settings_view
+
+    telegram = next(c for c in Config().connectors if c.id == "telegram")
+    view = {s["key"]: s["type"] for s in settings_view(telegram)}
+    assert view == {"TELEGRAM_BOT_TOKEN": "secret", "TELEGRAM_USERS": "pairs"}
+    entry = {"id": "telegram", "env": {"TELEGRAM_USERS": "1=Аня;2=Борис"}}
+    assert check_api_entries([entry], Config().connectors) == [entry]
+    for bad in ("Аня", "1=Аня;1=Борис", "1="):
+        with pytest.raises(ValueError):
+            check_api_entries([{"id": "telegram", "env": {"TELEGRAM_USERS": bad}}], Config().connectors)

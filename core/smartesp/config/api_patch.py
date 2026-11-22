@@ -101,7 +101,23 @@ def check_value(setting: ConnectorSetting, value: object) -> str:
         raise ValueError(f"{key}: путь должен начинаться с / или ~/")
     if setting.type == "list":
         _check_folders(key, value)
+    if setting.type == "pairs":
+        _check_pairs(key, value)
     return value
+
+
+def _check_pairs(key: str, value: str) -> None:
+    """`ключ=значение;…` (например «123456789=Аня»): ключи без повторов, обе части непустые."""
+    keys: set[str] = set()
+    for item in value.split(";"):
+        if not item.strip():
+            continue
+        name, sep, text = (part.strip() for part in item.partition("="))
+        if not sep or not name or not text:
+            raise ValueError(f"{key}: запись «{item.strip()}» — нужно «ключ=значение»")
+        if name in keys:
+            raise ValueError(f"{key}: «{name}» повторяется")
+        keys.add(name)
 
 
 def _absolute(path: str) -> bool:

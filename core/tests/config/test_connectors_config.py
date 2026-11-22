@@ -6,18 +6,27 @@ import pytest
 import yaml
 
 from smartesp.config import Config, ConfigFile, ConnectorConfig, load_config
-from smartesp.config.connectors import DEFAULT_CONNECTORS
+from smartesp.config.connectors import DEFAULT_CLIENTS, DEFAULT_CONNECTORS
 
-DEFAULT_IDS = [cid for cid, *_ in DEFAULT_CONNECTORS]
+DEFAULT_IDS = [cid for cid, *_ in (*DEFAULT_CONNECTORS, *DEFAULT_CLIENTS)]
 
 REPO = Path(__file__).resolve().parents[3]  # core/tests/config → корень репозитория
 
 
 def test_defaults_are_our_connectors() -> None:
     connectors = Config().connectors
-    ids = ["notes", "calc", "timers", "weather", "food", "mac_media", "claude_tasks", "web"]
+    ids = ["notes", "calc", "timers", "weather", "food", "mac_media", "claude_tasks", "web", "telegram"]
     assert [c.id for c in connectors] == ids
+    client = connectors[-1]
+    assert (client.kind, client.enabled) == (
+        "client",
+        False,
+    )  # бот включает владелец (мог работать из терминала)
+    assert client.args == ["run", "--project", "{repo}/clients/telegram", "telegram-bot"]
+    assert "telegram-bot = " in (REPO / "clients" / "telegram" / "pyproject.toml").read_text(encoding="utf-8")
+    connectors = connectors[:-1]
     for c in connectors:
+        assert c.kind == "mcp"
         script = f"{c.id.replace('_', '-')}-mcp"
         assert c.command == "uv"
         assert c.args == ["run", "--project", f"{{repo}}/connectors/{c.id}", script]

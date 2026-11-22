@@ -9,6 +9,23 @@ from typing import Literal, Protocol
 from .executor import ToolSpec
 
 ConnectorStateName = Literal["starting", "ready", "failed", "disabled"]
+# mcp — коннектор с инструментами (MCP stdio); client — отдельная программа-клиент ядра (бот Telegram):
+# ядро её запускает и держит, она ходит в API ядра (адрес и токен — в окружении)
+ConnectorKind = Literal["mcp", "client"]
+
+
+@dataclass(frozen=True)
+class Suggestion:
+    """Предложение клиента дописать значение в объявленную настройку-список (key): «Добавить».
+
+    value — элемент списка («123456789=Аня»); text — что показать человеку.
+    """
+
+    key: str
+    value: str
+    text: str
+
+
 ToolPhase = Literal["started", "finished"]
 
 
@@ -17,7 +34,8 @@ class ConnectorState:
     """Состояние коннектора для интерфейса.
 
     tools — имена инструментов, как их видит модель (только у готового);
-    error — текст последней ошибки (пусто, если её нет).
+    error — текст последней ошибки (пусто, если её нет); kind — коннектор или клиент;
+    log — последние строки журнала клиента; suggestions — его предложения «Добавить».
     """
 
     id: str
@@ -25,6 +43,9 @@ class ConnectorState:
     state: ConnectorStateName
     tools: tuple[str, ...] = ()
     error: str = ""
+    kind: ConnectorKind = "mcp"
+    log: tuple[str, ...] = ()
+    suggestions: tuple[Suggestion, ...] = ()
 
 
 @dataclass(frozen=True)

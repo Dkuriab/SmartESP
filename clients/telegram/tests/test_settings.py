@@ -74,3 +74,29 @@ def test_example_has_same_names_and_empty_secrets() -> None:
     assert 'token = ""' in text
     assert f'url = "{DEFAULT_CORE_URL}"' in text
     assert "[users]" in text
+
+
+def test_env_from_core_overrides_file_and_allows_no_file(tmp_path: Path) -> None:
+    env = {
+        "SMARTESP_URL": "http://127.0.0.1:8765",
+        "SMARTESP_TOKEN": "core-token",
+        "TELEGRAM_BOT_TOKEN": "123:AA",
+        "TELEGRAM_USERS": "111=Данила; 222=Аня;",
+    }
+    settings = load_settings(tmp_path / "нет.toml", env)
+    assert (settings.bot_token, settings.core_token, settings.managed) == ("123:AA", "core-token", True)
+    assert settings.users == {111: "Данила", 222: "Аня"}
+    empty = load_settings(tmp_path / "нет.toml", {**env, "TELEGRAM_USERS": ""})
+    assert empty.users == {}  # от ядра: людей добавят из приложения
+    with pytest.raises(SettingsError, match="в приложении"):
+        load_settings(tmp_path / "нет.toml", {**env, "TELEGRAM_BOT_TOKEN": ""})
+    with pytest.raises(SettingsError, match="user_id=имя"):
+        load_settings(tmp_path / "нет.toml", {**env, "TELEGRAM_USERS": "Аня"})
+
+
+def test_file_fills_what_env_leaves_empty(tmp_path: Path) -> None:
+    settings = load_settings(
+        write(tmp_path, VALID), {"SMARTESP_URL": "http://127.0.0.1:9000", "SMARTESP_TOKEN": "t"}
+    )
+    assert settings.core_url == "http://127.0.0.1:9000" and settings.core_token == "t"
+    assert settings.bot_token and settings.users  # токен бота и люди — из файла

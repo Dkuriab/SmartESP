@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 
@@ -34,6 +34,12 @@ DEFAULT_CONNECTORS: tuple[tuple[str, str, dict[str, str], bool], ...] = (
     # поиск DuckDuckGo и чтение страниц (без локальных адресов); настроек нет
     ("web", "Интернет", {}, True),
 )
+# наши клиенты ядра (папка clients/<id>): (id, имя, окружение, включён ли, команда). Ядро их запускает
+# и держит; адрес и токен API ядра они получают в окружении. Бот выключен, пока владелец не включит
+# (до того он мог работать из терминала: два бота на одном токене мешают друг другу)
+DEFAULT_CLIENTS: tuple[tuple[str, str, dict[str, str], bool, str], ...] = (
+    ("telegram", "Telegram-бот", {"TELEGRAM_BOT_TOKEN": "", "TELEGRAM_USERS": ""}, False, "telegram-bot"),
+)
 REMOVE = "remove"  # ключ записи владельца: убрать коннектор
 
 
@@ -51,6 +57,7 @@ class ConnectorConfig(BaseModel):
     args: list[str] = Field(default_factory=list[str])
     env: dict[str, str] = Field(default_factory=dict[str, str])
     enabled: bool = True
+    kind: Literal["mcp", "client"] = "mcp"  # client — программа-клиент ядра (бот), не MCP
     remove: bool = Field(default=False, exclude=True)
 
     def expanded(self) -> ConnectorConfig:
@@ -66,8 +73,8 @@ class ConnectorConfig(BaseModel):
 
 
 def default_connectors() -> list[ConnectorConfig]:
-    """Наши коннекторы из папки connectors/ репозитория: `uv run --project <папка> <скрипт>`."""
-    return [
+    """Наши коннекторы (connectors/) и клиенты (clients/) репозитория: `uv run --project <папка> <скрипт>`."""
+    connectors = [
         ConnectorConfig(
             id=cid,
             name=name,
@@ -78,6 +85,19 @@ def default_connectors() -> list[ConnectorConfig]:
         )
         for cid, name, env, enabled in DEFAULT_CONNECTORS
     ]
+    clients = [
+        ConnectorConfig(
+            id=cid,
+            name=name,
+            command="uv",
+            args=["run", "--project", f"{REPO_PLACEHOLDER}/clients/{cid}", script],
+            env=dict(env),
+            enabled=enabled,
+            kind="client",
+        )
+        for cid, name, env, enabled, script in DEFAULT_CLIENTS
+    ]
+    return connectors + clients
 
 
 def _defaults() -> list[dict[str, Any]]:

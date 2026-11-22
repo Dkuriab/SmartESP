@@ -29,7 +29,17 @@ from .playback import FilePlayback, PlaybackRefusal, PlaybackRefused
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
 from .tasks import TaskBoard, TaskInfo, TaskReport, TaskStatus
-from .tools import ConnectorState, ConnectorStateName, ToolBox, ToolObserver, ToolPhase, ToolResult, ToolUse
+from .tools import (
+    ConnectorKind,
+    ConnectorState,
+    ConnectorStateName,
+    Suggestion,
+    ToolBox,
+    ToolObserver,
+    ToolPhase,
+    ToolResult,
+    ToolUse,
+)
 from .training import (
     JobStatus,
     NothingHeardError,
@@ -60,7 +70,9 @@ __all__ = [
     "ChatMessage",
     "ChoosesThinking",
     "ConfigStore",
+    "ConnectorKind",
     "ConnectorState",
+    "Suggestion",
     "ConnectorStateName",
     "CorePort",
     "CoreEvent",

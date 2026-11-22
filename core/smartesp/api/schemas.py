@@ -43,26 +43,41 @@ class ExecutorStateOut(BaseModel):
     error: str | None = None
 
 
+class SuggestionOut(BaseModel):
+    """Предложение клиента дописать value в настройку-список key («Добавить»); text — для людей."""
+
+    key: str
+    value: str
+    text: str
+
+
 class ConnectorOut(BaseModel):
-    """MCP-коннектор: состояние, инструменты (как их видит модель; только у готового), ошибка."""
+    """Коннектор или клиент ядра: состояние, инструменты (как их видит модель; только у готового), ошибка.
+
+    kind: mcp — коннектор с инструментами; client — программа-клиент ядра (бот Telegram): у неё
+    журнал (последние строки) и предложения «Добавить» вместо инструментов.
+    """
 
     id: str
     name: str
     state: Literal["starting", "ready", "failed", "disabled"]
     tools: list[str]
     error: str = ""  # текст последней ошибки; пусто — ошибки нет
+    kind: Literal["mcp", "client"] = "mcp"
+    log: list[str] = Field(default_factory=list[str])
+    suggestions: list[SuggestionOut] = Field(default_factory=list[SuggestionOut])
 
 
 class ConnectorSettingOut(BaseModel):
     """Настройка, объявленная коннектором (smartesp.json): ключ env, подпись, тип, значение.
 
-    type: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», secret — скрытое
-    (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто.
+    type: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», pairs — «ключ=значение;…»,
+    secret — скрытое (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто.
     """
 
     key: str
     title: str
-    type: Literal["text", "path", "list", "secret", "flag"]
+    type: Literal["text", "path", "list", "secret", "flag", "pairs"]
     hint: str = ""
     value: str = ""
 

@@ -7,9 +7,9 @@ import yaml
 
 from smartesp.config import Config, ConfigFile, load_config
 from smartesp.config import connectors as defaults_module
-from smartesp.config.connectors import DEFAULT_CONNECTORS
+from smartesp.config.connectors import DEFAULT_CLIENTS, DEFAULT_CONNECTORS
 
-DEFAULT_IDS = [cid for cid, *_ in DEFAULT_CONNECTORS]
+DEFAULT_IDS = [cid for cid, *_ in (*DEFAULT_CONNECTORS, *DEFAULT_CLIENTS)]
 
 
 def by_id(config: Config) -> dict[str, dict[str, object]]:
@@ -56,7 +56,7 @@ def test_new_default_reaches_owner_with_overrides(tmp_path: Path, monkeypatch: p
     newer = (*DEFAULT_CONNECTORS, ("radio", "Радио", {}, True))
     monkeypatch.setattr(defaults_module, "DEFAULT_CONNECTORS", newer)
     config = store.load()
-    assert [c.id for c in config.connectors] == [*DEFAULT_IDS, "radio"]
+    assert [c.id for c in config.connectors] == [*DEFAULT_IDS[:-1], "radio", "telegram"]
     assert by_id(config)["calc"]["enabled"] is False
 
 

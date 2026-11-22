@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 
-from smartesp.contracts import ConnectorStateName
+from smartesp.contracts import ConnectorKind, ConnectorStateName
 
 StateName = ConnectorStateName
 
@@ -19,7 +19,8 @@ class ConnectorSpec:
 
     id — короткое имя (папка данных, префикс инструментов при совпадении имён);
     name — имя для людей («Таймеры»); command и args — команда запуска (stdio);
-    env — дополнительные переменные окружения; enabled — включён ли.
+    env — дополнительные переменные окружения; enabled — включён ли; kind — коннектор (MCP) или
+    клиент ядра (обычная программа, см. client.py).
     """
 
     id: str
@@ -28,3 +29,4 @@ class ConnectorSpec:
     args: tuple[str, ...] = ()
     env: Mapping[str, str] = field(default_factory=dict[str, str])
     enabled: bool = True
+    kind: ConnectorKind = "mcp"

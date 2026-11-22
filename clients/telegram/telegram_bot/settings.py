@@ -1,8 +1,15 @@
-"""Настройки бота: файл TOML вне git (шаблон — `settings.example.toml`)."""
+"""Настройки бота: окружение от ядра или файл TOML вне git (шаблон — `settings.example.toml`).
+
+Когда бота запускает ядро (вкладка коннекторов приложения: «Telegram-бот»), оно передаёт адрес и
+токен API (SMARTESP_URL, SMARTESP_TOKEN) и настройки из приложения: TELEGRAM_BOT_TOKEN и
+TELEGRAM_USERS («id=имя;id=имя»). Заполненное в окружении важнее файла; пустое — берётся из файла.
+"""
 
 from __future__ import annotations
 
+import os
 import tomllib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,33 +24,66 @@ class SettingsError(Exception):
 class Settings:
     """Настройки бота.
 
-    `users` — кто допущен: `user_id` Telegram → имя человека для ядра.
+    `users` — кто допущен: `user_id` Telegram → имя человека для ядра; `managed` — бота запустило
+    ядро (тогда незнакомые предлагаются приложению «Добавить», а пустой список людей — не ошибка).
     """
 
     bot_token: str
     core_url: str
     core_token: str
     users: dict[int, str]
+    managed: bool = False
 
 
-def load_settings(path: Path) -> Settings:
-    """Читает и проверяет файл настроек; ошибка — `SettingsError` с подсказкой."""
+def _read(path: Path, managed: bool) -> dict[str, object]:
+    """Содержимое файла настроек; нет файла у бота от ядра — пусто (всё в окружении)."""
     try:
-        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+        return tomllib.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
+        if managed:
+            return {}
         raise SettingsError(
             f"Нет файла настроек {path}: скопируйте settings.example.toml в settings.toml и заполните"
         ) from None
     except tomllib.TOMLDecodeError as error:
         raise SettingsError(f"Файл {path} — неверный TOML: {error}") from None
-    telegram = _table(raw, "telegram")
-    core = _table(raw, "core")
+
+
+def load_settings(path: Path, env: Mapping[str, str] | None = None) -> Settings:
+    """Читает и проверяет настройки (окружение поверх файла); ошибка — `SettingsError` с подсказкой."""
+    env = os.environ if env is None else env
+    managed = bool(env.get("SMARTESP_URL", "").strip())
+    raw = _read(path, managed)
+    telegram, core = _table(raw, "telegram"), _table(raw, "core")
+    telegram = {
+        **telegram,
+        "bot_token": env.get("TELEGRAM_BOT_TOKEN", "").strip() or telegram.get("bot_token", ""),
+    }
+    core = {**core, "url": env.get("SMARTESP_URL", "").strip() or core.get("url", DEFAULT_CORE_URL)}
+    core = {**core, "token": env.get("SMARTESP_TOKEN", "").strip() or core.get("token", "")}
+    listed = env.get("TELEGRAM_USERS", "").strip()
+    users = _pairs(listed) if listed else _users(_table(raw, "users"), allow_empty=managed)
+    hint = "токен бота — в приложении (Telegram-бот → настройки)" if managed else "telegram.bot_token"
     return Settings(
-        bot_token=_required_text(telegram, "telegram.bot_token", "bot_token"),
+        bot_token=_required_text(telegram, hint, "bot_token"),
         core_url=_core_url(core),
         core_token=_required_text(core, "core.token", "token"),
-        users=_users(_table(raw, "users")),
+        users=users,
+        managed=managed,
     )
+
+
+def _pairs(text: str) -> dict[int, str]:
+    """«123=Аня;456=Борис» из TELEGRAM_USERS → {123: "Аня", 456: "Борис"}."""
+    users: dict[int, str] = {}
+    for item in text.split(";"):
+        key, _, name = (part.strip() for part in item.partition("="))
+        if not key:
+            continue
+        if not key.isdigit() or not name:
+            raise SettingsError(f"TELEGRAM_USERS: запись «{item.strip()}» — нужно «user_id=имя»")
+        users[int(key)] = name
+    return users
 
 
 def _table(raw: dict[str, object], name: str) -> dict[str, object]:
@@ -67,7 +107,9 @@ def _core_url(core: dict[str, object]) -> str:
     return value.rstrip("/")
 
 
-def _users(table: dict[str, object]) -> dict[int, str]:
+def _users(table: dict[str, object], *, allow_empty: bool = False) -> dict[int, str]:
+    if not table and allow_empty:
+        return {}
     if not table:
         raise SettingsError('В [users] никого нет: впишите свой user_id = "имя"')
     users: dict[int, str] = {}

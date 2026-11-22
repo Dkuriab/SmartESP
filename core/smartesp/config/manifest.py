@@ -25,7 +25,7 @@ _log = logging.getLogger(__name__)
 
 MANIFEST_NAME = "smartesp.json"
 MASK = "•••"  # значение секрета в ответах API; оно же назад — «не менять»
-SettingType = Literal["text", "path", "list", "secret", "flag"]
+SettingType = Literal["text", "path", "list", "secret", "flag", "pairs"]
 # Главная граница — свой префикс коннектора (settable_key). Это — вторая линия: окружение,
 # которое меняет, что и как запускается (sh -c — это bash на macOS, uv, node, perl, ruby, pip,
 # git), куда идёт трафик (прокси, CA) или как читаются файлы: через API не меняется никогда.

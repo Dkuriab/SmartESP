@@ -30,8 +30,10 @@ class AccessMiddleware(BaseMiddleware):
     Чужим — молчание; в журнал — только `user_id`, без текста сообщения.
     """
 
-    def __init__(self, assistant: Assistant) -> None:
+    def __init__(self, assistant: Assistant, on_stranger: Callable[[int, str], None] | None = None) -> None:
+        """on_stranger(user_id, имя) — незнакомый написал (бот от ядра: предложить «Добавить»)."""
         self._assistant = assistant
+        self._on_stranger = on_stranger
 
     async def __call__(
         self,
@@ -44,15 +46,19 @@ class AccessMiddleware(BaseMiddleware):
         person = self._assistant.person(user_id)
         if person is None:
             log.info("Сообщение от недопущенного user_id=%s пропущено", user_id)
+            if user is not None and self._on_stranger is not None:
+                self._on_stranger(user.id, user.full_name or user.username or "")
             return None
         data["person"] = person
         return await handler(event, data)
 
 
-def build_dispatcher(assistant: Assistant) -> Dispatcher:
+def build_dispatcher(
+    assistant: Assistant, on_stranger: Callable[[int, str], None] | None = None
+) -> Dispatcher:
     """Собирает диспетчер: личные чаты, доступ по списку, обработчики сообщений."""
     router = Router(name="smartesp")
-    router.message.outer_middleware(AccessMiddleware(assistant))
+    router.message.outer_middleware(AccessMiddleware(assistant, on_stranger))
     router.message.filter(F.chat.type == ChatType.PRIVATE)
     router.message.register(_on_start, CommandStart())
     router.message.register(_on_text, F.text)

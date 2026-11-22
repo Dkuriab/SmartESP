@@ -59,6 +59,9 @@ class FakeCore:
                 "state": "ready",
                 "tools": ["note_add"],
                 "error": "",
+                "kind": "mcp",
+                "log": [],
+                "suggestions": [],
                 "settings": [],
                 "note": "",
                 "example": "",
@@ -69,6 +72,9 @@ class FakeCore:
                 "state": "failed",
                 "tools": [],
                 "error": "упал",
+                "kind": "mcp",
+                "log": [],
+                "suggestions": [],
                 "settings": [
                     {
                         "key": "WEATHER_PLACE",

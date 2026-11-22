@@ -46,14 +46,27 @@ async def test_status_and_list_show_connectors() -> None:
         ConnectorState("notes", "Заметки", "ready", ("note_add", "note_show")),
         ConnectorState("weather", "Погода", "failed", (), "Процесс коннектора завершился."),
     ]
+    plain = {
+        "kind": "mcp",
+        "log": (),
+        "suggestions": (),
+    }  # у коннектора (не клиента) журнала и предложений нет
     expected = [
-        {"id": "notes", "name": "Заметки", "state": "ready", "tools": ["note_add", "note_show"], "error": ""},
+        {
+            "id": "notes",
+            "name": "Заметки",
+            "state": "ready",
+            "tools": ["note_add", "note_show"],
+            "error": "",
+            **plain,
+        },
         {
             "id": "weather",
             "name": "Погода",
             "state": "failed",
             "tools": [],
             "error": "Процесс коннектора завершился.",
+            **plain,
         },
     ]
     assert (await h.core.status())["connectors"] == expected
