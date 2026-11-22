@@ -196,12 +196,15 @@ class DelegationOut(BaseModel):
 
 
 class ToolUseOut(BaseModel):
-    """Вызов инструмента в ходе: кто вызвал, коннектор ("" — неизвестен), инструмент, удался ли."""
+    """Вызов инструмента (скилла) в ходе: кто вызвал, коннектор ("" — неизвестен), инструмент, удался ли,
+    с какими аргументами (запрос модели) и что ответил (текст, который получила модель; длинный — обрезан)."""
 
     executor: str
     connector: str
     tool: str
     ok: bool
+    arguments: dict[str, Any] = Field(default_factory=dict[str, Any])
+    result: str = ""
 
 
 class TurnOut(BaseModel):

@@ -79,7 +79,7 @@ async def test_failed_executor_is_done_too() -> None:
 def calls(observe: ToolObserver, ok: bool = True) -> list[object]:
     return [
         lambda: observe(ToolUse("dispatcher", "calc_add", "started")),
-        lambda: observe(ToolUse("dispatcher", "calc_add", "finished", ok=ok)),
+        lambda: observe(ToolUse("dispatcher", "calc_add", "finished", ok=ok, arguments={"a": 2}, result="4")),
     ]
 
 
@@ -110,7 +110,14 @@ async def test_tool_calls_become_events_and_go_to_turn_finished() -> None:
     ]
     finished = sink.events[-1][1]
     assert finished["tools"] == [
-        {"executor": "dispatcher", "connector": "calc", "tool": "calc_add", "ok": True}
+        {
+            "executor": "dispatcher",
+            "connector": "calc",
+            "tool": "calc_add",
+            "ok": True,
+            "arguments": {"a": 2},
+            "result": "4",
+        }
     ]
 
 
@@ -119,8 +126,26 @@ async def test_failed_tool_call_is_recorded_not_ok() -> None:
     observe = tool_observer(lambda name: "calc")
     await run_turn(Scripted([*calls(observe, ok=False), "Не вышло."]), sink)
     assert sink.events[-1][1]["tools"] == [
-        {"executor": "dispatcher", "connector": "calc", "tool": "calc_add", "ok": False}
+        {
+            "executor": "dispatcher",
+            "connector": "calc",
+            "tool": "calc_add",
+            "ok": False,
+            "arguments": {"a": 2},
+            "result": "4",
+        }
     ]
+
+
+async def test_long_skill_result_is_shortened_in_feed() -> None:
+    sink = RecordingSink()
+    observe = tool_observer(lambda name: "web")
+    long = "х" * 5000
+    finished = ToolUse("dispatcher", "web_read", "finished", arguments={"url": "https://x"}, result=long)
+    await run_turn(Scripted([lambda: observe(finished), "Готово."]), sink)
+    used = sink.events[-1][1]["tools"][0]  # type: ignore[index]
+    assert used["arguments"] == {"url": "https://x"}
+    assert used["result"].startswith("х" * 4000) and used["result"].endswith("(ещё 1000 симв.)")
 
 
 def test_observer_outside_a_turn_does_nothing() -> None:

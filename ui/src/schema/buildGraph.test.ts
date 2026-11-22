@@ -97,7 +97,7 @@ describe('buildGraph', () => {
   })
 
   it('the latest turn is not lit until it is selected in the feed', () => {
-    const turns = [makeTurn(2, { device_id: 'a', path: ['dispatcher'], tools: [{ executor: 'dispatcher', connector: 'calc', tool: 'calc_add', ok: true }] })]
+    const turns = [makeTurn(2, { device_id: 'a', path: ['dispatcher'], tools: [{ executor: 'dispatcher', connector: 'calc', tool: 'calc_add', ok: true, result: '' }] })]
     const g = buildGraph(makeState({ config: config([{ kind: 'whisper_detect' }]), turns }))
     expect(g.nodes.some((n) => n.data.lit)).toBe(false)
     expect(g.edges.some((e) => (e.data as { lit?: boolean } | undefined)?.lit)).toBe(false)

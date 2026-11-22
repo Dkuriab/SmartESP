@@ -3133,6 +3133,16 @@
           "ok": {
             "type": "boolean",
             "title": "Ok"
+          },
+          "arguments": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Arguments"
+          },
+          "result": {
+            "type": "string",
+            "title": "Result",
+            "default": ""
           }
         },
         "type": "object",
@@ -3143,7 +3153,7 @@
           "ok"
         ],
         "title": "ToolUseOut",
-        "description": "Вызов инструмента в ходе: кто вызвал, коннектор (\"\" — неизвестен), инструмент, удался ли."
+        "description": "Вызов инструмента (скилла) в ходе: кто вызвал, коннектор (\"\" — неизвестен), инструмент, удался ли,\nс какими аргументами (запрос модели) и что ответил (текст, который получила модель; длинный — обрезан)."
       },
       "TurnOut": {
         "properties": {

@@ -176,7 +176,9 @@ async def test_turns_tool_calls(client: httpx.AsyncClient, core: FakeCore) -> No
     used = {"executor": "dispatcher", "connector": "calc", "tool": "calc_add", "ok": True}
     core.turn_items = [{**make_turn(5), "tools": [used]}, make_turn(4)]
     turns = (await client.get(f"{P}/turns", headers=HEADERS)).json()
-    assert turns[0]["tools"] == [used]
+    assert turns[0]["tools"] == [
+        {**used, "arguments": {}, "result": ""}
+    ]  # старые ходы — без запроса и ответа
     assert turns[1]["tools"] == []  # ходы до подсветки инструментов
 
 

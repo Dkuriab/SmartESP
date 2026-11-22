@@ -199,3 +199,34 @@
     max-height: calc(100% - 132px);
   }
 }
+
+/* Вызов скилла в карточке хода: запрос в строке, ответ — по раскрытию. */
+.tool-call {
+  margin: 4px 0;
+}
+
+.tool-call summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.tool-args {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-result {
+  margin: 4px 0 0;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: var(--text);
+  background: var(--panel2);
+  border-radius: 6px;
+  padding: 6px 8px;
+}

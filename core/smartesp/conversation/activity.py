@@ -34,6 +34,14 @@ Publish = Callable[[str, dict[str, object]], None]
 _current: ContextVar[TurnActivity | None] = ContextVar("smartesp_turn_activity", default=None)
 
 
+MAX_RESULT = 4000  # символов ответа скилла в ленте: длинные страницы не раздувают историю ходов
+
+
+def _short(text: str) -> str:
+    """Ответ скилла для ленты: длинный — обрезан с пометкой."""
+    return text if len(text) <= MAX_RESULT else f"{text[:MAX_RESULT]}… (ещё {len(text) - MAX_RESULT} симв.)"
+
+
 class TurnActivity:
     """Подсветка одного хода: состояние текущего исполнителя и вызовы инструментов."""
 
@@ -87,7 +95,14 @@ class TurnActivity:
         )
         if use.state == "finished":
             self._turn.tools.append(
-                {"executor": use.executor, "connector": connector, "tool": use.tool, "ok": use.ok}
+                {
+                    "executor": use.executor,
+                    "connector": connector,
+                    "tool": use.tool,
+                    "ok": use.ok,
+                    "arguments": dict(use.arguments),  # что спросили у скилла — видно в ленте
+                    "result": _short(use.result),  # что он ответил (длинное — обрезано)
+                }
             )
             call = ToolCall(use.tool, dict(use.arguments))
             self._turn.exchanges.append(ToolExchange(use.executor, call, use.result))

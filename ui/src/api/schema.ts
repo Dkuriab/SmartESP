@@ -1114,7 +1114,8 @@ export interface components {
         };
         /**
          * ToolUseOut
-         * @description Вызов инструмента в ходе: кто вызвал, коннектор ("" — неизвестен), инструмент, удался ли.
+         * @description Вызов инструмента (скилла) в ходе: кто вызвал, коннектор ("" — неизвестен), инструмент, удался ли,
+         *     с какими аргументами (запрос модели) и что ответил (текст, который получила модель; длинный — обрезан).
          */
         ToolUseOut: {
             /** Executor */
@@ -1125,6 +1126,15 @@ export interface components {
             tool: string;
             /** Ok */
             ok: boolean;
+            /** Arguments */
+            arguments?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Result
+             * @default
+             */
+            result: string;
         };
         /**
          * TurnOut

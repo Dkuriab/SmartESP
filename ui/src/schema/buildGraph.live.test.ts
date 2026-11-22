@@ -50,7 +50,7 @@ describe('buildGraph: коннекторы', () => {
   })
 
   it('инструменты выбранного хода подсвечивают коннектор и стрелку от вызвавшего', () => {
-    const turn = makeTurn(1, { tools: [{ executor: 'dispatcher', connector: 'calc', tool: 'calc_add', ok: true }] })
+    const turn = makeTurn(1, { tools: [{ executor: 'dispatcher', connector: 'calc', tool: 'calc_add', ok: true, result: '' }] })
     const s = state({ turns: [turn], selectedTurnId: 1 })
     expect(node(s, 'connector:calc')?.data.lit).toBe(true)
     expect(node(s, 'connector:notes')?.data.lit).toBe(false)

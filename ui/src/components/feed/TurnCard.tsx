@@ -4,7 +4,7 @@ import './feed.css'
 import type { ExecutorName } from './names'
 import { executorName, turnPlace } from './names'
 import { formatTime } from './time'
-import { ToolTag } from './tools'
+import { ToolCall } from './tools'
 
 type Props = {
   turn: Turn
@@ -50,12 +50,10 @@ export default function TurnCard({ turn, executors, full = false, onClose }: Pro
       ))}
       {(turn.tools ?? []).length > 0 && (
         <>
-          <div className="cap card-label">Инструменты</div>
-          <div className="line">
-            {(turn.tools ?? []).map((t, i) => (
-              <ToolTag key={i} used={t} />
-            ))}
-          </div>
+          <div className="cap card-label">Скиллы: запрос и ответ</div>
+          {(turn.tools ?? []).map((t, i) => (
+            <ToolCall key={i} used={t} who={executorName(executors, t.executor)} />
+          ))}
         </>
       )}
       <div className="cap card-label">Ответ</div>

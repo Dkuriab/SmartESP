@@ -139,9 +139,9 @@ describe('Feed', () => {
 
 describe('Feed: инструменты', () => {
   const tools = [
-    { executor: 'dispatcher', connector: 'calc', tool: 'calc_add', ok: true },
-    { executor: 'dispatcher', connector: 'calc', tool: 'calc_add', ok: true },
-    { executor: 'big', connector: 'notes', tool: 'note_add', ok: false },
+    { executor: 'dispatcher', connector: 'calc', tool: 'calc_add', ok: true, arguments: { expression: '2+2' }, result: '4' },
+    { executor: 'dispatcher', connector: 'calc', tool: 'calc_add', ok: true, result: '' },
+    { executor: 'big', connector: 'notes', tool: 'note_add', ok: false, arguments: { text: 'купить хлеб' }, result: 'Ошибка: нет места' },
   ]
 
   it('строка хода показывает вызванные инструменты без повторов, неудачный — ошибкой', () => {
@@ -152,10 +152,15 @@ describe('Feed: инструменты', () => {
     expect(screen.getByText('🧩 note_add')).toHaveClass('err')
   })
 
-  it('карточка хода перечисляет все вызовы', () => {
+  it('карточка хода: каждый вызов — запрос (аргументы) и ответ скилла', () => {
     render(<Feed turns={[makeTurn(1, { tools })]} executors={executors} selectedId={1} onSelect={vi.fn()} />)
     const card = screen.getByRole('dialog', { name: 'Ход' })
-    expect(within(card).getByText('Инструменты')).toBeInTheDocument()
+    expect(within(card).getByText('Скиллы: запрос и ответ')).toBeInTheDocument()
     expect(within(card).getAllByText(/🧩/)).toHaveLength(3)
+    expect(within(card).getByText('expression: 2+2')).toBeInTheDocument()
+    expect(within(card).getByText('4')).toBeInTheDocument()
+    expect(within(card).getByText('без аргументов')).toBeInTheDocument()
+    expect(within(card).getByText('Ошибка: нет места')).toBeInTheDocument()
+    expect(within(card).getByText('ответ не сохранён')).toBeInTheDocument()
   })
 })
