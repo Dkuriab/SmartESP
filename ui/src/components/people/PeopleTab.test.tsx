@@ -6,7 +6,7 @@ import PeopleTab from './PeopleTab'
 import { describeSample, ENOUGH, PROMPTS } from './SampleRecorder'
 
 const sample = { id: 's1', at: 1_795_000_000, device_id: 'a', seconds: 2.2, peak_db: -12 }
-const anya: Person = { id: 'a1', name: 'Аня', created_at: 1, samples: [sample], stale_samples: 0 }
+const anya: Person = { id: 'a1', name: 'Аня', created_at: 1, samples: [sample], stale_samples: 0, links: [] }
 const model: SpeakerModel = {
   model: 'campplus',
   title: 'CAM++',
