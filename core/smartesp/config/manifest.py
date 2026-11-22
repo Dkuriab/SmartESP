@@ -1,8 +1,10 @@
 """Настройки, которые коннектор объявляет сам: файл smartesp.json в папке его проекта.
 
-Формат: `{"settings": [{"key", "title", "type", "hint"}], "note": "…", "example": "…"}`, type —
+Формат: `{"settings": [{"key", "title", "type", "hint"}], "note": "…", "example": "…",
+"core_api": false}`, type —
 text, path, list, secret или flag; note и example (необязательны) — пояснение для панели
-коннектора и пример для config.yaml (например, почему настроек в приложении нет).
+коннектора и пример для config.yaml (например, почему настроек в приложении нет); core_api —
+коннектору нужен API ядра (адрес и токен в окружении, как клиенту: SMARTESP_URL, SMARTESP_TOKEN).
 Через API у коннектора можно менять только объявленные ключи env (см. api_patch.py).
 Файл только читается; ключи окружения, опасные для запуска (PATH, PYTHON*, DYLD_* …),
 не объявляются никогда, что бы файл ни говорил.
@@ -63,6 +65,7 @@ class _Manifest(BaseModel):
     settings: list[ConnectorSetting] = Field(default_factory=list[ConnectorSetting])
     note: str = ""
     example: str = ""
+    core_api: bool = False
 
 
 def protected_key(key: str) -> bool:
@@ -110,6 +113,11 @@ def manifest_note(connector: ConnectorConfig) -> dict[str, str]:
     """Пояснение и пример из smartesp.json: {note, example}; нет — пустые строки."""
     manifest = _manifest(connector)
     return {"note": manifest.note, "example": manifest.example}
+
+
+def wants_core_api(connector: ConnectorConfig) -> bool:
+    """Коннектор заявил в smartesp.json `"core_api": true`: ему нужны адрес и токен API ядра."""
+    return _manifest(connector).core_api
 
 
 def declared_settings(connector: ConnectorConfig) -> list[ConnectorSetting]:

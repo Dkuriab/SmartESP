@@ -20,7 +20,8 @@ class ConnectorSpec:
     id — короткое имя (папка данных, префикс инструментов при совпадении имён);
     name — имя для людей («Таймеры»); command и args — команда запуска (stdio);
     env — дополнительные переменные окружения; enabled — включён ли; kind — коннектор (MCP) или
-    клиент ядра (обычная программа, см. client.py).
+    клиент ядра (обычная программа, см. client.py); core_api — коннектору нужны адрес и токен API
+    ядра (флаг smartesp.json; клиент получает их всегда).
     """
 
     id: str
@@ -30,3 +31,4 @@ class ConnectorSpec:
     env: Mapping[str, str] = field(default_factory=dict[str, str])
     enabled: bool = True
     kind: ConnectorKind = "mcp"
+    core_api: bool = False
