@@ -593,7 +593,7 @@ curl -H "Authorization: Bearer $(cat ~/SmartEsp/token)" -F audio=@song.mp3 \
 
 - **Источники:** звуковой файл (MP3, M4A, AAC, FLAC, WAV, OGG/Opus, AIFF; с перемоткой), ссылка
   `http(s)` (радио, HLS; с переподключением) и `capture:<имя>` — **звук Mac** с устройства ввода
-  (BlackHole) через AVFoundation. Разбор — `ffmpeg` в PCM 16 кГц моно с белыми списками протоколов
+  (BlackHole) через AVFoundation. Разбор — `ffmpeg` в PCM 16 или 48 кГц моно с белыми списками протоколов
   и форматов.
 - **Как играет:** колонка (прошивка 0.6.0+, протокол 5) получает `stream_start` с одноразовой
   ссылкой и сама тянет `GET /device/stream/<токен>` (без токена API, HTTP/1.0, конец — закрытие
