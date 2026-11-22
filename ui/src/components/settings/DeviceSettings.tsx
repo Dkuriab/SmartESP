@@ -65,7 +65,7 @@ export default function DeviceSettings({ device, onRename, filePhase, onPlayFile
         </div>
       ))}
       {device.connected && device.protocol < MIN_SPEECH_PROTOCOL && (
-        <div className="set-note">Обновите прошивку, чтобы Кузя мог говорить сам</div>
+        <div className="set-note">Обновите прошивку, чтобы ассистент мог говорить сам</div>
       )}
       <DeviceFile device={device} phase={filePhase} onPlay={onPlayFile} onStop={onStopFile} />
       <DeviceUpdate device={device} onInstall={onInstallFirmware} />

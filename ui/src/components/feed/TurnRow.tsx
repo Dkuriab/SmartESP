@@ -44,7 +44,7 @@ export default function TurnRow({ turn, executors, selected, onSelect }: Props) 
               {turn.text}
             </span>
           )}
-          {turn.origin === 'listen' && <span className="tag">ответ на вопрос Кузи</span>}
+          {turn.origin === 'listen' && <span className="tag">ответ на вопрос ассистента</span>}
           {turn.interruption === 'paused' && <span className="tag p">прервано результатом</span>}
           {turn.interruption === 'resumed' && <span className="tag">продолжение</span>}
           {turn.annotations.map((a, i) => (

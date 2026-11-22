@@ -33,7 +33,7 @@ export default function TurnCard({ turn, executors, full = false, onClose }: Pro
         <div className="card-text">{turn.text}</div>
       )}
       <div className="line">
-        {turn.origin === 'listen' && <span className="tag">ответ на вопрос Кузи</span>}
+        {turn.origin === 'listen' && <span className="tag">ответ на вопрос ассистента</span>}
         {turn.interruption === 'paused' && <span className="tag p">прервано результатом</span>}
         {turn.interruption === 'resumed' && <span className="tag">продолжение</span>}
         {turn.status === 'undelivered' && <span className="tag err">не доставлено</span>}

@@ -145,7 +145,7 @@ def test_v2_without_tts_gets_new_default_and_version(tmp_path: Path) -> None:
 
 def test_defaults_contain_new_prompt(tmp_path: Path) -> None:
     prompt = Config().entry_executor().system_prompt
-    assert prompt.startswith("Тебя зовут Кузя. ")
+    assert prompt.startswith("Твой ответ звучит голосом в доме.")  # кто он — из имени и рода (identity_rule)
     assert "Пока!" in prompt and "Не задавай вопросов в конце" in prompt
 
 
@@ -163,7 +163,8 @@ def test_legacy_whisper_variant_prompt_is_pruned(tmp_path: Path) -> None:
 def test_v3_without_executors_gets_new_prompt(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     write(path, {"version": 3, "history": {"max_turns": 4}})
-    assert load_config(path).entry_executor().system_prompt.startswith("Тебя зовут Кузя.")
+    entry = load_config(path).entry_executor()
+    assert entry.system_prompt.startswith("Твой ответ звучит голосом в доме.") and entry.name == "Кузя"
 
 
 def test_legacy_kuzya_prompt_without_honesty_rule_is_pruned(tmp_path: Path) -> None:

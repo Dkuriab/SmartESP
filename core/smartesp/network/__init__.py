@@ -10,7 +10,7 @@ from .build import (
 )
 from .names import named_target
 from .network import ExecutorNetwork, Member
-from .rules import DELEGATE_TOOL, Target, delegate_rule, delegate_tool
+from .rules import DELEGATE_TOOL, Target, delegate_rule, delegate_tool, identity_rule
 
 __all__ = [
     "DELEGATE_TOOL",
@@ -22,6 +22,7 @@ __all__ = [
     "active_targets",
     "build_network",
     "delegate_rule",
+    "identity_rule",
     "delegate_tool",
     "member_prompts",
     "named_target",

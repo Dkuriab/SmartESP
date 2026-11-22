@@ -80,14 +80,15 @@ async def test_config_shows_dispatcher_prompt_with_stage_rules(tmp_path: Path) -
     entry = core.config.entry_executor()
     async with client(core) as http:
         prompt = (await http.get("/api/v1/config", headers=HEADERS)).json()["dispatcher_prompt"]
-        assert prompt.startswith(entry.system_prompt) and "[style:quiet]" in prompt
+        assert prompt.startswith("Тебя зовут Кузя. Ты домовой") and entry.system_prompt in prompt
+        assert "[style:quiet]" in prompt
         applied = core.bus.subscribe()
         await core.core.patch_config({"stages": []})
         async with asyncio.timeout(2):
             change = await anext(e.data async for e in applied if e.kind == "change_applied")
         assert change["ok"], change
         prompt = (await http.get("/api/v1/config", headers=HEADERS)).json()["dispatcher_prompt"]
-        assert prompt == entry.system_prompt
+        assert prompt.endswith(entry.system_prompt) and "[style:quiet]" not in prompt  # кто он + свой промпт
     await applied.aclose()
     await core.core.aclose()
     await finish(core)

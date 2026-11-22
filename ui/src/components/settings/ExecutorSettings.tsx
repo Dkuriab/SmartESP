@@ -41,6 +41,21 @@ function RemoveButton({ name, disabled, onRemove }: RemoveProps) {
   )
 }
 
+type GenderProps = { gender: 'male' | 'female'; disabled: boolean; onPick: (gender: 'male' | 'female') => void }
+
+/** Род ассистента: в каком роде он говорит о себе (домовой или домовая). */
+function GenderField({ gender, disabled, onPick }: GenderProps) {
+  return (
+    <label className="field">
+      <span className="lbl">Пол</span>
+      <select className="val" value={gender} disabled={disabled} onChange={(ev) => onPick(ev.target.value as 'male' | 'female')}>
+        <option value="male">Мужской — домовой</option>
+        <option value="female">Женский — домовая</option>
+      </select>
+    </label>
+  )
+}
+
 /** Ошибка прогрева исполнителя из status (нет — пусто). */
 function warmError(state: CoreState, id: string): string {
   return state.status?.executors?.find((x) => x.id === id)?.error ?? ''
@@ -83,9 +98,10 @@ export default function ExecutorSettings({ state, actions, executor: e }: Props)
   return (
     <div className="set">
       <h3 className="set-title">{`${e.entry ? '⚡️' : '🧠'} ${e.name || e.id}`}</h3>
-      <div className="set-sub">{e.entry ? 'Исполнитель · отвечает первым' : 'Исполнитель'}</div>
+      <div className="set-sub">{e.entry ? 'Ассистент — домовой, отвечает первым' : 'Исполнитель — помогает ассистенту'}</div>
       {/* key: после применения или отказа черновик берёт сохранённое значение */}
-      <CommitField key={`name:${e.name}`} label="Имя" value={e.name} placeholder={e.id} required disabled={applying} onCommit={(name) => update({ name })} />
+      <CommitField key={`name:${e.name}`} label={e.entry ? 'Имя ассистента' : 'Имя'} value={e.name} placeholder={e.id} required disabled={applying} onCommit={(name) => update({ name })} />
+      {e.entry && <GenderField gender={e.gender} disabled={applying} onPick={(gender) => update({ gender })} />}
       <ModelBlock state={state} actions={actions} executor={e} applying={applying} />
       {applying && <div className="set-note">{APPLYING}</div>}
       <ReasoningField current={e.reasoning} model={e.model} disabled={applying} onPick={(reasoning) => update({ reasoning })} />

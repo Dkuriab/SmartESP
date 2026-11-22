@@ -1,4 +1,4 @@
-// Два переключателя речи: Кузя заговаривает сам и слушает после своего вопроса.
+// Два переключателя речи: ассистент заговаривает сам и слушает после своего вопроса.
 import { isApplying } from '../../schema/blocks'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState } from '../../state/model'
@@ -8,8 +8,8 @@ type Props = { state: CoreState; actions: CoreActions }
 type Key = 'proactive' | 'listen_after_question'
 
 const ROWS: Array<{ key: Key; label: string; description: string }> = [
-  { key: 'proactive', label: 'Кузя может заговорить сам', description: 'Напоминания и поздние ответы' },
-  { key: 'listen_after_question', label: 'Слушать после вопроса', description: 'Ответ на вопрос Кузи без слова активации' },
+  { key: 'proactive', label: 'Может заговорить сам', description: 'Напоминания и поздние ответы' },
+  { key: 'listen_after_question', label: 'Слушать после вопроса', description: 'Ответ на его вопрос без слова активации' },
 ]
 
 /** Значение флага из config.effective.speech; по умолчанию включено. */

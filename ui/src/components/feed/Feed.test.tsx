@@ -130,10 +130,10 @@ describe('Feed', () => {
     expect(screen.getByText('Telegram · Аня')).toBeInTheDocument()
   })
 
-  it('не доставлено и ответ на вопрос Кузи', () => {
+  it('не доставлено и ответ на вопрос ассистента', () => {
     setup([makeTurn(2, { status: 'undelivered' }), makeTurn(1, { origin: 'listen' })])
     expect(screen.getByText('не доставлено')).toBeInTheDocument()
-    expect(screen.getByText('ответ на вопрос Кузи')).toBeInTheDocument()
+    expect(screen.getByText('ответ на вопрос ассистента')).toBeInTheDocument()
   })
 })
 

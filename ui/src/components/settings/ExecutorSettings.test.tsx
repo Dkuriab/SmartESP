@@ -52,7 +52,7 @@ describe('ExecutorSettings: поля', () => {
 
   it('старый выбор «dispatcher» открывает входного', () => {
     setup('x', { selected: { kind: 'dispatcher', id: 'dispatcher' } })
-    expect(screen.getByLabelText('Имя')).toHaveValue('Диспетчер')
+    expect(screen.getByLabelText('Имя ассистента')).toHaveValue('Диспетчер')
   })
 
   it('имя: Enter шлёт updateExecutor, пустое и прежнее — не шлёт', async () => {
@@ -244,5 +244,20 @@ describe('ExecutorSettings: удаление', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Удалить' }))
     await userEvent.click(screen.getByRole('button', { name: 'Удалить' }))
     expect(actions.removeExecutor).toHaveBeenCalledWith('big')
+  })
+})
+
+describe('ExecutorSettings: ассистент', () => {
+  it('входной — это ассистент: имя и пол; помощник — без пола', async () => {
+    const { actions } = setup()
+    expect(screen.getByText('Ассистент — домовой, отвечает первым')).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText('Пол'), 'female')
+    expect(actions.updateExecutor).toHaveBeenCalledWith('dispatcher', { gender: 'female' })
+  })
+
+  it('у помощника пола нет', () => {
+    setup('big')
+    expect(screen.queryByLabelText('Пол')).toBeNull()
+    expect(screen.getByText('Исполнитель — помогает ассистенту')).toBeInTheDocument()
   })
 })

@@ -23,7 +23,7 @@ from smartesp.contracts import (
     ToolBox,
     ToolObserver,
 )
-from smartesp.network import ExecutorNetwork, MemberSpec, build_network
+from smartesp.network import ExecutorNetwork, MemberSpec, build_network, identity_rule
 from smartesp.stages import run_stages
 from smartesp.tools import ConnectorSpec
 
@@ -91,14 +91,16 @@ def model_key(executor: ExecutorConfig) -> str:
 
 
 def member_specs(config: Config) -> list[MemberSpec]:
-    """Исполнители из настроек — описания участников сети."""
+    """Исполнители из настроек — описания участников сети; промпт каждого начинается с того, кто
+    ассистент (входной исполнитель и есть он: его имя и род — из его настроек)."""
+    me = config.entry_executor()
     return [
         MemberSpec(
             e.id,
             e.name,
             e.description,
             model_key(e),
-            e.system_prompt,
+            "\n".join([identity_rule(me.name, me.gender, e.entry), e.system_prompt]).strip(),
             tuple((d.to, d.when) for d in e.delegates),
         )
         for e in config.executors

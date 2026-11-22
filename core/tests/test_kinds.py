@@ -19,7 +19,7 @@ from smartesp.kinds import (
     prompt_stages,
 )
 from smartesp.main import STAGE_KINDS
-from smartesp.network import MemberSpec, Target, delegate_rule
+from smartesp.network import MemberSpec, Target, delegate_rule, identity_rule
 from smartesp.tools import ConnectorSpec
 
 
@@ -45,7 +45,7 @@ async def test_default_settings_build_network_with_big_and_rule() -> None:
     )
     entry_prompt = made[0].prompt
     assert made[0].model == config.entry_executor().model
-    assert entry_prompt.startswith(config.entry_executor().system_prompt) and "[style:quiet]" in entry_prompt
+    assert config.entry_executor().system_prompt in entry_prompt and "[style:quiet]" in entry_prompt
     assert entry_prompt.endswith(delegate_rule([target]))
     plain, big = made[1], made[2]  # вариант диспетчера без правила передачи, затем big
     assert plain.model == made[0].model and "delegate" not in plain.prompt
@@ -71,8 +71,8 @@ def test_member_specs_and_prompt_stages_follow_settings() -> None:
     big = ExecutorConfig(id="b", name="Б", model="n", description="описание")
     config = Config(executors=[entry, big])
     assert member_specs(config) == [
-        MemberSpec("a", "А", "", "m", "П.", (("b", "x"),)),
-        MemberSpec("b", "Б", "описание", "n", "", ()),
+        MemberSpec("a", "А", "", "m", f"{identity_rule('А', 'male', True)}\nП.", (("b", "x"),)),
+        MemberSpec("b", "Б", "описание", "n", identity_rule("А", "male", False), ()),
     ]
     assert [s.name for s in prompt_stages(config, kinds([]))] == ["whisper_detect", "clock", "system"]
 
@@ -136,3 +136,16 @@ def test_cloud_executor_gets_service_settings_and_cloud_model_key() -> None:
         vars(executor)["_key"] == "k"
         and vars(executor)["_url"] == "https://openrouter.ai/api/v1/chat/completions"
     )
+
+
+def test_identity_follows_assistant_name_and_gender() -> None:
+    entry = Config().entry_executor().model_copy(update={"name": "Миранда", "gender": "female"})
+    config = Config(executors=[entry, *Config().executors[1:]])
+    specs = {s.id: s.system_prompt for s in member_specs(config)}
+    assert specs[entry.id].startswith("Тебя зовут Миранда. Ты домовая — хозяйка этого дома")
+    assert "в женском роде" in specs[entry.id] and "ты домовая, а колонки — твои уши" in specs[entry.id]
+    big = next(s for i, s in specs.items() if i != entry.id)
+    assert big.startswith("Ты помогаешь домовой по имени Миранда: твой ответ она произнесёт сама.")
+    assert identity_rule("", "?", True).startswith(
+        "Тебя зовут Кузя. Ты домовой"
+    )  # неизвестное — по умолчанию

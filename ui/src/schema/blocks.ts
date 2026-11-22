@@ -108,6 +108,8 @@ export type ExecutorItem = {
   description: string
   systemPrompt: string
   reasoning: Reasoning
+  /** Род ассистента; важен у входного исполнителя (он и есть ассистент). */
+  gender: 'male' | 'female'
   entry: boolean
   links: LinkItem[]
 }
@@ -130,6 +132,7 @@ export function listExecutors(state: CoreState): ExecutorItem[] {
     description: str(e.description),
     systemPrompt: str(e.system_prompt),
     reasoning: reasoningOf(e.reasoning),
+    gender: (e.gender === 'female' ? 'female' : 'male') as ExecutorItem['gender'],
     entry: e.entry === true,
     links: asList(e.delegates).map((d) => {
       const to = str(d.to)

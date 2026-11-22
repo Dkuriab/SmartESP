@@ -21,7 +21,7 @@ function StopConfirm({ sending, onYes, onCancel }: ConfirmProps) {
   const focusOnMount = useCallback((el: HTMLButtonElement | null) => el?.focus(), [])
   return (
     <div className="remove-ask" role="alertdialog" aria-label="Остановить ядро?">
-      <p className="core-note">Остановить ядро? Кузя перестанет отвечать, само ядро не перезапустится.</p>
+      <p className="core-note">Остановить ядро? Ассистент перестанет отвечать, само ядро не перезапустится.</p>
       <button type="button" className="btn btn-danger" disabled={sending} onClick={onYes}>
         Да, остановить
       </button>

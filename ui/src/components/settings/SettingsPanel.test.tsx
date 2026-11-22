@@ -132,7 +132,7 @@ describe('SettingsPanel', () => {
   it('колонка со старой прошивкой в сети — подсказка обновить', () => {
     const old = [{ ...devices[0]!, protocol: 2 }]
     setup({ kind: 'device', id: 'aa:bb' }, { status: makeStatus({ devices: old }) })
-    expect(screen.getByText('Обновите прошивку, чтобы Кузя мог говорить сам')).toBeInTheDocument()
+    expect(screen.getByText('Обновите прошивку, чтобы ассистент мог говорить сам')).toBeInTheDocument()
   })
 
   it('подсказки нет: новая прошивка или колонка не в сети', () => {

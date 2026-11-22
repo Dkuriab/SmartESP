@@ -18,6 +18,8 @@ export type ExecutorPatch = {
   description?: string
   systemPrompt?: string
   reasoning?: Reasoning
+  /** Род ассистента (у входного исполнителя — это он сам). */
+  gender?: 'male' | 'female'
 }
 
 const FIELDS: Record<keyof ExecutorPatch, string> = {
@@ -27,6 +29,7 @@ const FIELDS: Record<keyof ExecutorPatch, string> = {
   description: 'description',
   systemPrompt: 'system_prompt',
   reasoning: 'reasoning',
+  gender: 'gender',
 }
 
 /** Ссылки исполнителя в форме config.yaml. */
