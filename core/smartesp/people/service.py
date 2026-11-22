@@ -179,12 +179,13 @@ class People:
     # --- модель ---
 
     def model_state(self) -> SpeakerModelState:
-        """Состояние модели отпечатков."""
-        return self._fetcher.state()
+        """Состояние модели отпечатков (id — у модели отпечатков: по нему образцы текущие)."""
+        return dataclasses.replace(self._fetcher.state(), model=self._voiceprint.model)
 
     def download_model(self) -> SpeakerModelState:
         """Скачивание модели в фоне."""
-        return self._fetcher.start()
+        self._fetcher.start()
+        return self.model_state()
 
     async def warm_up(self) -> None:
         """Прогрев: модель есть — загрузка и первый прогон на тишине (иначе ничего)."""
