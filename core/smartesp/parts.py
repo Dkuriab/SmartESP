@@ -31,6 +31,7 @@ from smartesp.lifecycle import (
 from smartesp.network import NetworkPrompts
 from smartesp.notify import Announcer
 from smartesp.sections import BuildAnswering, live_sections, speech_settings
+from smartesp.streams import Streams
 from smartesp.stt import decode_audio, decode_file
 from smartesp.tasks import TaskRegistry
 from smartesp.tools import McpHub
@@ -65,6 +66,7 @@ class Assembly:
     files: FilePlayer = field(init=False)  # звуковые файлы на колонках
     training: Training = field(init=False)  # обучение моделей: наборы, цели, записи с колонок
     updates: Updates = field(init=False)  # обновления колонок по воздуху: прошивка и модель слова
+    streams: Streams = field(init=False)  # потоки звука на колонках (музыка коннектора)
     app: FastAPI = field(init=False)
     running: asyncio.Task[None] | None = None  # оркестратор
     warming: asyncio.Task[None] | None = None  # прогрев частей

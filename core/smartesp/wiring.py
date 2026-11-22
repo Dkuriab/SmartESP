@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 
-from smartesp.api import BodyLimit, LogBuffer, add_device_files, create_api, mount_ui
+from smartesp.api import BodyLimit, LogBuffer, add_device_files, add_device_streams, create_api, mount_ui
 from smartesp.config import Config, ConfigFile
 from smartesp.config.connectors import REPO_DIR
 from smartesp.contracts import Analyzer
@@ -45,6 +45,8 @@ from smartesp.parts import (
     voice_manager,
 )
 from smartesp.stages import SYSTEM_FACTS, SystemSnapshot
+from smartesp.streams import Streams, capture_probe, ffmpeg_decoder
+from smartesp.stt import find_ffmpeg
 from smartesp.tasks import TaskRegistry
 from smartesp.tools import McpHub
 from smartesp.training import Training
@@ -149,6 +151,10 @@ def assemble(
     )
     parts.files = files
     parts.updates = Updates(home / "run" / "updates", hub.send_update)  # колонка качает файл сама
+    # поток звука (музыка коннектора): колонка тянет его сама, отчёты — потокам
+    decode, probe = ffmpeg_decoder(find_ffmpeg), capture_probe(find_ffmpeg)  # probe — звук Mac (BlackHole)
+    parts.streams = Streams(hub, hub.devices, hub.last_active_device, decode, events=bus, probe=probe)
+    hub.use_stream_listener(parts.streams.report)
     parts.training = Training(  # наборы — в репозитории, данные — в папке данных
         REPO_DIR / "trainers",
         home / "training",
@@ -187,10 +193,12 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str, logs: Lo
         tasks=parts.tasks,
         training=parts.training,
         updates=parts.updates,
+        streams=parts.streams,
     )
     app.include_router(api)
     app.add_middleware(BodyLimit, token=token)  # предел тела и токен ходов через API — до чтения тела
     add_device_files(app, parts.updates)  # файлы обновлений для колонок (без токена API)
+    add_device_streams(app, parts.streams)  # звук потоков для колонок (без токена API)
     mount_ui(app, ui_dir)  # последним: монтирование на / перехватывает всё, что объявлено позже
     return app
 
@@ -247,6 +255,7 @@ async def stop(parts: Assembly) -> None:
     parts.orchestrator.stop_accepting()
     parts.live.close()  # освобождения старых моделей больше не ждут ходов: их выгрузит unload_all
     await parts.files.aclose()  # файл на колонке может играть минуты — не ждём его
+    await parts.streams.aclose()  # музыка на колонках останавливается
     await cancel_tasks(parts.warming, parts.retrying, parts.refreshing)  # оркестратор — в finish
     # коннекторы закрываются, пока договариваются ходы (их вызовы инструментов уже не пройдут)
     closing = asyncio.create_task(parts.tools.aclose(TOOLS_CLOSE_S), name="tools-close")
@@ -271,6 +280,7 @@ async def finish(parts: Assembly) -> None:
     await parts.tools.aclose()
     await parts.announcer.aclose()
     await parts.files.aclose()
+    await parts.streams.aclose()
     await parts.voices.aclose()
     await parts.training.aclose()
     await parts.hub.aclose()

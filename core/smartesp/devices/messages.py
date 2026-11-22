@@ -7,6 +7,8 @@ import math
 from dataclasses import dataclass
 from typing import Any
 
+from smartesp.contracts import StreamCommand, StreamReport
+
 MAX_TURN = 0xFFFFFFFF  # ход — uint32
 MAX_BYTES = 0xFFFFFFFF  # счётчик доигранного в played — uint32
 LOWEST_LEVEL = -1000.0  # громкость для NaN/бесконечности/переполнения: слово участвует, но проигрывает
@@ -82,7 +84,11 @@ class UpdateStatus:
     error: str
 
 
-DeviceMessage = Hello | Wake | UtteranceEnd | BargeIn | PlaybackDone | Busy | Played | UpdateStatus
+STREAM_STATES = ("playing", "ended", "stopped", "failed")  # stream_status (протокол 5)
+
+DeviceMessage = (
+    Hello | Wake | UtteranceEnd | BargeIn | PlaybackDone | Busy | Played | UpdateStatus | StreamReport
+)
 
 
 def _turn(data: dict[str, Any]) -> int | None:
@@ -184,6 +190,21 @@ def _parse_update_status(data: dict[str, Any]) -> UpdateStatus | None:
     return UpdateStatus(str(what), str(state), done, total, error if isinstance(error, str) else "")
 
 
+def _parse_stream_status(data: dict[str, Any]) -> StreamReport | None:
+    """stream_status (протокол 5): stream — uint32, state — из STREAM_STATES, played — uint32."""
+    stream, played, state, error = (
+        _turn({"turn": data.get("stream")}),
+        data.get("played"),
+        data.get("state"),
+        data.get("error", ""),
+    )
+    if stream is None or state not in STREAM_STATES:
+        return None
+    if isinstance(played, bool) or not isinstance(played, int) or not 0 <= played <= MAX_BYTES:
+        return None
+    return StreamReport(stream, state, played, error if isinstance(error, str) else "")  # type: ignore[arg-type]
+
+
 _PARSERS = {
     "hello": _parse_hello,
     "wake": _parse_wake,
@@ -193,6 +214,7 @@ _PARSERS = {
     "busy": _parse_busy,
     "played": _parse_played,
     "update_status": _parse_update_status,
+    "stream_status": _parse_stream_status,
 }
 
 
@@ -251,3 +273,20 @@ def stop_playback() -> str:
 def update(payload: dict[str, Any]) -> str:
     """Кадр «обнови себя» (протокол 4): what, path, size, sha256 и для модели cutoff, window, arena, word."""
     return _encode({"type": "update", **payload})
+
+
+def stream(command: StreamCommand) -> str:
+    """Кадр потока (протокол 5): stream_start {stream, path, rate, volume, live}, stream_stop {stream},
+    stream_volume {value}."""
+    if command.kind == "start":
+        fields = {
+            "stream": command.stream,
+            "path": command.path,
+            "rate": command.rate,
+            "volume": command.volume,
+            "live": command.live,
+        }
+        return _encode({"type": "stream_start", **fields})
+    if command.kind == "stop":
+        return _encode({"type": "stream_stop", "stream": command.stream})
+    return _encode({"type": "stream_volume", "value": command.volume})

@@ -9,15 +9,16 @@ import logging
 from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any
 
-from smartesp.contracts import Delivery
+from smartesp.contracts import Delivery, StreamCommand, StreamListener, StreamReport
 
 from .arbiter import Arbiter
-from .messages import Played, cancel_turn
+from .messages import DeviceMessage, Played, UpdateStatus, cancel_turn
 from .messages import announce as announce_frame
 from .messages import listen as listen_frame
 from .messages import update as update_frame
 from .playback import close_audio, send_reply
 from .session import ActiveTurn, Recording, Session
+from .stream_link import StreamRelay
 from .updates import UPDATE_PROTOCOL, UpdateStates
 
 PROACTIVE_PROTOCOL = 3  # с этой версии колонка понимает listen и отвечает busy
@@ -58,6 +59,7 @@ class CoreTurns:
         self._updates.on_change = lambda device, progress: self._publish(
             "device_update", {"device_id": device, **vars(progress)}
         )
+        self._streams = StreamRelay(self._sessions.get)  # потоки звука (протокол 5)
 
     def supports_proactive(self, device_id: str) -> bool:
         """True, если колонка подключена и её протокол ≥ 3."""
@@ -160,6 +162,25 @@ class CoreTurns:
             return False
         self._updates.sent(device_id, str(payload.get("what", "")), int(payload.get("size", 0)))  # type: ignore[call-overload]
         return True
+
+    def supports_stream(self, device_id: str) -> bool:
+        """Колонка подключена и умеет потоки звука (протокол ≥ 5, прошивка 0.6.0+)."""
+        return self._streams.supports(device_id)
+
+    async def send_stream(self, device_id: str, command: StreamCommand) -> bool:
+        """Команда потока колонке; False — не умеет или не подключена."""
+        return await self._streams.send(device_id, command)
+
+    def use_stream_listener(self, listener: StreamListener) -> None:
+        """Куда отдавать отчёты stream_status и отключения колонок (None в отчёте)."""
+        self._streams.use_listener(listener)
+
+    def _on_extra(self, session: Session, message: DeviceMessage | None) -> None:
+        """Сообщения вне ходов: ход обновления по воздуху и отчёт потока; прочее — мимо."""
+        if isinstance(message, UpdateStatus):
+            self._updates.apply(session.device_id, message)
+        elif isinstance(message, StreamReport):
+            self._streams.report(session.device_id, message)
 
     async def record(self, device_id: str, timeout_s: float = RECORD_TIMEOUT_S) -> bytes | None:
         """Пишет одну фразу с колонки мимо разговора (для обучения): listen новым ходом ядра, колонка
