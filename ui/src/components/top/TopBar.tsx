@@ -1,10 +1,10 @@
-// Верхние панели: вкладки «Схема», «Лента» и «Ядро» по центру, состояние справа;
+// Верхние панели: вкладки «Схема», «Лента», «Ядро» и «Обучение» по центру, состояние справа;
 // на узком экране — ещё кнопки «Список» и «Настройки».
 import type { CoreState } from '../../state/model'
 import StatusPill from './StatusPill'
 import './top.css'
 
-export type Tab = 'schema' | 'feed' | 'core'
+export type Tab = 'schema' | 'feed' | 'core' | 'training'
 /** Боковая панель, открытая поверх схемы на узком экране. */
 export type Overlay = 'list' | 'settings'
 type Props = {
@@ -45,6 +45,7 @@ const TABS: Array<[Tab, string]> = [
   ['schema', 'Схема'],
   ['feed', 'Лента'],
   ['core', 'Ядро'],
+  ['training', 'Обучение'],
 ]
 
 function Status({ state }: { state: CoreState }) {

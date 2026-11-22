@@ -800,6 +800,467 @@
         }
       }
     },
+    "/api/v1/training": {
+      "get": {
+        "summary": "Get Kits",
+        "operationId": "get_kits_api_v1_training_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/KitOut"
+                  },
+                  "type": "array",
+                  "title": "Response Get Kits Api V1 Training Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/training/{kit}/targets": {
+      "put": {
+        "summary": "Put Targets",
+        "operationId": "put_targets_api_v1_training__kit__targets_put",
+        "parameters": [
+          {
+            "name": "kit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kit"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TargetIO"
+                },
+                "title": "Targets"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KitOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/api/v1/training/{kit}/record": {
+      "post": {
+        "summary": "Record",
+        "operationId": "record_api_v1_training__kit__record_post",
+        "parameters": [
+          {
+            "name": "kit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kit"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordingOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/api/v1/training/{kit}/recordings": {
+      "get": {
+        "summary": "List Recordings",
+        "operationId": "list_recordings_api_v1_training__kit__recordings_get",
+        "parameters": [
+          {
+            "name": "kit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kit"
+            }
+          },
+          {
+            "name": "phrase",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Phrase"
+            }
+          },
+          {
+            "name": "person",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RecordingOut"
+                  },
+                  "title": "Response List Recordings Api V1 Training  Kit  Recordings Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/api/v1/training/{kit}/recordings/{name}": {
+      "get": {
+        "summary": "Get Recording",
+        "operationId": "get_recording_api_v1_training__kit__recordings__name__get",
+        "parameters": [
+          {
+            "name": "kit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kit"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "phrase",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Phrase"
+            }
+          },
+          {
+            "name": "person",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete Recording",
+        "operationId": "delete_recording_api_v1_training__kit__recordings__name__delete",
+        "parameters": [
+          {
+            "name": "kit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kit"
+            }
+          },
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Name"
+            }
+          },
+          {
+            "name": "phrase",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Phrase"
+            }
+          },
+          {
+            "name": "person",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/api/v1/core": {
       "get": {
         "summary": "Get Core",
@@ -1533,6 +1994,51 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "KitOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "record_hint": {
+            "type": "string",
+            "title": "Record Hint"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetIO"
+            },
+            "type": "array",
+            "title": "Targets"
+          },
+          "phrases": {
+            "items": {
+              "$ref": "#/components/schemas/PhraseOut"
+            },
+            "type": "array",
+            "title": "Phrases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "description",
+          "record_hint",
+          "targets",
+          "phrases"
+        ],
+        "title": "KitOut",
+        "description": "Набор для обучения."
+      },
       "ModelOut": {
         "properties": {
           "name": {
@@ -1578,6 +2084,28 @@
         ],
         "title": "OllamaOut",
         "description": "Состояние Ollama: доступна ли и какие модели загружены."
+      },
+      "PhraseOut": {
+        "properties": {
+          "phrase": {
+            "type": "string",
+            "title": "Phrase"
+          },
+          "people": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "People"
+          }
+        },
+        "type": "object",
+        "required": [
+          "phrase",
+          "people"
+        ],
+        "title": "PhraseOut",
+        "description": "Фраза целей и сколько её записей у каждого человека."
       },
       "PlayOut": {
         "properties": {
@@ -1626,6 +2154,54 @@
         ],
         "title": "PreviewIn",
         "description": "Тело запроса на пробное озвучивание."
+      },
+      "RecordIn": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          },
+          "phrase": {
+            "type": "string",
+            "title": "Phrase"
+          },
+          "person": {
+            "type": "string",
+            "title": "Person"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id",
+          "phrase",
+          "person"
+        ],
+        "title": "RecordIn",
+        "description": "Что записать: колонка, фраза из целей набора, чей голос."
+      },
+      "RecordingOut": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "seconds": {
+            "type": "number",
+            "title": "Seconds"
+          },
+          "peak_db": {
+            "type": "number",
+            "title": "Peak Db"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "seconds",
+          "peak_db"
+        ],
+        "title": "RecordingOut",
+        "description": "Запись: имя файла, длительность, пик громкости (дБ; тише −30 — запись тихая)."
       },
       "StatusOut": {
         "properties": {
@@ -1709,6 +2285,40 @@
         ],
         "title": "StopOut",
         "description": "Остановка файла: stopped=False — файл не играл."
+      },
+      "TargetIO": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "positive": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Positive"
+          },
+          "negative": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Negative"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "positive"
+        ],
+        "title": "TargetIO",
+        "description": "Цель (отдельная модель): откликаться на positive, не откликаться на negative."
       },
       "TaskOut": {
         "properties": {
