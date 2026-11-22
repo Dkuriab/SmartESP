@@ -25,6 +25,16 @@ from .executor import (
     WarmsUp,
 )
 from .notify import Announcer, Interrupt, Interruption, Preempt
+from .people import (
+    PeopleLookupError,
+    PeoplePort,
+    Person,
+    Recognition,
+    SpeakerModelMissingError,
+    SpeakerModelState,
+    VoicePrint,
+    VoiceSample,
+)
 from .playback import FilePlayback, PlaybackRefusal, PlaybackRefused
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
@@ -95,13 +105,19 @@ __all__ = [
     "Interrupt",
     "Interruption",
     "ModelNotLoadedError",
+    "PeopleLookupError",
+    "PeoplePort",
+    "Person",
     "PlaybackRefusal",
     "PlaybackRefused",
     "Preempt",
     "Question",
     "Reasoning",
+    "Recognition",
     "ReplyPart",
     "Section",
+    "SpeakerModelMissingError",
+    "SpeakerModelState",
     "SpeechToText",
     "Stage",
     "Subscription",
@@ -134,6 +150,8 @@ __all__ = [
     "Utterance",
     "VoiceInfo",
     "VoiceNotDownloadedError",
+    "VoicePrint",
+    "VoiceSample",
     "VoicePort",
     "WarmsUp",
 ]

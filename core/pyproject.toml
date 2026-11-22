@@ -21,6 +21,7 @@ dependencies = [
     "vosk-tts==0.3.61",
     "mcp==2.3.0",
     "python-multipart==0.0.34",
+    "onnxruntime==1.32.0",
 ]
 
 [dependency-groups]
