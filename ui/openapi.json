@@ -1810,6 +1810,26 @@
       "post": {
         "summary": "Resync",
         "operationId": "resync_api_v1_sounds_sync_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "колонка; нет — все подключённые",
+              "title": "Device Id"
+            },
+            "description": "колонка; нет — все подключённые"
+          }
+        ],
         "responses": {
           "202": {
             "description": "Successful Response",
@@ -1820,21 +1840,102 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorOut"
                 }
               }
-            }
+            },
+            "description": "Unauthorized"
           },
           "409": {
-            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sounds/copy": {
+      "post": {
+        "summary": "Copy Sounds",
+        "operationId": "copy_sounds_api_v1_sounds_copy_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "откуда копировать",
+              "title": "Device Id"
+            },
+            "description": "откуда копировать"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SoundsCopyOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -1866,20 +1967,13 @@
           {
             "name": "device_id",
             "in": "query",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)",
+              "type": "string",
+              "description": "колонка (MAC); может быть не в сети — получит звук при подключении",
               "title": "Device Id"
             },
-            "description": "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)"
+            "description": "колонка (MAC); может быть не в сети — получит звук при подключении"
           }
         ],
         "requestBody": {
@@ -1988,20 +2082,13 @@
           {
             "name": "device_id",
             "in": "query",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)",
+              "type": "string",
+              "description": "колонка (MAC); может быть не в сети — получит звук при подключении",
               "title": "Device Id"
             },
-            "description": "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)"
+            "description": "колонка (MAC); может быть не в сети — получит звук при подключении"
           }
         ],
         "responses": {
@@ -3279,38 +3366,6 @@
         "title": "CloudModelOut",
         "description": "Модель облачного сервиса (цены — доллары за 1 млн токенов; неизвестно — null)."
       },
-      "CommonSoundOut": {
-        "properties": {
-          "tone": {
-            "type": "string",
-            "enum": [
-              "wake",
-              "error",
-              "thinking",
-              "listen",
-              "attention"
-            ],
-            "title": "Tone"
-          },
-          "sound": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SoundRefOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "tone",
-          "sound"
-        ],
-        "title": "CommonSoundOut",
-        "description": "Общий звук сигнала (для всех колонок); None — встроенный."
-      },
       "ConfigOut": {
         "properties": {
           "effective": {
@@ -3692,15 +3747,6 @@
             ],
             "title": "Tone"
           },
-          "source": {
-            "type": "string",
-            "enum": [
-              "builtin",
-              "all",
-              "device"
-            ],
-            "title": "Source"
-          },
           "sound": {
             "anyOf": [
               {
@@ -3732,12 +3778,11 @@
         "type": "object",
         "required": [
           "tone",
-          "source",
           "sound",
           "delivery"
         ],
         "title": "DeviceSoundOut",
-        "description": "Сигнал на колонке: source — builtin | all (общий) | device (свой); sound — None у встроенного;\ndelivery — ok | pending | sending | failed | unsupported (прошивка без звуков) | offline."
+        "description": "Сигнал на колонке: sound — желаемый звук (None — встроенный); delivery — ok (на колонке) |\npending | sending | failed (error — причина) | unsupported (прошивка без звуков) | offline (ждёт\nподключения колонки)."
       },
       "DeviceSoundsOut": {
         "properties": {
@@ -4359,15 +4404,25 @@
         "title": "SoundSetOut",
         "description": "Итог загрузки: звук и обрезан ли он до 3 с."
       },
-      "SoundsOut": {
+      "SoundsCopyOut": {
         "properties": {
-          "common": {
+          "devices": {
             "items": {
-              "$ref": "#/components/schemas/CommonSoundOut"
+              "type": "string"
             },
             "type": "array",
-            "title": "Common"
-          },
+            "title": "Devices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "devices"
+        ],
+        "title": "SoundsCopyOut",
+        "description": "Кому скопирован набор звуков колонки."
+      },
+      "SoundsOut": {
+        "properties": {
           "devices": {
             "items": {
               "$ref": "#/components/schemas/DeviceSoundsOut"
@@ -4378,11 +4433,10 @@
         },
         "type": "object",
         "required": [
-          "common",
           "devices"
         ],
         "title": "SoundsOut",
-        "description": "Общие звуки и звуки каждой известной колонки."
+        "description": "Звуки каждой известной колонки (из настроек или хоть раз подключавшейся)."
       },
       "SpeakerModelOut": {
         "properties": {
