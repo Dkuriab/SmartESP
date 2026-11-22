@@ -210,9 +210,14 @@ async def test_root_without_build(client: httpx.AsyncClient) -> None:
 
 async def test_root_with_build(core: FakeCore, bus: EventBus, tmp_path: Path) -> None:
     (tmp_path / "index.html").write_text("<h1>UI</h1>", encoding="utf-8")
+    (tmp_path / "app-1a2b.js").write_text("1", encoding="utf-8")
     app: FastAPI = make_app(core, bus, tmp_path)
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
-        assert (await c.get("/")).text == "<h1>UI</h1>"
+        root = await c.get("/")
+        assert root.text == "<h1>UI</h1>"
+        # страница — без кэша (окно приложения иначе показывает старую после обновления)
+        assert root.headers["cache-control"] == "no-cache"
+        assert "cache-control" not in (await c.get("/app-1a2b.js")).headers
         assert (await c.get(f"{P}/status")).status_code == 401  # API побеждает статику
         assert (await c.get(f"{P}/status", headers=HEADERS)).status_code == 200
 
