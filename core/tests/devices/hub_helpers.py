@@ -45,7 +45,18 @@ async def connect(
         conn.feed_json("hello", fw="1.0")
     else:
         conn.feed_json("hello", fw="2.0", device_id=device_id, protocol=protocol)
+    await drop_volume(conn)
     return conn, task
+
+
+async def drop_volume(conn: FakeConnection) -> None:
+    """Хаб шлёт громкость сразу после hello — убираем этот кадр, чтобы тесты видели только своё."""
+    for _ in range(100):
+        frames = [m for m in conn.sent if isinstance(m, str) and '"volume"' in m]
+        if frames:
+            conn.sent.remove(frames[0])
+            return
+        await asyncio.sleep(0.002)
 
 
 async def accepted_turn(

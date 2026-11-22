@@ -38,8 +38,9 @@ export function listDevices(state: CoreState): Device[] {
   if (cfg && typeof cfg === 'object' && !Array.isArray(cfg)) {
     for (const [id, v] of Object.entries(cfg)) {
       if (list.some((d) => d.device_id === id)) continue
-      const name = (v as { name?: unknown } | null)?.name
-      list.push({ device_id: id, name: typeof name === 'string' ? name : '', connected: false, remote: '', fw: '', protocol: 0 })
+      const { name, volume } = (v as { name?: unknown; volume?: unknown } | null) ?? {}
+      const percent = typeof volume === 'number' ? volume : 50
+      list.push({ device_id: id, name: typeof name === 'string' ? name : '', connected: false, remote: '', fw: '', protocol: 0, volume: percent })
     }
   }
   return list

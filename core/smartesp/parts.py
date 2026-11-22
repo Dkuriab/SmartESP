@@ -78,8 +78,9 @@ def conversation(
     """Колонки, история, оркестратор, очередь объявлений и файлы на колонках; последнее — применение
     раздела speech. Объявление вытесняет файл: перед ним файл на колонке останавливается."""
     arbitration = config.arbitration
-    names = {device_id: device.name for device_id, device in config.devices.items()}
+    names = {device_id: device.name for device_id, device in config.devices.items() if device.name}
     hub = DeviceHub(arbitration.window_ms / 1000, arbitration.late_ms / 1000, names, events=bus)
+    hub.set_volumes({device_id: device.volume for device_id, device in config.devices.items()})
     history = History(config.history.max_turns, config.history.max_age_s)
     orchestrator = Orchestrator(hub, None, None, None, None, history, events=bus)
     files = FilePlayer(hub, hub.devices, decode_file, events=bus)  # разбор ffmpeg по ходу, итог — в ленту

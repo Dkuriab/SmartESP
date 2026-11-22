@@ -15,7 +15,18 @@ REPO = Path(__file__).resolve().parents[3]  # core/tests/config → корень
 
 def test_defaults_are_our_connectors() -> None:
     connectors = Config().connectors
-    ids = ["notes", "calc", "timers", "weather", "food", "mac_media", "claude_tasks", "web", "telegram"]
+    ids = [
+        "notes",
+        "calc",
+        "timers",
+        "weather",
+        "food",
+        "mac_media",
+        "claude_tasks",
+        "web",
+        "speakers",
+        "telegram",
+    ]
     assert [c.id for c in connectors] == ids
     client = connectors[-1]
     assert (client.kind, client.enabled) == (

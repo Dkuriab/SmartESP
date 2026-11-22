@@ -63,6 +63,7 @@ class _Manifest(BaseModel):
     settings: list[ConnectorSetting] = Field(default_factory=list[ConnectorSetting])
     note: str = ""
     example: str = ""
+    core_api: bool = False  # коннектору нужен API ядра (адрес и токен — в окружении), как клиенту
 
 
 def protected_key(key: str) -> bool:
@@ -104,6 +105,11 @@ def _manifest(connector: ConnectorConfig) -> _Manifest:
     except (OSError, ValidationError) as error:
         _log.warning("Коннектор %s: не читается %s, настроек нет: %s", connector.id, path, error)
         return _Manifest()
+
+
+def wants_core_api(connector: ConnectorConfig) -> bool:
+    """Коннектор объявил «core_api»: ему передаются SMARTESP_URL и SMARTESP_TOKEN (наши коннекторы)."""
+    return _manifest(connector).core_api
 
 
 def manifest_note(connector: ConnectorConfig) -> dict[str, str]:

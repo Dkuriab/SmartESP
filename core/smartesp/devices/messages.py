@@ -251,3 +251,8 @@ def stop_playback() -> str:
 def update(payload: dict[str, Any]) -> str:
     """Кадр «обнови себя» (протокол 4): what, path, size, sha256 и для модели cutoff, window, arena, word."""
     return _encode({"type": "update", **payload})
+
+
+def volume(percent: int) -> str:
+    """Кадр «громкость» (0–100 % → 0..1)."""
+    return _encode({"type": "volume", "value": round(max(0, min(100, percent)) / 100, 2)})

@@ -30,6 +30,7 @@ async def test_status_collects_summary() -> None:
                 "last_seen": 50.0,
                 "protocol": 3,
                 "update": None,
+                "volume": 50,
             }
         ],
         "voice": {"kind": "silero", "voice": "xenia", "state": "ready", "error": None},

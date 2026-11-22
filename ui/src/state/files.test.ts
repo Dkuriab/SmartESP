@@ -8,7 +8,7 @@ function event(kind: string, data: Record<string, unknown>): CoreEvent {
   return { kind, data, at: 1 }
 }
 
-const devices = [{ device_id: 'aa', name: 'Кухня', connected: true, remote: '', fw: '', protocol: 3 }]
+const devices = [{ device_id: 'aa', name: 'Кухня', connected: true, remote: '', fw: '', protocol: 3, volume: 50 }]
 
 function state(files: CoreState['files'] = {}): CoreState {
   return makeState({ status: makeStatus({ devices }), files })

@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
-from smartesp.contracts import ConnectorState, TaskBoard, ToolResult, ToolSpec
+from smartesp.contracts import CALL_CONTEXT, CallContext, ConnectorState, TaskBoard, ToolResult, ToolSpec
 
 from .client import ClientProcess
 from .connector import Connector
@@ -114,12 +114,19 @@ class McpHub:
         return list(self._specs)
 
     async def call(self, name: str, arguments: dict[str, object], person: str | None) -> ToolResult:
-        """Вызывает инструмент name; ошибка, таймаут, упавший коннектор — ToolResult(is_error=True)."""
+        """Вызывает инструмент name; ошибка, таймаут, упавший коннектор — ToolResult(is_error=True).
+
+        Человек и колонка — из контекста хода (CALL_CONTEXT), если person не задан явно.
+        """
         route = self._routes.get(name)
         if route is None:
             return ToolResult(f"Нет инструмента «{name}».", is_error=True)
         connector, tool = route
-        return await connector.call(tool, arguments, person, self._call_timeout_s)
+        context = CALL_CONTEXT.get() or CallContext()
+        meta = {"person": person or context.person, "device": context.device_id}
+        return await connector.call(
+            tool, arguments, {k: v for k, v in meta.items() if v}, self._call_timeout_s
+        )
 
     def connector_of(self, name: str) -> str:
         """id коннектора инструмента name (имя, как его видит модель); неизвестный — ""."""
@@ -185,6 +192,7 @@ class McpHub:
             on_change=self._rebuild,
             start_timeout_s=self._start_timeout_s,
             restart_delays_s=self._restart_delays_s,
+            core_env=self._client_env,  # только если коннектор объявил core_api
         )
 
     async def _wait_started(self, connectors: list[Process]) -> None:

@@ -109,6 +109,7 @@ class FakeCore:
                     "last_seen": 1.0,
                     "protocol": 3,
                     "update": None,
+                    "volume": 50,
                 }
             ],
             "voice": self.voice_state,

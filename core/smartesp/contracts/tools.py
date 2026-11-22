@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
@@ -46,6 +47,23 @@ class ConnectorState:
     kind: ConnectorKind = "mcp"
     log: tuple[str, ...] = ()
     suggestions: tuple[Suggestion, ...] = ()
+
+
+@dataclass(frozen=True)
+class CallContext:
+    """Кто и откуда просит в текущем ходе: человек (None — неизвестно) и колонка ("" — не с колонки).
+
+    Скилл получает их в `_meta` вызова (person, device) — например, «сделай погромче» без названия
+    колонки значит ту, с которой говорят.
+    """
+
+    person: str | None = None
+    device_id: str = ""
+
+
+# Канал контекста хода (не логика): ход ставит его перед ответом исполнителя, хаб читает при вызове
+# скилла. Задачи asyncio, начатые в ходе (запоздавший ответ), получают его копию.
+CALL_CONTEXT: ContextVar[CallContext | None] = ContextVar("smartesp_call_context", default=None)
 
 
 @dataclass(frozen=True)

@@ -37,6 +37,7 @@ class DeviceOut(BaseModel):
     last_seen: float | None = None
     protocol: int = 0  # версия протокола последней сессии; 0 — колонку ещё не видели
     update: UpdateOut | None = None  # последнее обновление по воздуху (протокол 4, прошивка 0.5.0+)
+    volume: int = 50  # громкость из настроек, %
 
 
 class VoiceStateOut(BaseModel):

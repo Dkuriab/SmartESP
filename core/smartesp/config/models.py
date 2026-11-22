@@ -50,10 +50,14 @@ class ServerConfig(BaseModel):
     port: int = 8765
 
 
-class DeviceConfig(BaseModel):
-    """Колонка: человекочитаемое имя."""
+DEFAULT_VOLUME = 50  # % — как у прошивки по умолчанию
 
-    name: str
+
+class DeviceConfig(BaseModel):
+    """Колонка: человекочитаемое имя (пусто — MAC) и громкость, %."""
+
+    name: str = ""
+    volume: int = Field(default=DEFAULT_VOLUME, ge=0, le=100)
 
 
 class ArbitrationConfig(BaseModel):

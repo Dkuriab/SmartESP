@@ -24,7 +24,7 @@ function upsertDevice(status: Status, id: string, patch: Partial<Device>): Statu
     ? status.devices.map((d) => (d.device_id === id ? { ...d, ...patch } : d))
     : [
         ...status.devices,
-        { device_id: id, name: id, connected: false, remote: '', fw: '', last_seen: null, protocol: 0, ...patch },
+        { device_id: id, name: id, connected: false, remote: '', fw: '', last_seen: null, protocol: 0, volume: 50, ...patch },
       ]
   return { ...status, devices }
 }

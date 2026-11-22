@@ -35,7 +35,7 @@ function status(): Status {
     state: 'ready',
     ollama: { reachable: true, loaded: [] },
     devices: [
-      { device_id: 'aa:bb', name: 'Кухня', connected: false, remote: '', fw: '1.0', last_seen: 1, protocol: 2 },
+      { device_id: 'aa:bb', name: 'Кухня', connected: false, remote: '', fw: '1.0', last_seen: 1, protocol: 2, volume: 50 },
     ],
     voice: { kind: 'silero', voice: 'xenia', state: 'ready', error: null },
     applying: false,
@@ -103,12 +103,13 @@ describe('reduce: колонки', () => {
         fw: '1.1',
         last_seen: 200,
         protocol: 2,
+        volume: 50,
       },
     ])
   })
 
   it('device_connected добавляет неизвестную колонку с протоколом из события', () => {
-    const data = { device_id: 'cc:dd', name: 'cc:dd', remote: '10.0.0.6', fw: '1.0', protocol: 3 }
+    const data = { device_id: 'cc:dd', name: 'cc:dd', remote: '10.0.0.6', fw: '1.0', protocol: 3, volume: 50 }
     const s = apply(withStatus(), ev('device_connected', data))
     expect(s.status?.devices.map((d) => [d.device_id, d.connected, d.protocol])).toEqual([
       ['aa:bb', false, 2],

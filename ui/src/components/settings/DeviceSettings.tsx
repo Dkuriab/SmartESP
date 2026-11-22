@@ -4,6 +4,7 @@ import type { Device, FilePhase } from '../../state/model'
 import { formatClock } from '../feed/time'
 import DeviceFile, { MIN_SPEECH_PROTOCOL } from './DeviceFile'
 import DeviceUpdate from './DeviceUpdate'
+import DeviceVolume from './DeviceVolume'
 
 type Props = {
   device: Device
@@ -14,6 +15,8 @@ type Props = {
   onStopFile: () => void
   /** Прошивка (.bin) на колонку по воздуху. */
   onInstallFirmware: (file: File) => void
+  /** Громкость колонки, % (в настройки ядра). */
+  onVolume: (volume: number) => void
 }
 
 /** Адрес без порта: «IP:port» и «[IPv6]:port»; голый IPv6 (много «:») — как есть. */
@@ -29,7 +32,7 @@ function presence(d: Device): string {
   return d.last_seen ? `была в ${formatClock(d.last_seen)}` : 'не подключалась'
 }
 
-export default function DeviceSettings({ device, onRename, filePhase, onPlayFile, onStopFile, onInstallFirmware }: Props) {
+export default function DeviceSettings({ device, onRename, filePhase, onPlayFile, onStopFile, onInstallFirmware, onVolume }: Props) {
   const [draft, setDraft] = useState(device.name)
   const save = () => {
     const name = draft.trim()
@@ -58,6 +61,7 @@ export default function DeviceSettings({ device, onRename, filePhase, onPlayFile
           onBlur={save}
         />
       </label>
+      <DeviceVolume key={device.volume} volume={device.volume} disabled={false} onSave={onVolume} />
       {info.map(([label, value]) => (
         <div key={label} className="field">
           <span className="lbl">{label}</span>

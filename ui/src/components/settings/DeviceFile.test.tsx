@@ -4,7 +4,7 @@ import type { CoreState } from '../../state/model'
 import { makeActions, makeState, makeStatus } from '../fixtures'
 import SettingsPanel from './SettingsPanel'
 
-const v3 = { device_id: 'aa:bb', name: 'Кухня', connected: true, remote: '', fw: '2.0', protocol: 3 }
+const v3 = { device_id: 'aa:bb', name: 'Кухня', connected: true, remote: '', fw: '2.0', protocol: 3, volume: 50 }
 
 function setup(device = v3, over: Partial<CoreState> = {}) {
   const actions = makeActions()

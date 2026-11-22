@@ -20,7 +20,7 @@ from smartesp.config import Config, ConfigFile
 from smartesp.config.connectors import REPO_DIR
 from smartesp.contracts import Analyzer
 from smartesp.conversation import tool_observer
-from smartesp.devices import WebSocketConnection
+from smartesp.devices import DeviceHub, WebSocketConnection
 from smartesp.events import EventBus
 from smartesp.kinds import Kinds, Ollama, build_answering, connector_specs
 from smartesp.lifecycle import (
@@ -84,10 +84,11 @@ async def _build_answering(
     return await live.build(part, WARM_UP_TIMEOUT_S, warm=warm)
 
 
-def _system_snapshot(tasks: TaskRegistry, tools: McpHub) -> SystemSnapshot:
-    """Снимок для обработчика «система»: идущие задачи и готовые коннекторы."""
+def _system_snapshot(tasks: TaskRegistry, tools: McpHub, hub: DeviceHub) -> SystemSnapshot:
+    """Снимок для обработчика «система»: идущие задачи, готовые коннекторы, громкость колонок."""
     running = [(t.title, t.eta) for t in tasks.tasks() if t.status == "running"]
-    return SystemSnapshot(running, [c.name for c in tools.states() if c.state == "ready" and c.kind == "mcp"])
+    skills = [c.name for c in tools.states() if c.state == "ready" and c.kind == "mcp"]
+    return SystemSnapshot(running, skills, [(d.name, d.volume) for d in hub.devices() if d.connected])
 
 
 def assemble(
@@ -120,7 +121,7 @@ def assemble(
         # клиенты ядра (бот) ходят в его API: адрес и токен — им в окружение
         client_env={"SMARTESP_URL": f"http://127.0.0.1:{config.server.port}", "SMARTESP_TOKEN": token},
     )
-    SYSTEM_FACTS.use(functools.partial(_system_snapshot, tasks, tools))  # обработчик «система»
+    SYSTEM_FACTS.use(functools.partial(_system_snapshot, tasks, tools, hub))  # обработчик «система»
     voices, voice_ready = voice_manager(home, kinds, orchestrator, bus)
     run_file = RunFile(home / "run" / "core.json")
     parts = Assembly(

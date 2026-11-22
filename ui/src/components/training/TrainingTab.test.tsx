@@ -23,7 +23,7 @@ const kit: TrainKit = {
 function setup() {
   const actions = makeActions()
   actions.loadTraining = vi.fn().mockResolvedValue([kit])
-  const devices = [{ device_id: 'a', name: 'Кухня', connected: true, remote: '', fw: '0.4.0', protocol: 3 }]
+  const devices = [{ device_id: 'a', name: 'Кухня', connected: true, remote: '', fw: '0.4.0', protocol: 3, volume: 50 }]
   render(<TrainingTab state={makeState({ status: makeStatus({ devices }) })} actions={actions} />)
   return { actions }
 }

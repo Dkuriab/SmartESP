@@ -15,6 +15,7 @@ from smartesp.contracts import Annotation, Utterance
 
 TASKS_LABEL = "в работе"
 SKILLS_LABEL = "навыки"
+VOLUME_LABEL = "громкость колонок"
 _MAX_TASKS = 5  # больше — «и ещё N»: справка не должна раздувать промпт
 
 
@@ -24,6 +25,7 @@ class SystemSnapshot:
 
     tasks: list[tuple[str, float | None]] = field(default_factory=lambda: list[tuple[str, float | None]]())
     skills: list[str] = field(default_factory=lambda: list[str]())
+    volumes: list[tuple[str, int]] = field(default_factory=lambda: list[tuple[str, int]]())  # колонка, %
 
 
 class SystemFacts:
@@ -62,7 +64,8 @@ def describe_tasks(tasks: list[tuple[str, float | None]], now: float) -> str:
 
 
 class SystemState:
-    """Добавляет к фразе справку: что в работе (или «ничего») и какие навыки подключены."""
+    """Добавляет к фразе справку: что в работе (или «ничего»), какие навыки подключены и громкость
+    подключённых колонок."""
 
     name = "system"
     prompt_hint = ""  # справка объясняет себя сама (conversation/prompt.py)
@@ -80,4 +83,7 @@ class SystemState:
         if snap.skills:
             skills = ", ".join(snap.skills)
             notes.append(Annotation(text=skills, source=self.name, label=SKILLS_LABEL, reference=True))
+        if snap.volumes:
+            volumes = ", ".join(f"{name} {percent} %" for name, percent in snap.volumes)
+            notes.append(Annotation(text=volumes, source=self.name, label=VOLUME_LABEL, reference=True))
         return notes

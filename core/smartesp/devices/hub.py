@@ -6,7 +6,6 @@ import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator, Callable, Iterable
-from dataclasses import replace
 
 from smartesp.contracts import DeviceInfo, EventSink, Utterance
 
@@ -117,8 +116,7 @@ class DeviceHub(CoreTurns):
 
     def devices(self) -> list[DeviceInfo]:
         """Подключённые и известные по настройкам колонки, по имени."""
-        devices = self._registry.devices(set(self._sessions))
-        return [replace(d, update=self._updates.get(d.device_id)) for d in devices]
+        return self._with_state(self._registry.devices(set(self._sessions)))
 
     def stop_accepting(self) -> None:
         """Новые вопросы не принимаются, звучащие ответы доигрываются.
@@ -183,6 +181,7 @@ class DeviceHub(CoreTurns):
         logger.info("device %s connected from %s", session.device_id, remote)
         info = {"device_id": session.device_id, "name": self.device_name(session.device_id)}
         self._publish("device_connected", {**info, "remote": remote, "fw": fw, "protocol": session.protocol})
+        self._send_volume(session)
         if old is not None:
             self._end_session(old)
             self._spawn(close_quietly(old.conn), f"closing old session of {old.device_id}")

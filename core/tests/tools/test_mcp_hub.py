@@ -40,6 +40,18 @@ async def test_person_goes_to_meta(hub: McpHub):
     assert (await hub.call("whoami", {}, None)).text == "никто"
 
 
+async def test_turn_context_gives_person_and_speaker(hub: McpHub):
+    from smartesp.contracts import CALL_CONTEXT, CallContext
+
+    await hub.start([spec("a")])
+    token = CALL_CONTEXT.set(CallContext("Аня", "AA:BB"))
+    try:
+        assert (await hub.call("whoami", {}, None)).text == "Аня@AA:BB"  # «сделай погромче» — эта колонка
+        assert (await hub.call("whoami", {}, "Даша")).text == "Даша@AA:BB"  # явный человек важнее
+    finally:
+        CALL_CONTEXT.reset(token)
+
+
 async def test_environment_and_data_dir(hub: McpHub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("SMARTESP_TEST_CORE_ENV", "ядро")
     await hub.start([spec("a", FOO="bar")])
@@ -174,3 +186,23 @@ async def test_connector_of_tool_name(hub: McpHub):
     assert hub.connector_of("echo") == "a"
     assert hub.connector_of("b_echo") == "b"
     assert hub.connector_of("nope") == ""
+
+
+async def test_core_api_env_only_for_connectors_that_ask(tmp_path):
+    from dataclasses import replace
+
+    hub = McpHub(tmp_path, client_env={"SMARTESP_URL": "http://127.0.0.1:9", "SMARTESP_TOKEN": "t"})
+    await hub.start([replace(spec("a"), core_api=True), spec("b")])
+    url = await hub.call("env", {"name": "SMARTESP_URL"}, None)
+    assert url.text.endswith("|http://127.0.0.1:9")  # имя инструмента у «a» — без префикса
+    plain = await hub.call("b_env", {"name": "SMARTESP_URL"}, None)
+    assert plain.text.endswith("|")  # «b» не просил — адреса ядра нет
+    await hub.aclose()
+
+
+def test_speakers_connector_asks_for_core_api():
+    from smartesp.config import Config
+    from smartesp.config.manifest import wants_core_api
+
+    by_id = {c.id: c for c in Config().connectors}
+    assert wants_core_api(by_id["speakers"]) and not wants_core_api(by_id["calc"])

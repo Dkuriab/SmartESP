@@ -85,7 +85,7 @@ describe('TrainPanel', () => {
   it('«На колонку» ставит модель прогона на колонку с прошивкой 0.5.0+', async () => {
     const actions = makeActions()
     actions.loadRuns = vi.fn().mockResolvedValue(runs)
-    const devices = [{ device_id: 'k', name: 'Кухня', connected: true, remote: '', fw: '0.5.0', protocol: 4 }]
+    const devices = [{ device_id: 'k', name: 'Кухня', connected: true, remote: '', fw: '0.5.0', protocol: 4, volume: 50 }]
     render(<TrainPanel kit={kit} state={makeState({ status: makeStatus({ devices }) })} actions={actions} />)
     const best = await screen.findByText('★ 22.11 12:00')
     await userEvent.click(within(best.closest('tr') as HTMLElement).getByRole('button', { name: 'На колонку' }))

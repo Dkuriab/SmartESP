@@ -2429,6 +2429,11 @@
                 "type": "null"
               }
             ]
+          },
+          "volume": {
+            "type": "integer",
+            "title": "Volume",
+            "default": 50
           }
         },
         "type": "object",

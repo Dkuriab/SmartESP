@@ -790,6 +790,11 @@ export interface components {
              */
             protocol: number;
             update?: components["schemas"]["UpdateOut"] | null;
+            /**
+             * Volume
+             * @default 50
+             */
+            volume: number;
         };
         /**
          * DownloadIn

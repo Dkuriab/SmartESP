@@ -33,8 +33,8 @@ export function makeStatus(over: Partial<Status> = {}): Status {
     state: 'ready',
     ollama: { reachable: true, loaded: [] },
     devices: [
-      { device_id: 'a', name: 'Кухня', connected: true, remote: '', fw: '', protocol: 2 },
-      { device_id: 'b', name: 'Спальня', connected: false, remote: '', fw: '', protocol: 2 },
+      { device_id: 'a', name: 'Кухня', connected: true, remote: '', fw: '', protocol: 2, volume: 50 },
+      { device_id: 'b', name: 'Спальня', connected: false, remote: '', fw: '', protocol: 2, volume: 50 },
     ],
     voice: {} as Status['voice'],
     applying: false,

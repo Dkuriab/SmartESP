@@ -16,10 +16,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from smartesp.contracts import (
+    CALL_CONTEXT,
     Analyzer,
     Annotation,
     Answer,
     AskUnavailable,
+    CallContext,
     ChatMessage,
     Executor,
     ExecutorError,
@@ -224,6 +226,7 @@ class ApiTurns:
         """Читает ответ сети целиком (с передачами) в turn; сбой исполнителя — ход с ошибкой."""
         turn.path = [handoffs.entry_id(executor)]
         try:
+            CALL_CONTEXT.set(CallContext(turn.person or None, ""))  # ход через API: колонки нет
             async with closing(watched(executor.run(messages))) as stream:
                 first = await first_part(
                     stream, _no_signal, self._first_part_limit_s, self._first_part_limit_s

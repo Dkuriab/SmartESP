@@ -30,3 +30,11 @@ def test_overdue_and_many_tasks_are_short() -> None:
     tasks: list[tuple[str, float | None]] = [(f"т{i}", 900.0) for i in range(7)]
     soon = ", ".join(f"т{i} (вот-вот)" for i in range(5))
     assert describe_tasks(tasks, 1000.0) == f"{soon}, и ещё 2"
+
+
+async def test_speaker_volumes_are_in_reference() -> None:
+    facts = SystemFacts()
+    snapshot = SystemSnapshot([], [], [("Кухня", 70), ("Спальня", 20)])
+    facts.use(lambda: snapshot)
+    notes = await SystemState(facts).analyze(_utterance())
+    assert ("громкость колонок", "Кухня 70 %, Спальня 20 %") in [(n.label, n.text) for n in notes]

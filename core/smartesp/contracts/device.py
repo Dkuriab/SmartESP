@@ -38,6 +38,7 @@ class DeviceInfo:
     last_seen: float | None  # time.time() последнего кадра; None — колонка не подключалась
     protocol: int = 0  # версия протокола последней сессии; 0 — колонка не подключалась
     update: UpdateProgress | None = None  # последнее обновление по воздуху; None — не было
+    volume: int = 50  # громкость из настроек, % (её ядро шлёт колонке при подключении и при правке)
 
 
 class DevicePort(Protocol):

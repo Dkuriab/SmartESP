@@ -30,3 +30,4 @@ class ConnectorSpec:
     env: Mapping[str, str] = field(default_factory=dict[str, str])
     enabled: bool = True
     kind: ConnectorKind = "mcp"
+    core_api: bool = False  # передать адрес и токен API ядра (объявлено в smartesp.json коннектора)

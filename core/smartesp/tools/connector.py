@@ -55,8 +55,10 @@ class Connector:
         on_change: Callable[[], None],
         start_timeout_s: float,
         restart_delays_s: tuple[float, ...],
+        core_env: dict[str, str] | None = None,
     ) -> None:
         self.spec = spec
+        self._core_env = dict(core_env or {}) if spec.core_api else {}  # адрес и токен API ядра
         self.state: StateName = "starting" if spec.enabled else "disabled"
         self.error = ""
         self.tools: tuple[types.Tool, ...] = ()  # последний полученный список (держится и при падении)
@@ -102,13 +104,16 @@ class Connector:
         self._session = None
 
     async def call(
-        self, tool: str, arguments: dict[str, object], person: str | None, timeout: float
+        self, tool: str, arguments: dict[str, object], context: dict[str, str], timeout: float
     ) -> ToolResult:
-        """Вызывает инструмент коннектора; ошибки и таймаут — ToolResult(is_error=True)."""
+        """Вызывает инструмент коннектора; context — `_meta` вызова (person, device); ошибки и таймаут —
+        ToolResult(is_error=True)."""
         session = self._session
         if session is None or self.state != "ready":
             return ToolResult(f"Коннектор «{self.spec.name}» недоступен.", is_error=True)
-        meta: types.RequestParamsMeta | None = {"person": person} if person is not None else None
+        meta: types.RequestParamsMeta | None = (
+            cast(types.RequestParamsMeta, dict(context)) if context else None
+        )
         try:
             async with asyncio.timeout(timeout + CALL_GRACE_S):
                 result = await session.call_tool(
@@ -207,7 +212,7 @@ class Connector:
 
     def _env(self) -> dict[str, str]:
         """Окружение подпроцесса: окружение ядра + env из настроек + папка данных."""
-        return {**os.environ, **self.spec.env, DATA_ENV: str(self._data_dir)}
+        return {**os.environ, **self.spec.env, **self._core_env, DATA_ENV: str(self._data_dir)}
 
     async def _log(self, params: types.LoggingMessageNotificationParams) -> None:
         handle_log(params, self.spec.id, self._on_announce, self._tasks)

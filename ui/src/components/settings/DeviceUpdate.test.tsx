@@ -13,6 +13,7 @@ const device = (over: Partial<Device> = {}): Device => ({
   remote: '',
   fw: '0.5.0',
   protocol: 4,
+  volume: 50,
   ...over,
 })
 

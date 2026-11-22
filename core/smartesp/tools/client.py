@@ -71,7 +71,7 @@ class ClientProcess:
         await self._settled.wait()
 
     async def call(
-        self, tool: str, arguments: dict[str, object], person: str | None, timeout: float
+        self, tool: str, arguments: dict[str, object], context: dict[str, str], timeout: float
     ) -> ToolResult:
         """У клиента нет инструментов."""
         return ToolResult(f"У «{self.spec.name}» нет инструментов.", is_error=True)

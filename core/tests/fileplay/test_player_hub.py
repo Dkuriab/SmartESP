@@ -71,7 +71,7 @@ async def test_stop_sends_cancel_turn(hub: DeviceHub, tmp_path: Path) -> None:
     player = FilePlayer(hub, hub.devices, decode, events=events, tmp_dir=tmp_path)
     await player.play_file("A", upload())
     await eventually(lambda: FIRST in conn.sent)
-    assert conn.sent[0] == ANNOUNCE_T1
+    assert [m for m in conn.sent if '"volume"' not in str(m)][0] == ANNOUNCE_T1
     assert await player.stop_file("A") is True
     await eventually(lambda: CANCEL_T1 in conn.sent)
     assert finished(events) == ["interrupted"]

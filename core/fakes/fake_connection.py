@@ -41,7 +41,9 @@ class FakeConnection:
 
     def sent_json(self) -> list[dict[str, Any]]:
         """Отправленные текстовые сообщения, разобранные из JSON."""
-        return [json.loads(m) for m in self.sent if isinstance(m, str)]
+        # громкость хаб шлёт сам при подключении — в проверках ходов она не нужна
+        frames = [json.loads(m) for m in self.sent if isinstance(m, str)]
+        return [f for f in frames if f.get("type") != "volume"]
 
     def sent_audio(self) -> bytes:
         """Весь отправленный звук подряд."""

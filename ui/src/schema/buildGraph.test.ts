@@ -29,7 +29,7 @@ describe('buildGraph', () => {
 
   it('nameless device is labelled by MAC', () => {
     const status = makeStatus({
-      devices: [{ device_id: 'aa:bb:cc', name: '', connected: true, remote: '', fw: '', protocol: 2 }],
+      devices: [{ device_id: 'aa:bb:cc', name: '', connected: true, remote: '', fw: '', protocol: 2, volume: 50 }],
     })
     expect(node(buildGraph(makeState({ status })), 'device:aa:bb:cc')?.data.label).toBe('aa:bb:cc')
   })

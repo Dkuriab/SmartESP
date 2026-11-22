@@ -69,9 +69,12 @@ def receive(ws: WebSocketTestSession, timeout: float = RECEIVE_TIMEOUT_S) -> dic
 
 def receive_json(ws: WebSocketTestSession) -> dict[str, Any]:
     """Ждёт текстовое сообщение протокола и разбирает его."""
-    message = receive(ws)
-    assert message.get("text") is not None, message
-    return json.loads(message["text"])
+    while True:
+        message = receive(ws)
+        assert message.get("text") is not None, message
+        data = json.loads(message["text"])
+        if data.get("type") != "volume":  # громкость хаб шлёт сам при подключении
+            return data
 
 
 def receive_reply(ws: WebSocketTestSession, turn: int) -> tuple[list[dict[str, Any]], bytes]:
@@ -85,6 +88,8 @@ def receive_reply(ws: WebSocketTestSession, turn: int) -> tuple[list[dict[str, A
             audio += message["bytes"]
             continue
         data = json.loads(message["text"])
+        if data.get("type") == "volume":  # громкость при подключении — не часть ответа
+            continue
         texts.append(data)
         if data == {"type": "reply_end", "turn": turn}:
             return texts, bytes(audio)
@@ -151,7 +156,7 @@ def test_disconnect_mid_reply_is_quiet(tmp_path: Path, caplog: pytest.LogCapture
         with client.websocket_connect("/device") as ws:
             ws.send_json(HELLO)
             ask(ws, 1)
-            assert json.loads(receive(ws)["text"]) == {"type": "reply_start", "turn": 1}
+            assert receive_json(ws) == {"type": "reply_start", "turn": 1}
             assert receive(ws).get("bytes")  # пошёл звук — рвём связь посреди ответа
         hub = core.hub
         deadline = time.monotonic() + RECEIVE_TIMEOUT_S

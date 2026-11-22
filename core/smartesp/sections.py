@@ -26,8 +26,16 @@ class BuildAnswering(Protocol):
     def __call__(self, config: Config, *, warm: bool = True) -> Awaitable[Answering]: ...
 
 
-async def _device_names(config: Config) -> dict[str, str]:
-    return {device_id: device.name for device_id, device in config.devices.items()}
+async def _devices(config: Config) -> tuple[dict[str, str], dict[str, int]]:
+    """Имена (пустое — не задано: колонка подписана MAC) и громкость колонок из настроек."""
+    names = {device_id: device.name for device_id, device in config.devices.items() if device.name}
+    return names, {device_id: device.volume for device_id, device in config.devices.items()}
+
+
+def _apply_devices(hub: DeviceHub, value: object) -> None:
+    names, volumes = cast(tuple[dict[str, str], dict[str, int]], value)
+    hub.set_names(names)
+    hub.set_volumes(volumes)
 
 
 async def _history_limits(config: Config) -> tuple[int, int]:
@@ -69,7 +77,7 @@ def live_sections(
     cold = functools.partial(build_answering, warm=False)
     answering = Section(build_answering, live.use, live.release, refresh=cold)
     return {
-        "devices": Section(_device_names, lambda names: hub.set_names(cast(dict[str, str], names))),
+        "devices": Section(_devices, functools.partial(_apply_devices, hub)),
         "history": Section(_history_limits, lambda new: history.set_limits(*cast(tuple[int, int], new))),
         "executors": answering,
         "stages": answering,  # правила обработчиков в промптах: пересобираем и сеть

@@ -30,6 +30,8 @@ from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
 from .tasks import TaskBoard, TaskInfo, TaskReport, TaskStatus
 from .tools import (
+    CALL_CONTEXT,
+    CallContext,
     ConnectorKind,
     ConnectorState,
     ConnectorStateName,
@@ -71,6 +73,8 @@ __all__ = [
     "ChatMessage",
     "ChoosesThinking",
     "ConfigStore",
+    "CALL_CONTEXT",
+    "CallContext",
     "ConnectorKind",
     "ConnectorState",
     "Suggestion",
