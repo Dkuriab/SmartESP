@@ -110,6 +110,7 @@ class FakeCore:
                     "protocol": 3,
                     "update": None,
                     "volume": 50,
+                    "echo": None,
                 }
             ],
             "voice": self.voice_state,

@@ -5,12 +5,13 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
-from smartesp.contracts import StreamCommand, StreamListener, StreamReport
+from smartesp.contracts import STREAM_RATE, StreamCommand, StreamListener, StreamReport
 
 from .messages import stream as stream_frame
 from .session import Session
 
 STREAM_PROTOCOL = 5  # с этой версии (прошивка 0.6.0) колонка сама тянет поток по ссылке
+CORE_RATES = (16000, 48000)  # частоты потоков, которые умеет ядро (ffmpeg -ar)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,12 @@ class StreamRelay:
         """Колонка подключена и её протокол ≥ 5."""
         session = self._session(device_id)
         return session is not None and session.protocol >= STREAM_PROTOCOL
+
+    def rate(self, device_id: str) -> int:
+        """Наибольшая частота, которую умеют и ядро, и колонка (hello stream_rates); нет — 16 кГц."""
+        session = self._session(device_id)
+        common = set(CORE_RATES) & set(session.stream_rates if session is not None else ())
+        return max(common, default=STREAM_RATE)
 
     async def send(self, device_id: str, command: StreamCommand) -> bool:
         """Шлёт команду; False — колонка не подключена, протокол < 5 или связь оборвалась."""

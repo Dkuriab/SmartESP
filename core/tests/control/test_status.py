@@ -31,6 +31,7 @@ async def test_status_collects_summary() -> None:
                 "protocol": 3,
                 "update": None,
                 "volume": 50,
+                "echo": None,
             }
         ],
         "voice": {"kind": "silero", "voice": "xenia", "state": "ready", "error": None},

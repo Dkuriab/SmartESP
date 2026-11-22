@@ -200,6 +200,7 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str, logs: Lo
         sounds=parts.sounds,
         people=parts.people,
         streams=parts.streams,
+        echo=parts.hub,  # калибровка эха: колонка играет шум и сама ищет сдвиг образца
     )
     app.include_router(api)
     app.add_middleware(BodyLimit, token=token)  # предел тела и токен ходов через API — до чтения тела

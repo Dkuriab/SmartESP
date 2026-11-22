@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from smartesp.contracts import (
     ChangeResult,
     CorePort,
+    EchoPort,
     EventFeed,
     ExecutorError,
     FilePlayback,
@@ -30,6 +31,7 @@ from .access import lan_addresses
 from .ask import add_ask_routes
 from .auth import require_token, token_matches
 from .core_routes import add_core_routes
+from .echo import add_echo_routes
 from .log_buffer import LogBuffer
 from .logs import add_logs_route
 from .people import add_people_routes
@@ -79,13 +81,14 @@ def create_api(
     sounds: SoundsPort | None = None,
     people: PeoplePort | None = None,
     streams: SpeakerStreams | None = None,
+    echo: EchoPort | None = None,
 ) -> APIRouter:
     """Собирает роутер `/api/v1`; все ресурсы требуют токен.
 
     `port` — порт сервера для адресов входа; `files` — проигрывание файлов на колонках;
     `logs` — журнал для WebSocket `/logs`; `tasks` — реестр «В работе» (None — пусто);
     `training` — обучение моделей (None — наборов нет); `updates` — обновления колонок по воздуху;
-    `sounds` — свои звуки сигналов колонок (None — недоступны).
+    `sounds` — свои звуки сигналов колонок (None — недоступны); `echo` — калибровка эха колонок.
     `people` — люди и узнавание голоса (None — людей нет).
     `streams` — потоки звука на колонках (None — нет).
     """
@@ -102,6 +105,7 @@ def create_api(
     add_sounds_routes(secured, sounds)
     add_people_routes(secured, people)
     add_stream_routes(secured, streams)
+    add_echo_routes(secured, echo)
     add_core_routes(secured, core, port)
     _add_access_route(secured, token, port)
     router.include_router(secured)

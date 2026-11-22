@@ -144,7 +144,7 @@ class Streams:
         queue = self._queues.get(ticket.device_id) if ticket is not None else None
         if ticket is None or queue is None or queue.stream != ticket.stream:
             return None
-        pcm = self._decode(ticket.source, ticket.start_s)
+        pcm = self._decode(ticket.source, ticket.start_s, ticket.rate)
         try:
             async with asyncio.timeout(self._first_chunk_s):
                 first = await anext(pcm)

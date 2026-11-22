@@ -61,6 +61,7 @@ def test_arguments_per_kind() -> None:
     assert file[file.index("-ss") + 1] == "12.500" and file[file.index("-i") + 1] == "file:/Music/a.mp3"
     assert file[file.index("-protocol_whitelist") + 1] == "file"
     assert file[-3:] == ["-ar", "16000", "pipe:1"]
+    assert arguments("ff", "/Music/a.mp3", 0.0, 48000)[-3:] == ["-ar", "48000", "pipe:1"]
     radio = arguments("ff", "https://r/x", 99.0)
     assert (
         "-ss" not in radio
@@ -92,8 +93,8 @@ async def test_probe_explains_missing_parts(tmp_path: Path) -> None:
 async def test_decoder_streams_whole_samples(tmp_path: Path) -> None:
     program = fake_ffmpeg(tmp_path, LISTING, pcm=b"\x01\x02\x03\x04\x05")
     decode = ffmpeg_decoder(lambda: program)
-    pcm = b"".join([chunk async for chunk in decode("capture:blackhole", 0.0)])
+    pcm = b"".join([chunk async for chunk in decode("capture:blackhole", 0.0, 16000)])
     assert pcm == b"\x01\x02\x03\x04"  # нечётный хвост отброшен
     assert "-f avfoundation -i :1" in (tmp_path / "args").read_text()
-    assert [chunk async for chunk in ffmpeg_decoder(lambda: None)("/a.mp3", 0.0)] == []
-    assert [chunk async for chunk in decode("capture:Loopback", 0.0)] == []  # устройства нет
+    assert [chunk async for chunk in ffmpeg_decoder(lambda: None)("/a.mp3", 0.0, 16000)] == []
+    assert [chunk async for chunk in decode("capture:Loopback", 0.0, 48000)] == []  # устройства нет

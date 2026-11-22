@@ -48,6 +48,7 @@ class Session:
         self.protocol = protocol
         self.caps = hello.caps if hello is not None else frozenset[str]()  # возможности из hello
         self.sounds = dict(hello.sounds) if hello is not None else {}  # SHA-256 своих звуков из hello
+        self.stream_rates = hello.stream_rates if hello is not None else ()  # частоты потоков из hello
         self.recording: Recording | None = None
         self.active: ActiveTurn | None = None
         self.progress: ReplyProgress | None = None  # звук последнего начатого ответа

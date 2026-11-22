@@ -4,31 +4,17 @@ from __future__ import annotations
 
 import json
 import math
-import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from smartesp.contracts import StreamReport
 
+from .echo_status import EchoStatus, parse_echo_status
+from .hello import Hello, parse_hello
+
 MAX_TURN = 0xFFFFFFFF  # ход — uint32
 MAX_BYTES = 0xFFFFFFFF  # счётчик доигранного в played — uint32
 LOWEST_LEVEL = -1000.0  # громкость для NaN/бесконечности/переполнения: слово участвует, но проигрывает
-SHA256 = re.compile(r"[0-9a-f]{64}")
-
-
-@dataclass(frozen=True)
-class Hello:
-    """Приветствие колонки. Прошивка v1 не шлёт device_id: тогда None и protocol=1.
-
-    caps — возможности сверх протокола («sounds» — свои звуки, прошивка 0.6.0); sounds — SHA-256
-    своих звуков по сигналу (нет сигнала — встроенный). Неверные элементы пропускаются.
-    """
-
-    device_id: str | None
-    fw: str
-    protocol: int
-    caps: frozenset[str] = frozenset()
-    sounds: dict[str, str] = field(default_factory=dict[str, str])
 
 
 @dataclass(frozen=True)
@@ -97,7 +83,16 @@ class UpdateStatus:
 STREAM_STATES = ("playing", "ended", "stopped", "failed")  # stream_status (протокол 5)
 
 DeviceMessage = (
-    Hello | Wake | UtteranceEnd | BargeIn | PlaybackDone | Busy | Played | UpdateStatus | StreamReport
+    Hello
+    | Wake
+    | UtteranceEnd
+    | BargeIn
+    | PlaybackDone
+    | Busy
+    | Played
+    | UpdateStatus
+    | StreamReport
+    | EchoStatus
 )
 
 
@@ -127,33 +122,6 @@ def _level(data: dict[str, Any]) -> tuple[bool, float | None]:
     if not math.isfinite(value):  # NaN и бесконечности ломают сравнение в арбитраже
         return True, LOWEST_LEVEL
     return True, value
-
-
-def _parse_hello(data: dict[str, Any]) -> Hello | None:
-    fw = data.get("fw")
-    if not isinstance(fw, str):
-        return None
-    device_id = data.get("device_id")
-    if device_id is not None and not isinstance(device_id, str):
-        return None
-    protocol = data.get("protocol", 1)
-    if isinstance(protocol, bool) or not isinstance(protocol, int):
-        return None
-    return Hello(device_id, fw, protocol, _caps(data.get("caps")), _sounds(data.get("sounds")))
-
-
-def _caps(value: Any) -> frozenset[str]:
-    """Возможности из hello: только строки; не список — пусто."""
-    items: list[Any] = value if isinstance(value, list) else []  # pyright: ignore[reportUnknownVariableType]
-    return frozenset(item for item in items if isinstance(item, str))
-
-
-def _sounds(value: Any) -> dict[str, str]:
-    """Хэши звуков из hello: сигнал → SHA-256 (64 строчных шестнадцатеричных); прочее пропускается."""
-    items: dict[Any, Any] = value if isinstance(value, dict) else {}  # pyright: ignore[reportUnknownVariableType]
-    return {
-        k: v for k, v in items.items() if isinstance(k, str) and isinstance(v, str) and SHA256.fullmatch(v)
-    }
 
 
 def _parse_wake(data: dict[str, Any]) -> Wake | None:
@@ -238,7 +206,7 @@ def _parse_stream_status(data: dict[str, Any]) -> StreamReport | None:
 
 
 _PARSERS = {
-    "hello": _parse_hello,
+    "hello": parse_hello,
     "wake": _parse_wake,
     "utterance_end": _parse_utterance_end,
     "barge_in": _parse_barge_in,
@@ -247,6 +215,7 @@ _PARSERS = {
     "played": _parse_played,
     "update_status": _parse_update_status,
     "stream_status": _parse_stream_status,
+    "echo_status": parse_echo_status,
 }
 
 
