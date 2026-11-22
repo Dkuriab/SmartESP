@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator, Callable, Iterable
+from dataclasses import replace
 
 from smartesp.contracts import DeviceInfo, EventSink, Utterance
 
@@ -16,6 +17,7 @@ from .messages import (
     Busy,
     PlaybackDone,
     Played,
+    UpdateStatus,
     UtteranceEnd,
     Wake,
     cancel_turn,
@@ -115,7 +117,8 @@ class DeviceHub(CoreTurns):
 
     def devices(self) -> list[DeviceInfo]:
         """Подключённые и известные по настройкам колонки, по имени."""
-        return self._registry.devices(set(self._sessions))
+        devices = self._registry.devices(set(self._sessions))
+        return [replace(d, update=self._updates.get(d.device_id)) for d in devices]
 
     def stop_accepting(self) -> None:
         """Новые вопросы не принимаются, звучащие ответы доигрываются.
@@ -221,6 +224,8 @@ class DeviceHub(CoreTurns):
             self._on_busy(session, message.turn)
         elif isinstance(message, Played):
             self._on_played(session, message)
+        elif isinstance(message, UpdateStatus):
+            self._updates.apply(session.device_id, message)
 
     def _on_wake(self, session: Session, wake: Wake) -> None:
         """Новый ход: прежний заканчивается, звук копится, решает арбитр. При остановке — сразу отмена."""

@@ -7,7 +7,7 @@
 namespace {
 
 constexpr int SAMPLE_RATE = 16000;
-constexpr int PROTOCOL_VERSION = 3;
+constexpr int PROTOCOL_VERSION = 4;  // 4: команда update и событие update_status
 
 const char* eventTypeName(ClientEventType type) {
   switch (type) {
@@ -17,8 +17,82 @@ const char* eventTypeName(ClientEventType type) {
     case ClientEventType::PlaybackDone: return "playback_done";
     case ClientEventType::Busy: return "busy";
     case ClientEventType::Played: return "played";
+    case ClientEventType::UpdateStatus: return "update_status";
   }
   return "";
+}
+
+const char* updateKindName(UpdateKind kind) {
+  return kind == UpdateKind::Firmware ? "firmware" : "model";
+}
+
+const char* updateStateName(UpdateState state) {
+  switch (state) {
+    case UpdateState::Progress: return "progress";
+    case UpdateState::Done: return "done";
+    case UpdateState::Failed: return "failed";
+  }
+  return "";
+}
+
+const char* updateErrorName(UpdateError error) {
+  switch (error) {
+    case UpdateError::None: return "";
+    case UpdateError::Busy: return "busy";
+    case UpdateError::Download: return "download";
+    case UpdateError::Size: return "size";
+    case UpdateError::Hash: return "hash";
+    case UpdateError::Write: return "write";
+    case UpdateError::Storage: return "storage";
+  }
+  return "";
+}
+
+// Строка из JSON в буфер (с нулём); нет, не строка или длиннее буфера — false.
+bool readText(const JsonDocument& doc, const char* key, char* out, size_t capacity) {
+  const char* value = doc[key] | static_cast<const char*>(nullptr);
+  if (!value || strlen(value) + 1 > capacity) {
+    return false;
+  }
+  strcpy(out, value);
+  return true;
+}
+
+bool isHex64(const char* text) {
+  if (strlen(text) != 64) return false;
+  for (const char* p = text; *p; ++p) {
+    const bool hex = (*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f');
+    if (!hex) return false;
+  }
+  return true;
+}
+
+// Команда update: что, путь к файлу, размер, SHA-256; для модели — порог, окно, арена, слово.
+bool readUpdate(const JsonDocument& doc, UpdateRequest& out) {
+  const char* what = doc["what"] | "";
+  if (strcmp(what, "firmware") == 0) {
+    out.kind = UpdateKind::Firmware;
+  } else if (strcmp(what, "model") == 0) {
+    out.kind = UpdateKind::Model;
+  } else {
+    return false;
+  }
+  JsonVariantConst size = doc["size"];
+  if (!size.is<uint32_t>() || size.as<uint32_t>() == 0) return false;
+  out.size = size.as<uint32_t>();
+  if (!readText(doc, "path", out.path, sizeof(out.path)) || out.path[0] != '/') return false;
+  if (!readText(doc, "sha256", out.sha256, sizeof(out.sha256)) || !isHex64(out.sha256)) return false;
+  if (out.kind == UpdateKind::Firmware) return true;
+  JsonVariantConst cutoff = doc["cutoff"];
+  JsonVariantConst window = doc["window"];
+  JsonVariantConst arena = doc["arena"];
+  if (!cutoff.is<float>() || !window.is<uint8_t>() || !arena.is<uint32_t>()) return false;
+  out.cutoff = cutoff.as<float>();
+  out.window = window.as<uint8_t>();
+  out.arena = arena.as<uint32_t>();
+  if (out.cutoff <= 0.0f || out.cutoff >= 1.0f || out.window == 0 || out.window > 32 || out.arena == 0) return false;
+  if (!readText(doc, "word", out.word, sizeof(out.word))) out.word[0] = '\0';
+  return true;
 }
 
 const char* reasonName(UtteranceEndReason reason) {
@@ -92,6 +166,14 @@ size_t encodeClientEvent(const ClientEvent& event, char* out, size_t capacity) {
   if (event.type == ClientEventType::Played) {
     doc["bytes"] = event.bytes;
   }
+  if (event.type == ClientEventType::UpdateStatus) {
+    doc.remove("turn");
+    doc["what"] = updateKindName(event.updateKind);
+    doc["state"] = updateStateName(event.updateState);
+    doc["done"] = event.bytes;
+    doc["total"] = event.total;
+    doc["error"] = updateErrorName(event.updateError);
+  }
   return serializeInto(doc, out, capacity);
 }
 
@@ -124,6 +206,9 @@ bool decodeServerCommand(const char* json, size_t length, ServerCommand& out) {
   } else if (strcmp(type, "listen") == 0) {
     cmd.type = ServerCommandType::Listen;
     if (!readTurn(doc, cmd.turn)) return false;
+  } else if (strcmp(type, "update") == 0) {
+    cmd.type = ServerCommandType::Update;
+    if (!readUpdate(doc, cmd.update)) return false;
   } else if (strcmp(type, "stop_playback") == 0) {
     cmd.type = ServerCommandType::StopPlayback;
   } else if (strcmp(type, "volume") == 0) {

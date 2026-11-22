@@ -99,3 +99,30 @@ def test_owner_targets_replace_defaults_and_are_checked(tmp_path: Path) -> None:
 def test_bad_targets_are_rejected(raw: object) -> None:
     with pytest.raises(ValueError):
         check_targets(raw)
+
+
+async def test_install_run_sends_model_with_manifest_values(tmp_path: Path) -> None:
+    installed: list[tuple[str, str, bytes, object]] = []
+
+    async def install(device_id: str, what: str, data: bytes, meta: object) -> None:
+        installed.append((device_id, what, data, meta))
+
+    async def record(device_id: str) -> bytes | None:
+        return None
+
+    training = Training(_kit(tmp_path), tmp_path / "data", record, lambda d: False, install)  # type: ignore[arg-type]
+    run = tmp_path / "data" / "ww" / "runs" / "20261122-120000-kuzya"
+    run.mkdir(parents=True)
+    (run / "model.tflite").write_bytes(b"TFL3")
+    manifest = {
+        "wake_word": "Кузя",
+        "model": "model.tflite",
+        "micro": {"probability_cutoff": 0.91, "sliding_window_size": 5, "tensor_arena_size": 30000},
+    }
+    (run / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), "utf-8")
+    await training.install_run("ww", run.name, "A")
+    assert installed == [
+        ("A", "model", b"TFL3", {"cutoff": 0.91, "window": 5, "arena": 30000, "word": "Кузя"})
+    ]
+    with pytest.raises(TrainingLookupError):
+        await training.install_run("ww", "нет", "A")

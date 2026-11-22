@@ -21,6 +21,7 @@ from smartesp.contracts import (
     TrainJob,
     TrainKit,
     TrainTarget,
+    UpdateRefusedError,
 )
 
 from .schemas import ErrorOut
@@ -68,6 +69,12 @@ class StepIn(BaseModel):
 
     target: str = ""
     run: str = ""
+
+
+class InstallIn(BaseModel):
+    """На какую колонку поставить модель прогона."""
+
+    device_id: str
 
 
 class JobOut(BaseModel):
@@ -129,7 +136,7 @@ def _http_errors() -> Iterator[None]:
         yield
     except TrainingLookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
-    except (RecordRefusedError, TrainingBusyError) as error:
+    except (RecordRefusedError, TrainingBusyError, UpdateRefusedError) as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except (NothingHeardError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -192,6 +199,11 @@ def _add_job_routes(secured: APIRouter, port: Callable[[], TrainingPort]) -> Non
     @secured.delete("/training/{kit}/job", status_code=204, responses=_ERRORS)
     async def stop_job(kit: str) -> None:
         await port().stop_job()
+
+    @secured.post("/training/{kit}/runs/{run}/install", status_code=202, responses=_ERRORS)
+    async def install_run(kit: str, run: str, body: InstallIn) -> None:
+        with _http_errors():
+            await port().install_run(kit, run, body.device_id)
 
     @secured.get("/training/{kit}/runs", responses=_ERRORS)
     def get_runs(kit: str) -> list[dict[str, Any]]:

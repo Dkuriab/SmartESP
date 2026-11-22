@@ -159,6 +159,8 @@ void Session::onServerCommand(const ServerCommand& command) {
         pushEventFor(ClientEventType::Busy, command.turn);
       }
       break;
+    case ServerCommandType::Update:
+      break;  // обновление — не сценарий: его ведёт updater (SmartEsp.ino)
   }
 }
 

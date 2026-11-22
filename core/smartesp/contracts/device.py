@@ -14,6 +14,19 @@ Delivery = Literal["delivered", "interrupted", "busy", "lost"]
 
 
 @dataclass(frozen=True)
+class UpdateProgress:
+    """Обновление колонки по воздуху: что (firmware | model), состояние (sent — команда ушла,
+    progress, done — записано, колонка перезагружается, failed), сколько скачано, ошибка, когда."""
+
+    what: str
+    state: str
+    done: int
+    total: int
+    error: str
+    at: float  # time.time() последнего изменения
+
+
+@dataclass(frozen=True)
 class DeviceInfo:
     """Сведения о колонке для интерфейса; remote, fw и last_seen — по последней сессии."""
 
@@ -24,6 +37,7 @@ class DeviceInfo:
     fw: str
     last_seen: float | None  # time.time() последнего кадра; None — колонка не подключалась
     protocol: int = 0  # версия протокола последней сессии; 0 — колонка не подключалась
+    update: UpdateProgress | None = None  # последнее обновление по воздуху; None — не было
 
 
 class DevicePort(Protocol):

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 
-from smartesp.api import BodyLimit, LogBuffer, create_api, mount_ui
+from smartesp.api import BodyLimit, LogBuffer, add_device_files, create_api, mount_ui
 from smartesp.config import Config, ConfigFile
 from smartesp.config.connectors import REPO_DIR
 from smartesp.contracts import Analyzer
@@ -48,6 +48,7 @@ from smartesp.stages import SYSTEM_FACTS, SystemSnapshot
 from smartesp.tasks import TaskRegistry
 from smartesp.tools import McpHub
 from smartesp.training import Training
+from smartesp.updates import Updates
 
 __all__ = ["Assembly", "Ollama", "assemble", "finish", "start", "stop"]
 
@@ -147,11 +148,13 @@ def assemble(
         lambda: live.executor is not None, lambda: parts.core.rebuild(ANSWERING_SECTIONS)
     )
     parts.files = files
+    parts.updates = Updates(home / "run" / "updates", hub.send_update)  # колонка качает файл сама
     parts.training = Training(  # наборы — в репозитории, данные — в папке данных
         REPO_DIR / "trainers",
         home / "training",
         hub.record,
         lambda device_id: hub.supports_proactive(device_id) and not hub.is_busy(device_id),
+        parts.updates.install,  # модель прогона — на колонку по воздуху
     )
     parts.app = _build_app(parts, token, ui_dir, version, logs)
     return parts
@@ -183,9 +186,11 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str, logs: Lo
         logs=logs,
         tasks=parts.tasks,
         training=parts.training,
+        updates=parts.updates,
     )
     app.include_router(api)
     app.add_middleware(BodyLimit, token=token)  # предел тела и токен ходов через API — до чтения тела
+    add_device_files(app, parts.updates)  # файлы обновлений для колонок (без токена API)
     mount_ui(app, ui_dir)  # последним: монтирование на / перехватывает всё, что объявлено позже
     return app
 

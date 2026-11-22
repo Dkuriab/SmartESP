@@ -3,7 +3,7 @@
 from .ask import Answer, AskUnavailable, AudioUndecodable, Question
 from .audio import SAMPLE_RATE, Utterance
 from .control import ChangeResult, ConfigStore, CorePort, Section, VoicePort
-from .device import Delivery, DeviceInfo, DevicePort
+from .device import Delivery, DeviceInfo, DevicePort, UpdateProgress
 from .events import CoreEvent, EventFeed, EventSink, Subscription
 from .executor import (
     CLOUD_MODEL_PREFIX,
@@ -55,6 +55,7 @@ from .training import (
     TrainTarget,
 )
 from .tts import TextToSpeech, VoiceInfo, VoiceNotDownloadedError
+from .updates import UpdatePort, UpdateRefusedError, UpdateWhat
 
 __all__ = [
     "CLOUD_MODEL_PREFIX",
@@ -78,6 +79,10 @@ __all__ = [
     "CoreEvent",
     "Delivery",
     "DeviceInfo",
+    "UpdatePort",
+    "UpdateProgress",
+    "UpdateRefusedError",
+    "UpdateWhat",
     "DevicePort",
     "EventFeed",
     "EventSink",

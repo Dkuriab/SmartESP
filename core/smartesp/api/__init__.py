@@ -6,11 +6,13 @@ from .log_buffer import LOG_FORMAT, LogBuffer
 from .redact import HideToken
 from .routes import create_api
 from .ui import mount_ui
+from .updates import add_device_files
 
 __all__ = [
     "LOG_FORMAT",
     "BodyLimit",
     "HideToken",
+    "add_device_files",
     "LogBuffer",
     "create_api",
     "load_or_create_token",

@@ -47,6 +47,57 @@ TEST(encode_hello) {
   CHECK_EQ(doc["sample_rate"].as<int>(), 16000);
   CHECK_EQ(std::string(doc["format"] | ""), "pcm_s16le");
   CHECK_EQ(doc["channels"].as<int>(), 1);
+  CHECK_EQ(doc["protocol"].as<int>(), 4);  // 4: колонка умеет обновляться по воздуху
+}
+
+TEST(encode_update_status) {
+  ClientEvent event{};
+  event.type = ClientEventType::UpdateStatus;
+  event.updateKind = UpdateKind::Model;
+  event.updateState = UpdateState::Failed;
+  event.updateError = UpdateError::Hash;
+  event.bytes = 1000;
+  event.total = 62304;
+  const JsonDocument doc = encodeAndParse(event);
+  CHECK_EQ(std::string(doc["type"] | ""), "update_status");
+  CHECK_EQ(std::string(doc["what"] | ""), "model");
+  CHECK_EQ(std::string(doc["state"] | ""), "failed");
+  CHECK_EQ(std::string(doc["error"] | ""), "hash");
+  CHECK_EQ(doc["done"].as<int>(), 1000);
+  CHECK_EQ(doc["total"].as<int>(), 62304);
+  CHECK(doc["turn"].isNull());
+}
+
+TEST(decode_update_firmware_and_model) {
+  const std::string sha(64, 'a');
+  ServerCommand cmd{};
+  const std::string firmware = R"({"type":"update","what":"firmware","path":"/device/files/x","size":2900000,"sha256":")" + sha + "\"}";
+  CHECK(decode(firmware.c_str(), cmd));
+  CHECK(cmd.type == ServerCommandType::Update);
+  CHECK(cmd.update.kind == UpdateKind::Firmware);
+  CHECK_EQ(cmd.update.size, 2900000u);
+  CHECK_EQ(std::string(cmd.update.path), "/device/files/x");
+  CHECK_EQ(std::string(cmd.update.sha256), sha);
+  const std::string model = R"({"type":"update","what":"model","path":"/f","size":62304,"sha256":")" + sha +
+                            R"(","cutoff":0.9,"window":5,"arena":30000,"word":"Кузя"})";
+  CHECK(decode(model.c_str(), cmd));
+  CHECK(cmd.update.kind == UpdateKind::Model);
+  CHECK_EQ(cmd.update.window, 5);
+  CHECK_EQ(cmd.update.arena, 30000u);
+  CHECK_EQ(std::string(cmd.update.word), "Кузя");
+  CHECK(cmd.update.cutoff > 0.89f && cmd.update.cutoff < 0.91f);
+}
+
+TEST(decode_update_rejects_bad) {
+  const std::string sha(64, 'a');
+  ServerCommand cmd{};
+  const std::string head = R"({"type":"update","what":"model","path":"/f","size":10,"sha256":")";
+  CHECK(!decode((head + sha + R"(","cutoff":0.9,"window":5})").c_str(), cmd));  // нет arena
+  CHECK(!decode((head + sha + R"(","cutoff":1.5,"window":5,"arena":1})").c_str(), cmd));
+  CHECK(!decode((head + "xyz" + R"(","cutoff":0.9,"window":5,"arena":1})").c_str(), cmd));  // не SHA-256
+  CHECK(!decode(R"({"type":"update","what":"rom","path":"/f","size":10,"sha256":"a"})", cmd));
+  const std::string relative = R"({"type":"update","what":"firmware","path":"http://evil","size":10,"sha256":")" + sha + "\"}";
+  CHECK(!decode(relative.c_str(), cmd));  // только путь на сервере ядра
 }
 
 TEST(encode_wake) {
@@ -248,7 +299,7 @@ TEST(hello_has_device_id_and_protocol) {
   CHECK(length > 0);
   const std::string json(buffer, length);
   CHECK(json.find("\"device_id\":\"AA:BB:CC:DD:EE:FF\"") != std::string::npos);
-  CHECK(json.find("\"protocol\":3") != std::string::npos);
+  CHECK(json.find("\"protocol\":4") != std::string::npos);
   JsonDocument doc;
   CHECK(!deserializeJson(doc, buffer, length));
   CHECK_EQ(std::string(doc["type"] | ""), "hello");
@@ -292,13 +343,13 @@ TEST(decode_announce) {
 
 // ---------- протокол v3 ----------
 
-TEST(hello_protocol_3) {
+TEST(hello_protocol_4) {
   char buffer[192];
   const size_t length = encodeHello("0.3.0", "AA:BB", buffer, sizeof(buffer));
   CHECK(length > 0);
   JsonDocument doc;
   CHECK(!deserializeJson(doc, buffer, length));
-  CHECK_EQ(doc["protocol"].as<int>(), 3);
+  CHECK_EQ(doc["protocol"].as<int>(), 4);
 }
 
 TEST(decode_listen) {

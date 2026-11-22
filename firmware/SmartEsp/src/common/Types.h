@@ -40,6 +40,52 @@ enum class UtteranceEndReason : uint8_t {
   NoSpeech,  // после слова так и не заговорили
 };
 
+// ---------- обновление по воздуху (updater) ----------
+
+enum class UpdateKind : uint8_t {
+  Firmware,  // новая прошивка: пишется во вторую половину флеша, затем перезагрузка
+  Model,     // новая модель слова: в LittleFS, затем перезагрузка
+};
+
+enum class UpdateState : uint8_t {
+  Progress,  // качается: done из total байт
+  Done,      // записано и проверено; сейчас перезагрузка
+  Failed,    // не вышло; колонка работает как раньше
+};
+
+enum class UpdateError : uint8_t {
+  None,
+  Busy,      // уже идёт другое обновление
+  Download,  // HTTP-ошибка или обрыв
+  Size,      // размер не тот, или не помещается
+  Hash,      // SHA-256 не совпал
+  Write,     // не записалось во флеш
+  Storage,   // нет файловой системы для модели
+};
+
+// Что обновить (команда update): файл с ядра по пути path на SERVER_HOST:SERVER_PORT.
+struct UpdateRequest {
+  UpdateKind kind;
+  uint32_t size;      // байт
+  char path[96];      // «/device/files/<токен>»
+  char sha256[65];    // 64 шестнадцатеричных символа
+  // только для Model — параметры из манифеста
+  float cutoff;
+  uint8_t window;
+  uint32_t arena;
+  char word[48];      // UTF-8, для журнала
+};
+
+// Модель слова, сохранённая обновлением (updater.loadModel); данные — в PSRAM, выровнены на 16 байт.
+struct StoredModel {
+  const uint8_t* data;
+  size_t size;
+  size_t arena;
+  float cutoff;
+  uint8_t window;
+  char word[48];
+};
+
 // hello шлёт сам server_link при подключении, поэтому его здесь нет.
 enum class ClientEventType : uint8_t {
   Wake,
@@ -48,6 +94,7 @@ enum class ClientEventType : uint8_t {
   PlaybackDone,
   Busy,    // ответ на announce/listen, когда колонка занята
   Played,  // сколько звука ответа уже доиграно (раз в ~0,5 с и перед playback_done)
+  UpdateStatus,  // ход и итог обновления по воздуху (updater)
 };
 
 struct ClientEvent {
@@ -55,7 +102,12 @@ struct ClientEvent {
   uint32_t turn;              // номер хода
   UtteranceEndReason reason;  // только для UtteranceEnd
   float level;                // дБFS, только для Wake
-  uint32_t bytes;             // только для Played: байт PCM ответа хода, отданных динамику
+  uint32_t bytes;             // для Played: байт PCM ответа хода, отданных динамику; для UpdateStatus — скачано
+  // только для UpdateStatus
+  UpdateKind updateKind;
+  UpdateState updateState;
+  UpdateError updateError;
+  uint32_t total;             // размер файла обновления, байт
 };
 
 // ---------- команды сервер → ESP ----------
@@ -70,6 +122,7 @@ enum class ServerCommandType : uint8_t {
   CancelTurn,  // ядро отменило ход
   Announce,    // ядро само начинает ответ
   Listen,      // ядро просит слушать (вопрос от самой колонки)
+  Update,      // ядро присылает обновление (прошивку или модель слова) — его делает updater
 };
 
 struct ServerCommand {
@@ -77,6 +130,7 @@ struct ServerCommand {
   uint32_t turn;  // для StopListening, ReplyStart, ReplyEnd, CancelTurn, Announce, Listen; иначе 0
   float volume;   // для Volume, 0..1
   Tone tone;      // для PlayTone
+  UpdateRequest update;  // для Update
 };
 
 // ---------- действия session → модули (выполняет SmartEsp.ino) ----------

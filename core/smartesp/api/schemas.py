@@ -14,6 +14,18 @@ class OllamaOut(BaseModel):
     loaded: list[str]
 
 
+class UpdateOut(BaseModel):
+    """Обновление колонки по воздуху: what — firmware | model; state — sent (команда ушла) | progress |
+    done (записано, колонка перезагружается) | failed; error — busy, download, size, hash, write, storage."""
+
+    what: str
+    state: str
+    done: int
+    total: int
+    error: str
+    at: float  # секунды Unix последнего изменения
+
+
 class DeviceOut(BaseModel):
     """Колонка в сводке."""
 
@@ -24,6 +36,7 @@ class DeviceOut(BaseModel):
     fw: str
     last_seen: float | None = None
     protocol: int = 0  # версия протокола последней сессии; 0 — колонку ещё не видели
+    update: UpdateOut | None = None  # последнее обновление по воздуху (протокол 4, прошивка 0.5.0+)
 
 
 class VoiceStateOut(BaseModel):

@@ -29,6 +29,7 @@ async def test_status_collects_summary() -> None:
                 "fw": "1.0",
                 "last_seen": 50.0,
                 "protocol": 3,
+                "update": None,
             }
         ],
         "voice": {"kind": "silero", "voice": "xenia", "state": "ready", "error": None},

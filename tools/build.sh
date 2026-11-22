@@ -11,4 +11,7 @@ FQBN="esp32:esp32:esp32s3:PartitionScheme=esp_sr_16,FlashSize=16M,PSRAM=opi"
 # Библиотеки с точными версиями (те же, что в README.md).
 $CLI lib install "WebSockets@2.7.2" "ArduinoJson@7.4.3" >/dev/null
 
-$CLI compile --fqbn "$FQBN" --warnings all "$ROOT/firmware/SmartEsp"
+# Готовый образ для обновления по воздуху (приложение → колонка → «Обновить прошивку»):
+# firmware/build/SmartEsp.ino.bin
+$CLI compile --fqbn "$FQBN" --warnings all --output-dir "$ROOT/firmware/build" "$ROOT/firmware/SmartEsp"
+echo "Образ для обновления по воздуху: $ROOT/firmware/build/SmartEsp.ino.bin"

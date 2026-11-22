@@ -108,6 +108,7 @@ class FakeCore:
                     "fw": "1.0",
                     "last_seen": 1.0,
                     "protocol": 3,
+                    "update": None,
                 }
             ],
             "voice": self.voice_state,

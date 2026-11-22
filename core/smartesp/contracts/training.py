@@ -143,3 +143,10 @@ class TrainingPort(Protocol):
     def runs(self, kit: str) -> list[dict[str, object]]:
         """Итоги прогонов набора (result.json без кривой), новые первыми."""
         ...
+
+    async def install_run(self, kit: str, run: str, device_id: str) -> None:
+        """Ставит модель прогона на колонку по воздуху (manifest.json и файл модели прогона).
+
+        Нет прогона или модели — TrainingLookupError; колонка не может — UpdateRefusedError.
+        """
+        ...

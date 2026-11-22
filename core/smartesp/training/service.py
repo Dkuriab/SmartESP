@@ -8,7 +8,7 @@ import logging
 import os
 import shutil
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import cast
 
@@ -22,6 +22,7 @@ from smartesp.contracts import (
     TrainJob,
     TrainKit,
     TrainTarget,
+    UpdateWhat,
 )
 
 from .jobs import StepJob
@@ -32,6 +33,8 @@ _log = logging.getLogger(__name__)
 MAX_PERSON = 40
 
 type Recorder = Callable[[str], Awaitable[bytes | None]]
+# (колонка, что, файл, параметры) → обновление по воздуху (Updates.install)
+type Installer = Callable[[str, UpdateWhat, bytes, Mapping[str, object] | None], Awaitable[None]]
 
 
 def _substitute(arg: str, values: dict[str, str]) -> str:
@@ -52,15 +55,21 @@ class Training:
     """Наборы из trainers/ (repo), данные — <home>/<набор>/: targets.json и recordings/."""
 
     def __init__(
-        self, trainers: Path, home: Path, record: Recorder, can_record: Callable[[str], bool]
+        self,
+        trainers: Path,
+        home: Path,
+        record: Recorder,
+        can_record: Callable[[str], bool],
+        install: Installer | None = None,
     ) -> None:
         """trainers — папка наборов в репозитории; home — ~/SmartEsp/training; record(колонка) —
         фраза с колонки PCM 16 кГц или None (DeviceHub.record); can_record(колонка) — колонка
-        подключена, свободна и умеет listen."""
+        подключена, свободна и умеет listen; install — обновление колонки по воздуху (Updates.install)."""
         self._trainers = trainers
         self._home = home
         self._record = record
         self._can_record = can_record
+        self._install = install
         self._jobs: dict[str, StepJob] = {}  # последний шаг каждого набора
         self._running: asyncio.Task[None] | None = None
 
@@ -198,3 +207,22 @@ class Training:
                 }
                 found.append({**entry, "run": path.parent.name})
         return found
+
+    async def install_run(self, kit: str, run: str, device_id: str) -> None:
+        """Модель прогона (manifest.json → файл модели, порог, окно, арена) — на колонку по воздуху."""
+        folder = self._home / self._spec(kit).id / "runs" / run
+        try:
+            manifest = json.loads((folder / "manifest.json").read_text("utf-8"))
+            micro = manifest["micro"]
+            model = (folder / str(manifest["model"])).read_bytes()
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise TrainingLookupError(f"нет модели прогона «{run}»") from error
+        if "/" in run or run.startswith(".") or self._install is None:
+            raise TrainingLookupError(f"нет прогона «{run}»")
+        meta = {
+            "cutoff": float(micro["probability_cutoff"]),
+            "window": int(micro["sliding_window_size"]),
+            "arena": int(micro["tensor_arena_size"]),
+            "word": str(manifest.get("wake_word", "")),
+        }
+        await self._install(device_id, "model", model, meta)

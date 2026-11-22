@@ -12,8 +12,9 @@
 #include "src/wifi_link/WifiLink.h"
 #include "src/server_link/ServerLink.h"
 #include "src/session/Session.h"
+#include "src/updater/Updater.h"
 
-constexpr const char* FW_VERSION = "0.4.0";
+constexpr const char* FW_VERSION = "0.5.0";
 constexpr size_t AUDIO_BLOCK = 512;  // 32 мс
 
 AudioOut audioOut;
@@ -23,6 +24,7 @@ WakeWord wakeWord;
 WifiLink wifiLink;
 ServerLink serverLink;
 Session session;
+Updater updater;
 
 int16_t micBlock[AUDIO_BLOCK];
 int16_t refBlock[AUDIO_BLOCK];
@@ -37,11 +39,23 @@ void setup() {
   audioIn.begin({.sckPin = 5, .wsPin = 4, .sdPin = 9},
                 [](int16_t* dst, size_t samples) { return audioOut.readReference(dst, samples); });
   voiceFrontend.begin({.vadSilenceMs = 500});
-  wakeWord.begin({.model = WAKE_MODEL_DATA,
-                  .modelSize = WAKE_MODEL_SIZE,
-                  .arenaSize = WAKE_MODEL_ARENA_SIZE,
-                  .cutoff = WAKE_MODEL_CUTOFF,
-                  .window = WAKE_MODEL_WINDOW});
+  // Модель слова: присланная обновлением (если есть и запускается), иначе — встроенная.
+  updater.begin({.host = SERVER_HOST, .port = SERVER_PORT});
+  StoredModel stored{};
+  const bool fromUpdate =
+      updater.loadModel(stored) && wakeWord.begin({.model = stored.data,
+                                                   .modelSize = stored.size,
+                                                   .arenaSize = stored.arena,
+                                                   .cutoff = stored.cutoff,
+                                                   .window = stored.window});
+  if (!fromUpdate) {
+    updater.forgetModel();
+    wakeWord.begin({.model = WAKE_MODEL_DATA,
+                    .modelSize = WAKE_MODEL_SIZE,
+                    .arenaSize = WAKE_MODEL_ARENA_SIZE,
+                    .cutoff = WAKE_MODEL_CUTOFF,
+                    .window = WAKE_MODEL_WINDOW});
+  }
   wifiLink.begin(WIFI_SSID, WIFI_PASSWORD);
   serverLink.begin(SERVER_HOST, SERVER_PORT, "/device", FW_VERSION);
   session.begin({});
@@ -88,11 +102,22 @@ void loop() {
     audioOut.write(audioBlock, n);
   }
 
-  // Команды сервера → сценарий.
+  // Команды сервера → сценарий; обновление по воздуху → updater.
   ServerCommand command;
   while (serverLink.pollCommand(command)) {
-    session.onServerCommand(command);
+    if (command.type == ServerCommandType::Update) {
+      updater.start(command.update);
+    } else {
+      session.onServerCommand(command);
+    }
   }
+
+  // Ход и итог обновления → сервер; после успеха updater перезагрузит колонку.
+  ClientEvent updateEvent;
+  while (updater.pollStatus(updateEvent)) {
+    serverLink.sendEvent(updateEvent);
+  }
+  updater.loop(millis());
 
   // Действия сценария → модули: каждое действие — один вызов одного модуля.
   Action action;

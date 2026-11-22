@@ -70,7 +70,19 @@ class Played:
     bytes: int
 
 
-DeviceMessage = Hello | Wake | UtteranceEnd | BargeIn | PlaybackDone | Busy | Played
+@dataclass(frozen=True)
+class UpdateStatus:
+    """Ход или итог обновления по воздуху (протокол 4): what — firmware | model; state — progress |
+    done | failed; done/total — байт; error — busy, download, size, hash, write, storage или ""."""
+
+    what: str
+    state: str
+    done: int
+    total: int
+    error: str
+
+
+DeviceMessage = Hello | Wake | UtteranceEnd | BargeIn | PlaybackDone | Busy | Played | UpdateStatus
 
 
 def _turn(data: dict[str, Any]) -> int | None:
@@ -153,6 +165,25 @@ def _parse_played(data: dict[str, Any]) -> Played | None:
     return Played(turn=turn, bytes=count)
 
 
+def _parse_update_status(data: dict[str, Any]) -> UpdateStatus | None:
+    what, state, error = data.get("what"), data.get("state"), data.get("error", "")
+    done, total = data.get("done"), data.get("total")
+    if (
+        not isinstance(done, int)
+        or not isinstance(total, int)
+        or isinstance(done, bool)
+        or isinstance(total, bool)
+    ):
+        return None
+    if (
+        what not in ("firmware", "model")
+        or state not in ("progress", "done", "failed")
+        or not 0 <= done <= MAX_BYTES
+    ):
+        return None
+    return UpdateStatus(str(what), str(state), done, total, error if isinstance(error, str) else "")
+
+
 _PARSERS = {
     "hello": _parse_hello,
     "wake": _parse_wake,
@@ -161,6 +192,7 @@ _PARSERS = {
     "playback_done": _parse_playback_done,
     "busy": _parse_busy,
     "played": _parse_played,
+    "update_status": _parse_update_status,
 }
 
 
@@ -214,3 +246,8 @@ def tone(name: str) -> str:
 def stop_playback() -> str:
     """Кадр «немедленно остановить воспроизведение»."""
     return _encode({"type": "stop_playback"})
+
+
+def update(payload: dict[str, Any]) -> str:
+    """Кадр «обнови себя» (протокол 4): what, path, size, sha256 и для модели cutoff, window, arena, word."""
+    return _encode({"type": "update", **payload})

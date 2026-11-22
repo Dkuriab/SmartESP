@@ -115,3 +115,46 @@ async def test_steps_job_and_runs(tmp_path: Path) -> None:
         assert (await client.post(f"{P}/ww/steps/nope", json={}, headers=HEADERS)).status_code == 404
         assert (await client.get(f"{P}/ww/runs", headers=HEADERS)).json() == []
         assert (await client.delete(f"{P}/ww/job", headers=HEADERS)).status_code == 204
+
+
+async def test_firmware_upload_and_device_file_route(tmp_path: Path) -> None:
+    from fastapi import FastAPI
+
+    from smartesp.api import add_device_files
+    from smartesp.updates import Updates
+
+    sent: list[dict[str, object]] = []
+
+    async def send(device_id: str, payload: dict[str, object]) -> bool:
+        sent.append(payload)
+        return device_id == "A"
+
+    updates = Updates(tmp_path / "u", send)
+    app = FastAPI()
+    app.include_router(
+        create_api(
+            FakeCore(),
+            EventBus(),
+            TOKEN,
+            port=PORT,
+            files=FakeFilePlayback(),
+            logs=LogBuffer(),
+            updates=updates,
+        )
+    )
+    add_device_files(app, updates)
+    firmware = bytes([0xE9]) + b"\x01" * 99
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        files = {"firmware": ("fw.bin", firmware, "application/octet-stream")}
+        ok = await client.post("/api/v1/devices/A/firmware", files=files, headers=HEADERS)
+        assert ok.status_code == 202
+        link = str(sent[0]["path"])
+        got = await client.get(link)  # колонка — без токена API
+        assert got.status_code == 200 and got.content == firmware
+        assert (await client.get("/device/files/подделка")).status_code == 404
+        old = await client.post("/api/v1/devices/B/firmware", files=files, headers=HEADERS)
+        assert old.status_code == 409 and "0.5.0" in old.json()["detail"]
+        junk = await client.post(
+            "/api/v1/devices/A/firmware", files={"firmware": ("x", b"PK", "x")}, headers=HEADERS
+        )
+        assert junk.status_code == 409
