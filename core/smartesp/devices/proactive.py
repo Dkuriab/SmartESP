@@ -9,7 +9,7 @@ import logging
 from collections.abc import AsyncIterator, Callable, Coroutine
 from typing import Any
 
-from smartesp.contracts import Delivery
+from smartesp.contracts import SOUNDS_CAP, Delivery, UpdateProgress
 
 from .arbiter import Arbiter
 from .messages import Played, cancel_turn
@@ -58,6 +58,7 @@ class CoreTurns:
         self._updates.on_change = lambda device, progress: self._publish(
             "device_update", {"device_id": device, **vars(progress)}
         )
+        self._connect_listeners: list[Callable[[str], None]] = []  # колонка подключилась (после hello)
 
     def supports_proactive(self, device_id: str) -> bool:
         """True, если колонка подключена и её протокол ≥ 3."""
@@ -151,10 +152,36 @@ class CoreTurns:
         session = self._sessions.get(device_id)
         return session is not None and session.protocol >= UPDATE_PROTOCOL
 
+    def add_connect_listener(self, listener: Callable[[str], None]) -> None:
+        """listener(device_id) — после каждого hello колонки (сессия уже открыта)."""
+        self._connect_listeners.append(listener)
+
+    def device_sounds(self, device_id: str) -> dict[str, str] | None:
+        """SHA-256 своих звуков колонки из hello; None — не подключена или прошивка без звуков."""
+        session = self._sessions.get(device_id)
+        return dict(session.sounds) if session is not None and SOUNDS_CAP in session.caps else None
+
+    def expect_sound(self, device_id: str, tone: str) -> asyncio.Future[UpdateProgress]:
+        """Ожидание итога следующего update звука tone на колонке (update_status done | failed)."""
+        return self._updates.expect_sound(device_id, tone)
+
+    def _connected(self, device_id: str) -> None:
+        """Сообщает слушателям о подключении; ошибка слушателя хаб не роняет."""
+        for listener in self._connect_listeners:
+            try:
+                listener(device_id)
+            except Exception:
+                logger.exception("connect listener failed")
+
     async def send_update(self, device_id: str, payload: dict[str, object]) -> bool:
-        """Шлёт колонке команду update (см. messages.update); False — не умеет или не подключена."""
+        """Шлёт колонке команду update (см. messages.update); False — не умеет или не подключена.
+
+        Звук (what sound) — только колонке с возможностью sounds: старая прошивка команду отбросит.
+        """
         session = self._sessions.get(device_id)
         if session is None or not self.supports_update(device_id):
+            return False
+        if payload.get("what") == "sound" and SOUNDS_CAP not in session.caps:
             return False
         if not await session.send(update_frame(payload)):
             return False

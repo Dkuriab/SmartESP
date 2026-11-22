@@ -44,7 +44,9 @@ from smartesp.parts import (
     live_answering,
     voice_manager,
 )
+from smartesp.sounds import Sounds
 from smartesp.stages import SYSTEM_FACTS, SystemSnapshot
+from smartesp.stt import decode_file
 from smartesp.tasks import TaskRegistry
 from smartesp.tools import McpHub
 from smartesp.training import Training
@@ -149,6 +151,9 @@ def assemble(
     )
     parts.files = files
     parts.updates = Updates(home / "run" / "updates", hub.send_update)  # колонка качает файл сама
+    # свои звуки: в папке данных; колонке — при подключении и после изменений (разбор — ffmpeg)
+    parts.sounds = Sounds(home / "sounds", decode_file, hub, parts.updates.install, events=bus)
+    hub.add_connect_listener(parts.sounds.device_connected)
     parts.training = Training(  # наборы — в репозитории, данные — в папке данных
         REPO_DIR / "trainers",
         home / "training",
@@ -187,6 +192,7 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str, logs: Lo
         tasks=parts.tasks,
         training=parts.training,
         updates=parts.updates,
+        sounds=parts.sounds,
     )
     app.include_router(api)
     app.add_middleware(BodyLimit, token=token)  # предел тела и токен ходов через API — до чтения тела
@@ -273,4 +279,5 @@ async def finish(parts: Assembly) -> None:
     await parts.files.aclose()
     await parts.voices.aclose()
     await parts.training.aclose()
+    await parts.sounds.aclose()
     await parts.hub.aclose()

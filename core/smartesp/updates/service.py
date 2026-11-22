@@ -1,5 +1,8 @@
 """Обновления колонок по воздуху: проверка файла, одноразовая ссылка для колонки, команда update.
 
+Звук сигнала (what "sound", meta tone) — тот же путь, без перезагрузки колонки; пустой файл —
+команда без ссылки: колонка удаляет свой звук и снова играет встроенный.
+
 Колонка сама качает файл с ядра: GET /device/files/<токен> (без токена API — у колонки его нет;
 токен случайный, живёт TOKEN_TTL_S). Ход и итог колонка присылает событиями update_status (их
 учитывает хаб колонок).
@@ -15,7 +18,7 @@ import time
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 
-from smartesp.contracts import UpdateRefusedError, UpdateWhat
+from smartesp.contracts import SOUND_TONES, UpdateRefusedError, UpdateWhat
 
 _log = logging.getLogger(__name__)
 TOKEN_TTL_S = 900.0  # 15 минут: колонке хватит, ссылка не живёт вечно
@@ -23,7 +26,10 @@ MAX_FIRMWARE = 0x300000  # половина флеша под прошивку (
 MAX_MODEL = 1024 * 1024
 ESP_IMAGE_MAGIC = 0xE9  # первый байт образа прошивки ESP32
 MODEL_META = ("cutoff", "window", "arena")
+MAX_SOUND = 96000  # 3 с PCM 16 кГц моно s16le — предел колонки
 OLD_FIRMWARE = "колонка не подключена или её прошивка старше 0.5.0 — первый раз прошейте 0.5.0 по USB"
+
+OLD_SOUNDS = "колонка не подключена или её прошивка не умеет свои звуки — нужна 0.6.0"
 
 type Send = Callable[[str, dict[str, object]], Awaitable[bool]]
 
@@ -37,6 +43,12 @@ def check_file(what: UpdateWhat, data: bytes, meta: Mapping[str, object] | None)
             )
         if len(data) > MAX_FIRMWARE:
             raise UpdateRefusedError(f"прошивка больше {MAX_FIRMWARE // 1024} КБ — не поместится")
+        return
+    if what == "sound":
+        if meta is None or meta.get("tone") not in SOUND_TONES:
+            raise UpdateRefusedError("у звука нет сигнала (tone)")
+        if len(data) > MAX_SOUND or len(data) % 2:
+            raise UpdateRefusedError("звук — PCM 16 кГц моно не длиннее 3 с")
         return
     if not data or len(data) > MAX_MODEL:
         raise UpdateRefusedError("модель пустая или больше 1 МБ")
@@ -60,6 +72,9 @@ class Updates:
     ) -> None:
         """Проверяет файл, выдаёт ссылку и шлёт колонке update; см. UpdatePort.install."""
         check_file(what, data, meta)
+        if what == "sound" and not data:  # убрать свой звук: качать нечего
+            await self._command(device_id, {"what": what, "tone": _tone(meta), "size": 0}, None)
+            return
         if not self._ready:
             shutil.rmtree(self._folder, ignore_errors=True)  # файлы прошлого запуска — уже не нужны
             self._folder.mkdir(parents=True, exist_ok=True)
@@ -77,10 +92,17 @@ class Updates:
         }
         if what == "model" and meta is not None:
             payload |= {key: meta[key] for key in (*MODEL_META, "word") if key in meta}
+        if what == "sound":
+            payload["tone"] = _tone(meta)
+        await self._command(device_id, payload, token)
+
+    async def _command(self, device_id: str, payload: dict[str, object], token: str | None) -> None:
+        """Шлёт update; колонка не приняла — ссылка отзывается, UpdateRefusedError."""
         if not await self._send(device_id, payload):
-            self._drop(token)
-            raise UpdateRefusedError(OLD_FIRMWARE)
-        _log.info("Обновление %s → %s: %d байт", what, device_id, len(data))
+            if token is not None:
+                self._drop(token)
+            raise UpdateRefusedError(OLD_SOUNDS if payload["what"] == "sound" else OLD_FIRMWARE)
+        _log.info("Обновление %s → %s: %s байт", payload["what"], device_id, payload["size"])
 
     def file(self, token: str) -> Path | None:
         """Файл по токену; нет или срок вышел — None."""
@@ -97,3 +119,8 @@ class Updates:
         path, _ = self._files.pop(token, (None, 0.0))
         if path is not None:
             path.unlink(missing_ok=True)
+
+
+def _tone(meta: Mapping[str, object] | None) -> str:
+    """Сигнал звука из meta (уже проверен check_file)."""
+    return str(meta["tone"]) if meta is not None else ""

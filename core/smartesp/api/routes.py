@@ -15,6 +15,7 @@ from smartesp.contracts import (
     EventFeed,
     ExecutorError,
     FilePlayback,
+    SoundsPort,
     Subscription,
     TaskBoard,
     TrainingPort,
@@ -44,6 +45,7 @@ from .schemas import (
     TurnOut,
     VoiceOut,
 )
+from .sounds import add_sounds_routes
 from .tasks import add_tasks_routes
 from .training import add_training_routes
 from .updates import add_update_routes
@@ -70,12 +72,14 @@ def create_api(
     tasks: TaskBoard | None = None,
     training: TrainingPort | None = None,
     updates: UpdatePort | None = None,
+    sounds: SoundsPort | None = None,
 ) -> APIRouter:
     """Собирает роутер `/api/v1`; все ресурсы требуют токен.
 
     `port` — порт сервера для адресов входа; `files` — проигрывание файлов на колонках;
     `logs` — журнал для WebSocket `/logs`; `tasks` — реестр «В работе» (None — пусто);
-    `training` — обучение моделей (None — наборов нет); `updates` — обновления колонок по воздуху.
+    `training` — обучение моделей (None — наборов нет); `updates` — обновления колонок по воздуху;
+    `sounds` — свои звуки сигналов колонок (None — недоступны).
     """
     router = APIRouter(prefix="/api/v1")
     secured = APIRouter(dependencies=[Depends(require_token(token))], responses=_UNAUTHORIZED)
@@ -87,6 +91,7 @@ def create_api(
     add_tasks_routes(secured, tasks)
     add_training_routes(secured, training)
     add_update_routes(secured, updates)
+    add_sounds_routes(secured, sounds)
     add_core_routes(secured, core, port)
     _add_access_route(secured, token, port)
     router.include_router(secured)

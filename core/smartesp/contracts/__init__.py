@@ -26,6 +26,22 @@ from .executor import (
 )
 from .notify import Announcer, Interrupt, Interruption, Preempt
 from .playback import FilePlayback, PlaybackRefusal, PlaybackRefused
+from .sounds import (
+    SOUND_TONES,
+    SOUNDS_CAP,
+    DeviceSound,
+    DeviceSounds,
+    SoundDelivery,
+    SoundRef,
+    SoundRefusal,
+    SoundRefusedError,
+    SoundSet,
+    SoundSource,
+    SoundsOverview,
+    SoundsPort,
+    SoundTargets,
+    SoundTone,
+)
 from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
 from .tasks import TaskBoard, TaskInfo, TaskReport, TaskStatus
@@ -61,6 +77,20 @@ __all__ = [
     "CLOUD_MODEL_PREFIX",
     "DELEGATE_TOOL",
     "SAMPLE_RATE",
+    "SOUNDS_CAP",
+    "SOUND_TONES",
+    "DeviceSound",
+    "DeviceSounds",
+    "SoundDelivery",
+    "SoundRef",
+    "SoundRefusal",
+    "SoundRefusedError",
+    "SoundSet",
+    "SoundSource",
+    "SoundsOverview",
+    "SoundsPort",
+    "SoundTargets",
+    "SoundTone",
     "Analyzer",
     "Announcer",
     "Annotation",

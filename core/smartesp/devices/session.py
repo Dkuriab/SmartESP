@@ -40,10 +40,14 @@ class ActiveTurn:
 class Session:
     """Состояние колонки. Все отправки идут по очереди через замок."""
 
-    def __init__(self, device_id: str, conn: DeviceConnection, protocol: int = 1) -> None:
+    def __init__(
+        self, device_id: str, conn: DeviceConnection, protocol: int = 1, hello: Hello | None = None
+    ) -> None:
         self.device_id = device_id
         self.conn = conn
         self.protocol = protocol
+        self.caps = hello.caps if hello is not None else frozenset[str]()  # возможности из hello
+        self.sounds = dict(hello.sounds) if hello is not None else {}  # SHA-256 своих звуков из hello
         self.recording: Recording | None = None
         self.active: ActiveTurn | None = None
         self.progress: ReplyProgress | None = None  # звук последнего начатого ответа
@@ -114,4 +118,4 @@ async def wait_hello(conn: DeviceConnection) -> tuple[Session, str]:
         message = parse_message(frame) if isinstance(frame, str) else None
         if isinstance(message, Hello):
             device_id = message.device_id or f"legacy:{conn.remote}"
-            return Session(device_id, conn, message.protocol), message.fw
+            return Session(device_id, conn, message.protocol, message), message.fw

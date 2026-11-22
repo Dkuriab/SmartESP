@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, Protocol
 
-UpdateWhat = Literal["firmware", "model"]
+UpdateWhat = Literal["firmware", "model", "sound"]  # sound — свой звук сигнала (возможность sounds)
 
 
 class UpdateRefusedError(Exception):
@@ -21,8 +21,10 @@ class UpdatePort(Protocol):
     ) -> None:
         """Отдаёт колонке команду update со ссылкой на data (одноразовую, на 15 минут).
 
-        meta — для модели: cutoff, window, arena, word. Отказ — UpdateRefusedError с понятным текстом.
-        Ход и итог — в DeviceInfo.update (status) и событиях device_update.
+        meta — для модели: cutoff, window, arena, word; для звука — tone (пустой data — убрать свой
+        звук, снова встроенный). Отказ — UpdateRefusedError с понятным текстом.
+        Ход и итог — в DeviceInfo.update (status) и событиях device_update; у звука —
+        SoundTargets.expect_sound.
         """
         ...
 
