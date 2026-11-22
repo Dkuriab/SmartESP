@@ -365,6 +365,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/training/{kit}/runs/{run}/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Install Run */
+        post: operations["install_run_api_v1_training__kit__runs__run__install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/training/{kit}/runs": {
         parameters: {
             query?: never;
@@ -376,6 +393,23 @@ export interface paths {
         get: operations["get_runs_api_v1_training__kit__runs_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/firmware": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Install Firmware */
+        post: operations["install_firmware_api_v1_devices__device_id__firmware_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -517,6 +551,14 @@ export interface components {
              * @default api
              */
             source: string;
+        };
+        /** Body_install_firmware_api_v1_devices__device_id__firmware_post */
+        Body_install_firmware_api_v1_devices__device_id__firmware_post: {
+            /**
+             * Firmware
+             * @description образ прошивки ESP32 (.bin)
+             */
+            firmware: string;
         };
         /** Body_play_file_api_v1_devices__device_id__play_post */
         Body_play_file_api_v1_devices__device_id__play_post: {
@@ -747,6 +789,7 @@ export interface components {
              * @default 0
              */
             protocol: number;
+            update?: components["schemas"]["UpdateOut"] | null;
         };
         /**
          * DownloadIn
@@ -782,6 +825,14 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * InstallIn
+         * @description На какую колонку поставить модель прогона.
+         */
+        InstallIn: {
+            /** Device Id */
+            device_id: string;
         };
         /**
          * JobOut
@@ -1156,6 +1207,25 @@ export interface components {
         UnloadIn: {
             /** Name */
             name: string;
+        };
+        /**
+         * UpdateOut
+         * @description Обновление колонки по воздуху: what — firmware | model; state — sent (команда ушла) | progress |
+         *     done (записано, колонка перезагружается) | failed; error — busy, download, size, hash, write, storage.
+         */
+        UpdateOut: {
+            /** What */
+            what: string;
+            /** State */
+            state: string;
+            /** Done */
+            done: number;
+            /** Total */
+            total: number;
+            /** Error */
+            error: string;
+            /** At */
+            at: number;
         };
         /** ValidationError */
         ValidationError: {
@@ -2428,6 +2498,69 @@ export interface operations {
             };
         };
     };
+    install_run_api_v1_training__kit__runs__run__install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kit: string;
+                run: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstallIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
     get_runs_api_v1_training__kit__runs_get: {
         parameters: {
             query?: never;
@@ -2461,6 +2594,59 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    install_firmware_api_v1_devices__device_id__firmware_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_install_firmware_api_v1_devices__device_id__firmware_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

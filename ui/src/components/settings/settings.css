@@ -401,3 +401,17 @@
   color: var(--muted);
   white-space: pre-wrap;
 }
+
+/* Полоса хода обновления по воздуху в панели колонки. */
+.set .job-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+
+.set .job-bar div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s;
+}

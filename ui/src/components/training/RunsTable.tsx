@@ -2,9 +2,15 @@
 import type { TrainRun } from '../../state/trainingActions'
 import { bestRuns, decimal, ofTotal, percent, runDate } from './runs'
 
-type Props = { runs: TrainRun[]; busy: boolean; onEmbed: (run: string) => void }
+type Props = {
+  runs: TrainRun[]
+  busy: boolean
+  onEmbed: (run: string) => void
+  /** Модель прогона — на колонку по воздуху; нет — колонки с прошивкой 0.5.0+ нет. */
+  onInstall?: (run: string) => void
+}
 
-export default function RunsTable({ runs, busy, onEmbed }: Props) {
+export default function RunsTable({ runs, busy, onEmbed, onInstall }: Props) {
   if (runs.length === 0) return <div className="set-note">Прогонов ещё нет — обучите цель.</div>
   const best = bestRuns(runs)
   return (
@@ -34,7 +40,12 @@ export default function RunsTable({ runs, busy, onEmbed }: Props) {
               <td>{ofTotal(r.real_negative, 'false_wakes')}</td>
               <td>{decimal(r.cutoff)}</td>
               <td>
-                <button type="button" className="btn btn-plain" disabled={busy} onClick={() => onEmbed(name)}>
+                {onInstall && (
+                  <button type="button" className="btn btn-plain" onClick={() => onInstall(name)} title="Модель — на колонку по воздуху, без перепрошивки">
+                    На колонку
+                  </button>
+                )}
+                <button type="button" className="btn btn-plain" disabled={busy} onClick={() => onEmbed(name)} title="Встроить в прошивку (сборка)">
                   Встроить
                 </button>
               </td>

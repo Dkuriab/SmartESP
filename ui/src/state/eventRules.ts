@@ -103,6 +103,17 @@ function coreState(state: CoreState, data: Data): CoreState {
   return { ...state, status: { ...state.status, state: value } }
 }
 
+/** device_update: ход обновления колонки по воздуху — сразу в status (без ожидания опроса). */
+function deviceUpdate(state: CoreState, e: CoreEvent): CoreState {
+  const id = str(e.data.device_id)
+  if (!state.status || !id) return state
+  const { what, state: phase, done, total, error, at } = e.data
+  if (typeof done !== 'number' || typeof total !== 'number' || typeof at !== 'number') return state
+  const update = { what: str(what), state: str(phase), done, total, error: str(error), at }
+  const devices = state.status.devices.map((d) => (d.device_id === id ? { ...d, update } : d))
+  return { ...state, status: { ...state.status, devices } }
+}
+
 /** Применяет событие ядра; неизвестное событие состояние не меняет. */
 export function applyEvent(state: CoreState, e: CoreEvent): CoreState {
   switch (e.kind) {
@@ -114,6 +125,8 @@ export function applyEvent(state: CoreState, e: CoreEvent): CoreState {
     case 'device_connected':
     case 'device_disconnected':
       return deviceEvent(state, e)
+    case 'device_update':
+      return deviceUpdate(state, e)
     case 'voice_download':
       return voiceDownload(state, e.data)
     case 'voice_ready':

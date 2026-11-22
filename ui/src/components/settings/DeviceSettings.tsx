@@ -3,6 +3,7 @@ import { useState } from 'react'
 import type { Device, FilePhase } from '../../state/model'
 import { formatClock } from '../feed/time'
 import DeviceFile, { MIN_SPEECH_PROTOCOL } from './DeviceFile'
+import DeviceUpdate from './DeviceUpdate'
 
 type Props = {
   device: Device
@@ -11,6 +12,8 @@ type Props = {
   filePhase?: FilePhase
   onPlayFile: (file: File) => void
   onStopFile: () => void
+  /** Прошивка (.bin) на колонку по воздуху. */
+  onInstallFirmware: (file: File) => void
 }
 
 /** Адрес без порта: «IP:port» и «[IPv6]:port»; голый IPv6 (много «:») — как есть. */
@@ -26,7 +29,7 @@ function presence(d: Device): string {
   return d.last_seen ? `была в ${formatClock(d.last_seen)}` : 'не подключалась'
 }
 
-export default function DeviceSettings({ device, onRename, filePhase, onPlayFile, onStopFile }: Props) {
+export default function DeviceSettings({ device, onRename, filePhase, onPlayFile, onStopFile, onInstallFirmware }: Props) {
   const [draft, setDraft] = useState(device.name)
   const save = () => {
     const name = draft.trim()
@@ -65,6 +68,7 @@ export default function DeviceSettings({ device, onRename, filePhase, onPlayFile
         <div className="set-note">Обновите прошивку, чтобы Кузя мог говорить сам</div>
       )}
       <DeviceFile device={device} phase={filePhase} onPlay={onPlayFile} onStop={onStopFile} />
+      <DeviceUpdate device={device} onInstall={onInstallFirmware} />
     </div>
   )
 }

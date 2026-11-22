@@ -29,6 +29,7 @@ export default function SettingsPanel({ state, actions }: Props) {
         filePhase={state.files[id]}
         onPlayFile={(file) => void actions.playFile(id, file)}
         onStopFile={() => void actions.stopFile(id)}
+        onInstallFirmware={(file) => void actions.installFirmware(id, file)}
       />
     )
   }

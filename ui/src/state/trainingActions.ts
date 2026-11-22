@@ -38,6 +38,8 @@ export type TrainingActions = {
   stopJob(kit: string): Promise<void>
   /** Итоги прогонов, новые первыми; ошибка — пусто. */
   loadRuns(kit: string): Promise<TrainRun[]>
+  /** Модель прогона — на колонку по воздуху; ход — в панели колонки; отказ — уведомление. */
+  installRun(kit: string, run: string, deviceId: string): Promise<boolean>
 }
 
 export function createTrainingActions(client: Client, dispatch: Dispatch): TrainingActions {
@@ -81,6 +83,14 @@ export function createTrainingActions(client: Client, dispatch: Dispatch): Train
     async loadRuns(kit) {
       const outcome = await send(dispatch, () => client.GET('/api/v1/training/{kit}/runs', { params: { path: { kit } } }))
       return outcome.ok ? (outcome.data as TrainRun[]) : []
+    },
+    async installRun(kit, run, deviceId) {
+      const params = { path: { kit, run } }
+      const outcome = await sendNotify(dispatch, () =>
+        client.POST('/api/v1/training/{kit}/runs/{run}/install', { params, body: { device_id: deviceId } }),
+      )
+      if (outcome.ok) dispatch({ type: 'notice', notice: { text: 'Модель отправлена: колонка скачает её и перезагрузится', tone: 'ok' } })
+      return outcome.ok
     },
     async deleteRecording(kit, phrase, person, name) {
       const params = { path: { kit, name }, query: { phrase, person } }

@@ -1,6 +1,7 @@
 // Обучение из приложения: какую цель обучать, шаги набора («Запустить»), ход идущего шага и прогоны.
 import { useCallback, useEffect, useState } from 'react'
 import type { CoreActions } from '../../state/actions'
+import type { CoreState } from '../../state/model'
 import type { TrainJob, TrainKit, TrainRun } from '../../state/trainingActions'
 import JobView from './JobView'
 import RunsTable from './RunsTable'
@@ -29,9 +30,9 @@ function useJob(actions: CoreActions, kit: string, onFinished: () => void) {
   return { job, setJob, nowMs, running }
 }
 
-type Props = { kit: TrainKit; actions: CoreActions }
+type Props = { kit: TrainKit; state: CoreState; actions: CoreActions }
 
-export default function TrainPanel({ kit, actions }: Props) {
+export default function TrainPanel({ kit, state, actions }: Props) {
   const [targetId, setTargetId] = useState(kit.targets[0]?.id ?? '')
   const [runs, setRuns] = useState<TrainRun[]>([])
   const { loadRuns } = actions
@@ -39,6 +40,9 @@ export default function TrainPanel({ kit, actions }: Props) {
   useEffect(reloadRuns, [reloadRuns])
   const { job, setJob, nowMs, running } = useJob(actions, kit.id, reloadRuns)
   const target = kit.targets.find((t) => t.id === targetId) ?? kit.targets[0]
+  // модель — на первую колонку с прошивкой 0.5.0+ (обновление по воздуху)
+  const speaker = (state.status?.devices ?? []).find((d) => d.connected && d.protocol >= 4)
+  const install = speaker ? (run: string) => void actions.installRun(kit.id, run, speaker.device_id) : undefined
   const start = async (step: string, forTarget: boolean, run = '') => {
     const started = await actions.startStep(kit.id, step, forTarget ? (target?.id ?? '') : '', run)
     if (started) setJob(started)
@@ -71,7 +75,8 @@ export default function TrainPanel({ kit, actions }: Props) {
       </ol>
       {job && <JobView job={job} title={stepTitle(job)} nowMs={nowMs} onStop={() => void stop()} />}
       <div className="cap">Прогоны</div>
-      <RunsTable runs={runs} busy={running} onEmbed={(run) => void start('embed', false, run)} />
+      {!speaker && <div className="set-note">«На колонку» — когда подключена колонка с прошивкой 0.5.0+</div>}
+      <RunsTable runs={runs} busy={running} onEmbed={(run) => void start('embed', false, run)} onInstall={install} />
     </div>
   )
 }

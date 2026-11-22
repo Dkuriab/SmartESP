@@ -97,6 +97,8 @@ export function makeActions(): CoreActions {
     loadJob: vi.fn().mockResolvedValue(null),
     stopJob: vi.fn(),
     loadRuns: vi.fn().mockResolvedValue([]),
+    installRun: vi.fn().mockResolvedValue(true),
+    installFirmware: vi.fn().mockResolvedValue(true),
     loadCloudModels: vi.fn().mockResolvedValue([]),
     setCloudKey: vi.fn(),
     setToken: vi.fn(),

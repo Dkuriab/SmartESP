@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { TrainJob, TrainKit } from '../../state/trainingActions'
-import { makeActions } from '../fixtures'
+import { makeActions, makeState, makeStatus } from '../fixtures'
 import { bestRuns, ofTotal, runDate } from './runs'
 import TrainPanel from './TrainPanel'
 
@@ -47,7 +47,7 @@ describe('TrainPanel', () => {
   it('шаг цели запускается для выбранной цели; ход и «Стоп» видны', async () => {
     const actions = makeActions()
     actions.startStep = vi.fn().mockResolvedValue(job())
-    render(<TrainPanel kit={kit} actions={actions} />)
+    render(<TrainPanel kit={kit} state={makeState()} actions={actions} />)
     expect(screen.queryByText('Встроить в прошивку')).not.toBeInTheDocument() // встраивание — из прогонов
     await userEvent.selectOptions(screen.getByLabelText('Что обучаем'), 'hey_kuzya')
     const train = screen.getByText('Обучить').closest('li') as HTMLElement
@@ -65,7 +65,7 @@ describe('TrainPanel', () => {
     const actions = makeActions()
     actions.loadJob = vi.fn().mockResolvedValue(job({ step: 'download', target: '', status: 'failed', error: 'нет места на диске' }))
     actions.startStep = vi.fn().mockResolvedValue(null)
-    render(<TrainPanel kit={kit} actions={actions} />)
+    render(<TrainPanel kit={kit} state={makeState()} actions={actions} />)
     expect(await screen.findByText('нет места на диске')).toBeInTheDocument()
     const download = within(screen.getByRole('list')).getByText('Скачать данные').closest('li') as HTMLElement
     await userEvent.click(within(download).getByRole('button', { name: 'Запустить' }))
@@ -75,11 +75,21 @@ describe('TrainPanel', () => {
   it('прогоны: лучший помечен, «Встроить» встраивает этот прогон', async () => {
     const actions = makeActions()
     actions.loadRuns = vi.fn().mockResolvedValue(runs)
-    render(<TrainPanel kit={kit} actions={actions} />)
+    render(<TrainPanel kit={kit} state={makeState()} actions={actions} />)
     const best = await screen.findByText('★ 22.11 12:00')
     expect(best.closest('tr')).toHaveTextContent('9 из 10')
     await userEvent.click(within(best.closest('tr') as HTMLElement).getByRole('button', { name: 'Встроить' }))
     expect(actions.startStep).toHaveBeenCalledWith('wakeword', 'embed', '', '20261122-120000-kuzya')
+  })
+
+  it('«На колонку» ставит модель прогона на колонку с прошивкой 0.5.0+', async () => {
+    const actions = makeActions()
+    actions.loadRuns = vi.fn().mockResolvedValue(runs)
+    const devices = [{ device_id: 'k', name: 'Кухня', connected: true, remote: '', fw: '0.5.0', protocol: 4 }]
+    render(<TrainPanel kit={kit} state={makeState({ status: makeStatus({ devices }) })} actions={actions} />)
+    const best = await screen.findByText('★ 22.11 12:00')
+    await userEvent.click(within(best.closest('tr') as HTMLElement).getByRole('button', { name: 'На колонку' }))
+    expect(actions.installRun).toHaveBeenCalledWith('wakeword', '20261122-120000-kuzya', 'k')
   })
 
   it('помощники прогонов', () => {

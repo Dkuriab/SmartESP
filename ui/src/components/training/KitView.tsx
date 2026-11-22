@@ -41,7 +41,7 @@ export default function KitView({ kit, state, actions, onChanged, onRecorded }: 
       </section>
       {kit.steps.length > 0 && (
         <section className="training-col" aria-label="Обучение">
-          <TrainPanel kit={kit} actions={actions} />
+          <TrainPanel kit={kit} state={state} actions={actions} />
         </section>
       )}
     </div>

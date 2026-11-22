@@ -8,6 +8,8 @@ export type FileActions = {
   playFile(deviceId: string, file: File): Promise<void>
   /** Остановить файл на колонке; файл не играл — уведомление. */
   stopFile(deviceId: string): Promise<void>
+  /** Прошивка (.bin) на колонку по воздуху; ход — в status (device.update); отказ — уведомление. */
+  installFirmware(deviceId: string, file: File): Promise<boolean>
 }
 
 export const NOT_PLAYING = 'На колонке не играет файл'
@@ -40,6 +42,17 @@ export function createFileActions(client: Client, dispatch: Dispatch): FileActio
       // событие playback_started могло прийти раньше ответа, playback_finished — тоже
       if (outcome.ok) dispatch({ type: 'filePhase', deviceId, phase: 'playing', onlyFrom: 'sending' })
       else dispatch({ type: 'filePhase', deviceId, phase: null })
+    },
+    async installFirmware(deviceId, file) {
+      const params = { path: { device_id: deviceId } }
+      const body = { firmware: file as unknown as string }
+      const data = new FormData()
+      data.append('firmware', file)
+      const outcome = await sendNotify(dispatch, () =>
+        client.POST('/api/v1/devices/{device_id}/firmware', { params, body, bodySerializer: () => data }),
+      )
+      if (outcome.ok) dispatch({ type: 'notice', notice: { text: 'Прошивка отправлена: колонка скачает её и перезагрузится', tone: 'ok' } })
+      return outcome.ok
     },
     async stopFile(deviceId) {
       const params = { path: { device_id: deviceId } }

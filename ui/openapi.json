@@ -1486,6 +1486,92 @@
         }
       }
     },
+    "/api/v1/training/{kit}/runs/{run}/install": {
+      "post": {
+        "summary": "Install Run",
+        "operationId": "install_run_api_v1_training__kit__runs__run__install_post",
+        "parameters": [
+          {
+            "name": "kit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kit"
+            }
+          },
+          {
+            "name": "run",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/api/v1/training/{kit}/runs": {
       "get": {
         "summary": "Get Runs",
@@ -1536,6 +1622,73 @@
               }
             },
             "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{device_id}/firmware": {
+      "post": {
+        "summary": "Install Firmware",
+        "operationId": "install_firmware_api_v1_devices__device_id__firmware_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_install_firmware_api_v1_devices__device_id__firmware_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
           },
           "409": {
             "content": {
@@ -1817,6 +1970,21 @@
           "audio"
         ],
         "title": "Body_ask_voice_api_v1_ask_voice_post"
+      },
+      "Body_install_firmware_api_v1_devices__device_id__firmware_post": {
+        "properties": {
+          "firmware": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Firmware",
+            "description": "образ прошивки ESP32 (.bin)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "firmware"
+        ],
+        "title": "Body_install_firmware_api_v1_devices__device_id__firmware_post"
       },
       "Body_play_file_api_v1_devices__device_id__play_post": {
         "properties": {
@@ -2251,6 +2419,16 @@
             "type": "integer",
             "title": "Protocol",
             "default": 0
+          },
+          "update": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpdateOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -2339,6 +2517,20 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "InstallIn": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "title": "Device Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id"
+        ],
+        "title": "InstallIn",
+        "description": "На какую колонку поставить модель прогона."
       },
       "JobOut": {
         "properties": {
@@ -3157,6 +3349,45 @@
         ],
         "title": "UnloadIn",
         "description": "Какую модель выгрузить из памяти Ollama (имя как в status.ollama.loaded)."
+      },
+      "UpdateOut": {
+        "properties": {
+          "what": {
+            "type": "string",
+            "title": "What"
+          },
+          "state": {
+            "type": "string",
+            "title": "State"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "at": {
+            "type": "number",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "what",
+          "state",
+          "done",
+          "total",
+          "error",
+          "at"
+        ],
+        "title": "UpdateOut",
+        "description": "Обновление колонки по воздуху: what — firmware | model; state — sent (команда ушла) | progress |\ndone (записано, колонка перезагружается) | failed; error — busy, download, size, hash, write, storage."
       },
       "ValidationError": {
         "properties": {
