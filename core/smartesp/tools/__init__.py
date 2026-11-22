@@ -3,6 +3,7 @@
 from smartesp.contracts import ConnectorState
 
 from .hub import McpHub
+from .person import with_person
 from .specs import ConnectorSpec
 
-__all__ = ["ConnectorSpec", "ConnectorState", "McpHub"]
+__all__ = ["ConnectorSpec", "ConnectorState", "McpHub", "with_person"]
