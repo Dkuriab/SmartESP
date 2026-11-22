@@ -24,6 +24,7 @@ function turn(id: number | string, text = `вопрос ${id}`): Turn {
     origin: 'wake',
     source: '',
     person: '',
+    person_id: '',
     kind: 'turn',
   }
 }

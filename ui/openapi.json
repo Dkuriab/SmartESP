@@ -2458,6 +2458,172 @@
         }
       }
     },
+    "/api/v1/people/{person_id}/links": {
+      "post": {
+        "summary": "Add Link",
+        "operationId": "add_link_api_v1_people__person_id__links_post",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkIO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/api/v1/people/{person_id}/links/{channel}/{account}": {
+      "delete": {
+        "summary": "Remove Link",
+        "operationId": "remove_link_api_v1_people__person_id__links__channel___account__delete",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person Id"
+            }
+          },
+          {
+            "name": "channel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Channel"
+            }
+          },
+          {
+            "name": "account",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/api/v1/people/recognitions": {
       "get": {
         "summary": "Recognitions",
@@ -3100,6 +3266,13 @@
             "pattern": "^[a-z0-9_-]{1,32}$",
             "title": "Source",
             "default": "api"
+          },
+          "account": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[^\\x00-\\x1f\\x7f/\\\\]*$",
+            "title": "Account",
+            "default": ""
           }
         },
         "type": "object",
@@ -3107,7 +3280,7 @@
           "text"
         ],
         "title": "AskIn",
-        "description": "Вопрос через API текстом: текст, кто спрашивает (\"\" — неизвестно) и откуда (для ленты)."
+        "description": "Вопрос через API текстом: текст, кто спрашивает (\"\" — неизвестно), откуда (для ленты) и\nаккаунт в этом канале (id пользователя Telegram; по нему ядро находит человека из «Людей»)."
       },
       "AskOut": {
         "properties": {
@@ -3148,6 +3321,13 @@
             "pattern": "^[a-z0-9_-]{1,32}$",
             "title": "Source",
             "default": "api"
+          },
+          "account": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[^\\x00-\\x1f\\x7f/\\\\]*$",
+            "title": "Account",
+            "default": ""
           }
         },
         "type": "object",
@@ -4009,6 +4189,27 @@
         "title": "KitOut",
         "description": "Набор для обучения."
       },
+      "LinkIO": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Channel"
+          },
+          "account": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Account"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel",
+          "account"
+        ],
+        "title": "LinkIO",
+        "description": "Связь с аккаунтом канала: channel — как source хода (\"telegram\"), account — id в канале."
+      },
       "ModelOut": {
         "properties": {
           "name": {
@@ -4068,7 +4269,7 @@
           "name"
         ],
         "title": "PersonIn",
-        "description": "Имя человека: идёт в справку модели и в _meta.person инструментов."
+        "description": "Имя человека: идёт в справку модели, в ленту и в _meta.person_name скиллов."
       },
       "PersonOut": {
         "properties": {
@@ -4094,6 +4295,13 @@
           "stale_samples": {
             "type": "integer",
             "title": "Stale Samples"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/LinkIO"
+            },
+            "type": "array",
+            "title": "Links"
           }
         },
         "type": "object",
@@ -4102,10 +4310,11 @@
           "name",
           "created_at",
           "samples",
-          "stale_samples"
+          "stale_samples",
+          "links"
         ],
         "title": "PersonOut",
-        "description": "Человек: образцы текущей модели и сколько устаревших (другой модели, в узнавании не участвуют)."
+        "description": "Человек: постоянный id (скиллам — _meta.person), имя, образцы текущей модели, сколько устаревших\n(другой модели, в узнавании не участвуют) и связи с аккаунтами каналов."
       },
       "PhraseOut": {
         "properties": {
@@ -5115,6 +5324,11 @@
           "person": {
             "type": "string",
             "title": "Person",
+            "default": ""
+          },
+          "person_id": {
+            "type": "string",
+            "title": "Person Id",
             "default": ""
           },
           "kind": {
