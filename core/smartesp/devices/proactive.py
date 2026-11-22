@@ -22,6 +22,14 @@ PROACTIVE_PROTOCOL = 3  # с этой версии колонка понимае
 REPLY_GRACE_S = 15.0  # нет playback_done за длительность звука + столько секунд — объявление потеряно
 LISTEN_WAIT_S = 30.0  # сколько ждать playback_done хода перед listen
 LISTEN_ORIGIN = "listen"  # Utterance.origin хода, начатого командой listen
+RECORD_TIMEOUT_S = 15.0  # запись для обучения: дольше фразы не ждём (колонка ушла, связь оборвалась)
+
+
+async def _no_audio() -> AsyncIterator[bytes]:
+    """Пустой ответ: reply_start + reply_end — колонка перестаёт ждать и возвращается к слову."""
+    for chunk in list[bytes]():
+        yield chunk
+
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +136,43 @@ class CoreTurns:
         self._arbiter.on_turn_started(device_id, esp_turn)
         self._last_active = device_id
         return await session.send(listen_frame(esp_turn), turn_id)
+
+    async def record(self, device_id: str, timeout_s: float = RECORD_TIMEOUT_S) -> bytes | None:
+        """Пишет одну фразу с колонки мимо разговора (для обучения): listen новым ходом ядра, колонка
+        пикает и слушает до паузы; ход кончается без ответа. Возвращает PCM 16 кГц моно s16le или
+        None — колонка не подключена, протокол < 3, занята, речи не было или не дождались timeout_s.
+        """
+        session = self._idle_session(device_id)
+        if session is None or not self._accepting:
+            return None
+        turn_id, esp_turn = next(self._turn_ids), session.next_core_turn()
+        captured: asyncio.Future[bytes] = asyncio.get_running_loop().create_future()
+        session.recording = Recording(esp_turn, self._clock(), turn_id=turn_id, capture=captured)
+        session.active = ActiveTurn(turn_id, esp_turn)
+        self._arbiter.on_turn_started(device_id, esp_turn)
+        outcome = session.outcome(turn_id)
+        if outcome is None or not await session.send(listen_frame(esp_turn), turn_id):
+            return None
+        # ход кончится раньше записи (busy, обрыв, отмена) — ждать нечего
+        done, _ = await asyncio.wait(
+            (captured, outcome), timeout=timeout_s, return_when=asyncio.FIRST_COMPLETED
+        )
+        if captured.done():
+            return captured.result() or None
+        if not done and self._end_turn(session, esp_turn, "lost"):
+            self._spawn(session.send(cancel_turn(esp_turn)), f"cancel_turn to {device_id}")
+        return None
+
+    def _captured(self, session: Session, recording: Recording, pcm: bytes) -> bool:
+        """Запись для обучения: звук — ждущему record, ход кончается пустым ответом. Иначе False."""
+        if recording.capture is None:
+            return False
+        if not recording.capture.done():
+            recording.capture.set_result(pcm)
+        if pcm and recording.turn_id is not None:
+            reply = send_reply(session, recording.turn_id, _no_audio(), self._clock)
+            self._spawn(reply, f"end of recording on {session.device_id}")
+        return True
 
     async def listen_after(self, device_id: str, turn: int) -> None:
         """Ждёт playback_done хода хаба turn (не дольше LISTEN_WAIT_S), затем listen.

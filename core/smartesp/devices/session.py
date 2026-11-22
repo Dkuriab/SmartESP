@@ -25,6 +25,8 @@ class Recording:
     turn_id: int | None = None  # номер хода в хабе; задан, когда арбитр принял ход
     ended: bool = False  # пришёл utterance_end с речью
     origin: str = "wake"  # "listen" — запись хода, начатого командой ядра
+    # запись для обучения (record): звук отдаётся сюда, а не в разговор; b"" — речи не было
+    capture: asyncio.Future[bytes] | None = None
 
 
 @dataclass(frozen=True)

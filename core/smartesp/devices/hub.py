@@ -240,6 +240,7 @@ class DeviceHub(CoreTurns):
         if recording is None or recording.esp_turn != end.turn or recording.ended:
             return
         if end.reason == NO_SPEECH:
+            self._captured(session, recording, b"")  # запись для обучения: речи не было
             session.recording = None
             self._end_turn(session, end.turn, "lost")
             return
@@ -251,6 +252,8 @@ class DeviceHub(CoreTurns):
         """Готовый вопрос принятого хода → очередь Utterance (turn — номер хода в хабе)."""
         session.recording = None
         pcm = bytes(recording.pcm)
+        if self._captured(session, recording, pcm):
+            return
         utterance = Utterance(session.device_id, turn_id, pcm, recording.started_at, origin=recording.origin)
         self._utterances.put_nowait(utterance)
 

@@ -30,6 +30,16 @@ from .stage import Analyzer, Annotation, Stage
 from .stt import SpeechToText
 from .tasks import TaskBoard, TaskInfo, TaskReport, TaskStatus
 from .tools import ConnectorState, ConnectorStateName, ToolBox, ToolObserver, ToolPhase, ToolResult, ToolUse
+from .training import (
+    NothingHeardError,
+    PhraseRecording,
+    PhraseRecords,
+    RecordRefusedError,
+    TrainingLookupError,
+    TrainingPort,
+    TrainKit,
+    TrainTarget,
+)
 from .tts import TextToSpeech, VoiceInfo, VoiceNotDownloadedError
 
 __all__ = [
@@ -75,6 +85,14 @@ __all__ = [
     "Stage",
     "Subscription",
     "TaskBoard",
+    "TrainKit",
+    "TrainTarget",
+    "TrainingLookupError",
+    "TrainingPort",
+    "NothingHeardError",
+    "PhraseRecords",
+    "RecordRefusedError",
+    "PhraseRecording",
     "TaskInfo",
     "TaskReport",
     "TaskStatus",

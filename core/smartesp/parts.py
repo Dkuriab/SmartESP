@@ -34,6 +34,7 @@ from smartesp.sections import BuildAnswering, live_sections, speech_settings
 from smartesp.stt import decode_audio, decode_file
 from smartesp.tasks import TaskRegistry
 from smartesp.tools import McpHub
+from smartesp.training import Training
 from smartesp.tts import VoiceManager
 
 ANSWERING_SECTIONS = ("executors",)  # раздел живого исполнителя (stages — тот же Section)
@@ -61,6 +62,7 @@ class Assembly:
     refresh: ToolsRefresh = field(init=False)  # пересборка сети, когда меняется список инструментов
     core: Core = field(init=False)
     files: FilePlayer = field(init=False)  # звуковые файлы на колонках
+    training: Training = field(init=False)  # обучение моделей: наборы, цели, записи с колонок
     app: FastAPI = field(init=False)
     running: asyncio.Task[None] | None = None  # оркестратор
     warming: asyncio.Task[None] | None = None  # прогрев частей
