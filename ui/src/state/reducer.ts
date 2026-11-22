@@ -1,6 +1,7 @@
 // Редьюсер состояния интерфейса: чистая функция, без сети.
 import { applyEvent } from './eventRules'
 import { setFilePhase } from './files'
+import { setStream, streamsById } from './streams'
 import { quietLive } from './live'
 import type { Action, CoreState, Loaded, Status } from './model'
 import { mergeTurns } from './turns'
@@ -39,6 +40,8 @@ function applyLoaded(state: CoreState, loaded: Loaded, requestedAt?: number): Co
       return { ...state, connectors: loaded.data }
     case 'tasks':
       return { ...state, tasks: loaded.data }
+    case 'streams':
+      return { ...state, streams: streamsById(loaded.data) }
   }
 }
 
@@ -118,6 +121,8 @@ export function reduce(state: CoreState, action: Action): CoreState {
       return { ...state, restarting: action.on }
     case 'modelUnloaded':
       return modelUnloaded(state, action.name)
+    case 'stream':
+      return setStream(state, action.stream)
     case 'filePhase':
       return setFilePhase(state, action.deviceId, action.phase, action.onlyFrom)
   }

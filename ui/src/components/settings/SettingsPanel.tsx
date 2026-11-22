@@ -30,6 +30,8 @@ export default function SettingsPanel({ state, actions }: Props) {
         onPlayFile={(file) => void actions.playFile(id, file)}
         onStopFile={() => void actions.stopFile(id)}
         onInstallFirmware={(file) => void actions.installFirmware(id, file)}
+        stream={state.streams[id]}
+        onStream={(action) => void actions.controlStream(id, action)}
       />
     )
   }

@@ -1,8 +1,9 @@
 // Настройки колонки: имя (Enter или потеря фокуса — сохранить), сведения о ней и файл на ней.
 import { useState } from 'react'
-import type { Device, FilePhase } from '../../state/model'
+import type { Device, FilePhase, Stream, StreamAction } from '../../state/model'
 import { formatClock } from '../feed/time'
 import DeviceFile, { MIN_SPEECH_PROTOCOL } from './DeviceFile'
+import DeviceMusic from './DeviceMusic'
 import DeviceUpdate from './DeviceUpdate'
 
 type Props = {
@@ -14,6 +15,9 @@ type Props = {
   onStopFile: () => void
   /** Прошивка (.bin) на колонку по воздуху. */
   onInstallFirmware: (file: File) => void
+  /** Музыка на колонке (нет — не играет) и управление ею. */
+  stream?: Stream
+  onStream: (action: StreamAction) => void
 }
 
 /** Адрес без порта: «IP:port» и «[IPv6]:port»; голый IPv6 (много «:») — как есть. */
@@ -29,7 +33,8 @@ function presence(d: Device): string {
   return d.last_seen ? `была в ${formatClock(d.last_seen)}` : 'не подключалась'
 }
 
-export default function DeviceSettings({ device, onRename, filePhase, onPlayFile, onStopFile, onInstallFirmware }: Props) {
+export default function DeviceSettings(props: Props) {
+  const { device, onRename, filePhase, onPlayFile, onStopFile, onInstallFirmware, stream, onStream } = props
   const [draft, setDraft] = useState(device.name)
   const save = () => {
     const name = draft.trim()
@@ -67,6 +72,7 @@ export default function DeviceSettings({ device, onRename, filePhase, onPlayFile
       {device.connected && device.protocol < MIN_SPEECH_PROTOCOL && (
         <div className="set-note">Обновите прошивку, чтобы Кузя мог говорить сам</div>
       )}
+      <DeviceMusic device={device} stream={stream} onControl={onStream} />
       <DeviceFile device={device} phase={filePhase} onPlay={onPlayFile} onStop={onStopFile} />
       <DeviceUpdate device={device} onInstall={onInstallFirmware} />
     </div>

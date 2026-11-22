@@ -4,6 +4,7 @@ import type { CoreState, Device, Status, Turn } from './model'
 import { MAX_APPLIED } from './model'
 import { applyFileEvent } from './files'
 import { applyLive } from './live'
+import { applyStreamEvent } from './streams'
 import { applyTaskEvent } from './tasks'
 import { addTurn } from './turns'
 
@@ -142,6 +143,8 @@ export function applyEvent(state: CoreState, e: CoreEvent): CoreState {
     case 'task_updated':
     case 'task_finished':
       return applyTaskEvent(state, e)
+    case 'stream':
+      return applyStreamEvent(state, e)
     default:
       return state
   }

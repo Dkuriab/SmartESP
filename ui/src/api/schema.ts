@@ -416,6 +416,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/streams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Streams */
+        get: operations["get_streams_api_v1_streams_get"];
+        put?: never;
+        /** Play Stream */
+        post: operations["play_stream_api_v1_streams_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/streams/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Control Stream */
+        post: operations["control_stream_api_v1_streams_control_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/streams/volume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stream Volume */
+        post: operations["stream_volume_api_v1_streams_volume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/core": {
         parameters: {
             query?: never;
@@ -1040,6 +1092,101 @@ export interface components {
         StopOut: {
             /** Stopped */
             stopped: boolean;
+        };
+        /**
+         * StreamControlIn
+         * @description Действие с потоком колонки (нет — единственная с потоком или колонка последнего разговора).
+         */
+        StreamControlIn: {
+            /** Device Id */
+            device_id?: string | null;
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "pause" | "resume" | "next" | "previous" | "stop";
+        };
+        /**
+         * StreamItemIn
+         * @description Элемент очереди: полный путь к звуковому файлу на Mac или ссылка http(s); название.
+         */
+        StreamItemIn: {
+            /** Source */
+            source: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        };
+        /**
+         * StreamOut
+         * @description Поток на колонке (см. contracts.StreamInfo).
+         */
+        StreamOut: {
+            /** Device Id */
+            device_id: string;
+            /** Name */
+            name: string;
+            /** Available */
+            available: boolean;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "idle" | "playing" | "paused";
+            /** Title */
+            title: string;
+            /** Index */
+            index: number;
+            /** Count */
+            count: number;
+            /** Position S */
+            position_s: number;
+            /** Live */
+            live: boolean;
+            /** Volume */
+            volume: number;
+            /** Error */
+            error: string;
+        };
+        /**
+         * StreamPlayIn
+         * @description Новая очередь: колонка (нет — колонка последнего разговора или единственная), элементы, с
+         *     какого номера и секунды начать, громкость музыки 0..1 (нет — прежняя колонки).
+         */
+        StreamPlayIn: {
+            /** Device Id */
+            device_id?: string | null;
+            /** Items */
+            items: components["schemas"]["StreamItemIn"][];
+            /**
+             * Index
+             * @default 0
+             */
+            index: number;
+            /**
+             * Start S
+             * @default 0
+             */
+            start_s: number;
+            /** Volume */
+            volume?: number | null;
+        };
+        /**
+         * StreamVolumeIn
+         * @description Громкость музыки: volume (0..1) или сдвиг delta (-1..1).
+         */
+        StreamVolumeIn: {
+            /** Device Id */
+            device_id?: string | null;
+            /** Volume */
+            volume?: number | null;
+            /**
+             * Delta
+             * @default 0
+             */
+            delta: number;
         };
         /**
          * SuggestionOut
@@ -2665,6 +2812,242 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    get_streams_api_v1_streams_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    play_stream_api_v1_streams_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamPlayIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    control_stream_api_v1_streams_control_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamControlIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    stream_volume_api_v1_streams_volume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StreamVolumeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StreamOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
