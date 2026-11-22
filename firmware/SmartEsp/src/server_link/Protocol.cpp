@@ -1,5 +1,7 @@
 #include "Protocol.h"
 
+#include "EchoMessages.h"
+
 #include <ArduinoJson.h>
 #include <math.h>
 #include <string.h>
@@ -19,6 +21,7 @@ const char* eventTypeName(ClientEventType type) {
     case ClientEventType::Played: return "played";
     case ClientEventType::UpdateStatus: return "update_status";
     case ClientEventType::StreamStatus: return "stream_status";
+    case ClientEventType::EchoStatus: return "echo_status";
   }
   return "";
 }
@@ -198,6 +201,7 @@ size_t encodeHello(const char* fwVersion, const char* deviceId, char* out, size_
   doc["format"] = "pcm_s16le";
   doc["channels"] = 1;
   doc["caps"].add("sounds");
+  addHelloExtras(doc);  // «echo» и stream_rates (прошивка 0.7.0)
   JsonObject stored = doc["sounds"].to<JsonObject>();
   for (size_t i = 0; sounds && i < TONE_COUNT; ++i) {
     if (sounds[i][0] != '\0') stored[TONE_NAMES[i]] = sounds[i];
@@ -224,6 +228,9 @@ size_t encodeClientEvent(const ClientEvent& event, char* out, size_t capacity) {
     doc["state"] = streamStateName(event.streamState);
     doc["played"] = event.bytes;
     doc["error"] = streamErrorName(event.streamError);
+  }
+  if (event.type == ClientEventType::EchoStatus) {
+    encodeEchoStatus(event, doc);
   }
   if (event.type == ClientEventType::UpdateStatus) {
     doc.remove("turn");
@@ -276,6 +283,8 @@ bool decodeServerCommand(const char* json, size_t length, ServerCommand& out) {
     cmd.type = ServerCommandType::StreamStop;
     JsonVariantConst id = doc["stream"];
     cmd.turn = id.is<uint32_t>() ? id.as<uint32_t>() : 0;
+  } else if (decodeEchoCommand(type, doc, cmd)) {
+    // echo_calibrate / echo_delay — поля уже разобраны
   } else if (strcmp(type, "stream_volume") == 0) {
     cmd.type = ServerCommandType::StreamVolume;
     JsonVariantConst value = doc["value"];

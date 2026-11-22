@@ -12,6 +12,8 @@ cd "$ROOT"
 clang++ -std=c++17 -Wall -Werror -I firmware/SmartEsp/src -I "$JSON_DIR" \
   tools/host_tests/*.cpp \
   firmware/SmartEsp/src/server_link/Protocol.cpp firmware/SmartEsp/src/server_link/ReplyGate.cpp \
+  firmware/SmartEsp/src/server_link/EchoMessages.cpp firmware/SmartEsp/src/audio_out/Resampler.cpp \
+  firmware/SmartEsp/src/echo_calibrator/Correlator.cpp \
   firmware/SmartEsp/src/session/Session.cpp firmware/SmartEsp/src/voice_frontend/SpeechTracker.cpp \
   firmware/SmartEsp/src/stream_player/Ducker.cpp \
   firmware/SmartEsp/src/wake_word/WakeFeatures.cpp firmware/SmartEsp/src/wake_word/microfrontend/*.cc \

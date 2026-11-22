@@ -4,8 +4,14 @@
 
 namespace {
 
-constexpr uint32_t SAMPLE_RATE = 16000;
-constexpr uint32_t BYTES_PER_MS = SAMPLE_RATE * 2 / 1000;
+constexpr uint32_t LOW_RATE = 16000;
+constexpr uint32_t HIGH_RATE = 48000;  // динамик (audio_out) — 48 кГц
+constexpr uint32_t OUT_RATE = HIGH_RATE;
+
+// Байт PCM s16le моно за мс на частоте rate.
+uint32_t bytesPerMs(uint32_t rate) {
+  return rate * 2 / 1000;
+}
 constexpr size_t CHUNK = 1024;                // байт за одно чтение из сети
 constexpr uint32_t HTTP_TIMEOUT_MS = 20000;   // ядро ждёт первый звук источника до 12 с
 constexpr uint32_t STALL_MS = 20000;          // буфер пуст и данных нет столько — обрыв
@@ -18,7 +24,8 @@ constexpr UBaseType_t EVENTS = 8;
 bool StreamPlayer::begin(const StreamPlayerConfig& config) {
   config_ = config;
   ducker_.setResumeDelay(config_.resumeDelayMs);
-  buffer_ = xStreamBufferCreateWithCaps(config_.bufferMs * BYTES_PER_MS, 1, MALLOC_CAP_SPIRAM);
+  // Буфер — под 48 кГц (3 с = 288 КБ PSRAM); поток 16 кГц занимает треть.
+  buffer_ = xStreamBufferCreateWithCaps(config_.bufferMs * bytesPerMs(HIGH_RATE), 1, MALLOC_CAP_SPIRAM);
   commands_ = xQueueCreate(COMMANDS, sizeof(Command));
   events_ = xQueueCreate(EVENTS, sizeof(ClientEvent));
   if (!buffer_ || !commands_ || !events_) {
@@ -77,22 +84,25 @@ bool StreamPlayer::pollStatus(ClientEvent& event) {
   return events_ && xQueueReceive(events_, &event, 0) == pdTRUE;
 }
 
-size_t StreamPlayer::read(int16_t* dst, size_t samples) {
+size_t StreamPlayer::read(int16_t* dst, size_t samples, uint32_t& rate) {
+  rate = rate_;
   if (!ready_) {
     return 0;
   }
   if (flushRequest_) {
     xStreamBufferReset(buffer_);  // задача скачивания ждёт и не пишет
     prebuffered_ = false;
+    ducker_.setSampleRate(rate);
     ducker_.restart();
     flushRequest_ = false;
   }
+  samples = samples * rate / OUT_RATE;  // за то же время: 48 кГц — все, 16 кГц — треть
   if (phase_ != Playing) {
     return 0;
   }
   const size_t available = xStreamBufferBytesAvailable(buffer_) & ~static_cast<size_t>(1);
   if (!prebuffered_) {
-    prebuffered_ = available >= config_.prebufferMs * BYTES_PER_MS || (eof_ && available > 0);
+    prebuffered_ = available >= config_.prebufferMs * bytesPerMs(rate) || (eof_ && available > 0);
     if (!prebuffered_) {
       if (eof_ && available == 0) finishDrained();
       return 0;
@@ -175,13 +185,15 @@ void StreamPlayer::handle(const Command& command) {
 void StreamPlayer::open(const StreamRequest& request) {
   close();
   phase_ = Connecting;  // звук перестаёт брать буфер
+  const bool known = request.rate == LOW_RATE || request.rate == HIGH_RATE;
+  rate_ = known ? request.rate : LOW_RATE;  // до flush: по ней задача звука настроит приглушение
   flush();
   played_ = 0;
   eof_ = false;
   live_ = request.live;
   volume_ = request.volume;
   id_ = request.id;
-  if (request.rate != SAMPLE_RATE) {
+  if (!known) {
     phase_ = Failed;
     post(StreamState::Failed, StreamError::Rate);
     return;

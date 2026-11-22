@@ -1,9 +1,16 @@
 #include "Ducker.h"
 
-Ducker::Ducker(uint32_t resumeDelayMs, uint32_t fadeOutSamples, uint32_t fadeInSamples)
-    : resumeDelayMs_(resumeDelayMs),
-      down_(fadeOutSamples > 0 ? 1.0f / fadeOutSamples : 1.0f),
-      up_(fadeInSamples > 0 ? 1.0f / fadeInSamples : 1.0f) {}
+Ducker::Ducker(uint32_t resumeDelayMs, uint32_t fadeOutMs, uint32_t fadeInMs, uint32_t sampleRate)
+    : resumeDelayMs_(resumeDelayMs), fadeOutMs_(fadeOutMs), fadeInMs_(fadeInMs) {
+  setSampleRate(sampleRate);
+}
+
+void Ducker::setSampleRate(uint32_t sampleRate) {
+  const float out = static_cast<float>(sampleRate) * fadeOutMs_ / 1000.0f;
+  const float in = static_cast<float>(sampleRate) * fadeInMs_ / 1000.0f;
+  down_ = out >= 1.0f ? 1.0f / out : 1.0f;
+  up_ = in >= 1.0f ? 1.0f / in : 1.0f;
+}
 
 void Ducker::update(bool voiceActive, uint32_t nowMs) {
   if (voiceActive) {

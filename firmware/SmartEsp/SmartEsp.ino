@@ -14,8 +14,9 @@
 #include "src/session/Session.h"
 #include "src/updater/Updater.h"
 #include "src/stream_player/StreamPlayer.h"
+#include "src/echo_calibrator/EchoCalibrator.h"
 
-constexpr const char* FW_VERSION = "0.6.0";
+constexpr const char* FW_VERSION = "0.7.0";
 constexpr size_t AUDIO_BLOCK = 512;  // 32 мс
 
 AudioOut audioOut;
@@ -27,6 +28,7 @@ ServerLink serverLink;
 Session session;
 Updater updater;
 StreamPlayer streamPlayer;
+EchoCalibrator echoCalibrator;
 
 int16_t micBlock[AUDIO_BLOCK];
 int16_t refBlock[AUDIO_BLOCK];
@@ -45,9 +47,12 @@ void setup() {
   Serial.begin(115200);
   Serial.printf("SmartESP %s\n", FW_VERSION);
 
-  // Музыка (поток с ядра) смешивается с голосом в задаче динамика.
-  audioOut.setMusicSource([](int16_t* dst, size_t samples) { return streamPlayer.read(dst, samples); });
-  audioOut.begin({.bclkPin = 7, .lrcPin = 6, .dinPin = 8});
+  // Музыка (поток с ядра) смешивается с голосом в задаче динамика (48 кГц).
+  audioOut.setMusicSource(
+      [](int16_t* dst, size_t samples, uint32_t& rate) { return streamPlayer.read(dst, samples, rate); });
+  // Сдвиг образца эха — сохранённый калибровкой (или по умолчанию для 48 кГц).
+  echoCalibrator.begin({});
+  audioOut.begin({.bclkPin = 7, .lrcPin = 6, .dinPin = 8, .refDelayMs = echoCalibrator.delayMs()});
   // Образец динамика берёт сам audio_in — сразу после чтения микрофона.
   audioIn.begin({.sckPin = 5, .wsPin = 4, .sdPin = 9},
                 [](int16_t* dst, size_t samples) { return audioOut.readReference(dst, samples); });
@@ -93,9 +98,10 @@ void loop() {
 
   size_t n;
 
-  // Микрофон + образец → обработка звука.
+  // Микрофон + образец → обработка звука и запись калибровки эха.
   while ((n = audioIn.read(micBlock, refBlock, AUDIO_BLOCK)) > 0) {
     voiceFrontend.feed(micBlock, refBlock, n);
+    echoCalibrator.feed(micBlock, refBlock, n);
   }
 
   // Очищенный звук → поиск слова; слово (с громкостью) → сценарий.
@@ -117,8 +123,11 @@ void loop() {
     serverLink.sendAudio(audioBlock, n);
   }
 
-  // Звук ответа → динамик.
+  // Звук ответа → динамик; тестовый шум калибровки → динамик.
   while ((n = serverLink.readAudio(audioBlock, AUDIO_BLOCK)) > 0) {
+    audioOut.write(audioBlock, n);
+  }
+  while ((n = echoCalibrator.readSignal(audioBlock, AUDIO_BLOCK)) > 0) {
     audioOut.write(audioBlock, n);
   }
 
@@ -130,6 +139,8 @@ void loop() {
       case ServerCommandType::StreamStart: streamPlayer.start(command.stream); break;
       case ServerCommandType::StreamStop: streamPlayer.stop(command.turn); break;
       case ServerCommandType::StreamVolume: streamPlayer.setVolume(command.volume); break;
+      case ServerCommandType::EchoCalibrate: echoCalibrator.start(); break;
+      case ServerCommandType::EchoDelay: echoCalibrator.setDelay(command.delayMs); break;
       default: session.onServerCommand(command); break;
     }
   }
@@ -147,6 +158,18 @@ void loop() {
   ClientEvent streamEvent;
   while (streamPlayer.pollStatus(streamEvent)) {
     serverLink.sendEvent(streamEvent);
+  }
+
+  // Калибровка эха: новый сдвиг образца → динамик, итог → сервер.
+  echoCalibrator.setConnected(serverLink.isConnected());
+  echoCalibrator.loop(millis());
+  uint32_t refDelayMs;
+  while (echoCalibrator.pollDelay(refDelayMs)) {
+    audioOut.setRefDelay(refDelayMs);
+  }
+  ClientEvent echoEvent;
+  while (echoCalibrator.pollStatus(echoEvent)) {
+    serverLink.sendEvent(echoEvent);
   }
 
   // Действия сценария → модули: каждое действие — один вызов одного модуля.

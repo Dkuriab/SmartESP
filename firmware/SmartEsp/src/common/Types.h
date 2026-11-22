@@ -122,6 +122,22 @@ struct StreamRequest {
   char path[96];    // «/device/stream/<токен>»
 };
 
+// ---------- калибровка эха (echo_calibrator, прошивка 0.7.0) ----------
+
+enum class EchoState : uint8_t {
+  Current,  // сдвиг образца сейчас (при подключении и после echo_delay)
+  Running,  // калибровка идёт: колонка играет шум и пишет микрофон
+  Done,     // сдвиг найден и сохранён
+  Failed,   // не вышло; сдвиг прежний
+};
+
+enum class EchoError : uint8_t {
+  None,
+  Busy,   // калибровка уже идёт
+  Quiet,  // в образце нет шума (динамик не играл)
+  Weak,   // микрофон не услышал шум уверенно (громкость 0, шумно, далеко)
+};
+
 // hello шлёт сам server_link при подключении, поэтому его здесь нет.
 enum class ClientEventType : uint8_t {
   Wake,
@@ -132,6 +148,7 @@ enum class ClientEventType : uint8_t {
   Played,  // сколько звука ответа уже доиграно (раз в ~0,5 с и перед playback_done)
   UpdateStatus,  // ход и итог обновления по воздуху (updater)
   StreamStatus,  // состояние потока звука (stream_player): turn — номер потока, bytes — доиграно
+  EchoStatus,    // калибровка эха (echo_calibrator)
 };
 
 struct ClientEvent {
@@ -149,6 +166,12 @@ struct ClientEvent {
   // только для StreamStatus
   StreamState streamState;
   StreamError streamError;
+  // только для EchoStatus
+  EchoState echoState;
+  EchoError echoError;
+  uint16_t delayMs;     // сдвиг образца сейчас (после калибровки — новый), мс
+  uint16_t previousMs;  // сдвиг до калибровки, мс
+  float confidence;     // уверенность калибровки 0..1
 };
 
 // ---------- команды сервер → ESP ----------
@@ -167,6 +190,8 @@ enum class ServerCommandType : uint8_t {
   StreamStart,   // играть поток звука (stream_player)
   StreamStop,    // остановить поток (turn — его номер, 0 — любой)
   StreamVolume,  // громкость музыки (volume)
+  EchoCalibrate, // калибровка эха: шум, запись, поиск сдвига образца (echo_calibrator)
+  EchoDelay,     // задать сдвиг образца вручную (delayMs)
 };
 
 struct ServerCommand {
@@ -176,6 +201,7 @@ struct ServerCommand {
   Tone tone;      // для PlayTone
   UpdateRequest update;  // для Update
   StreamRequest stream;  // для StreamStart
+  uint16_t delayMs;      // для EchoDelay, мс
 };
 
 // ---------- действия session → модули (выполняет SmartEsp.ino) ----------

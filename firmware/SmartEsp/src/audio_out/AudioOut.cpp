@@ -7,8 +7,10 @@
 
 namespace {
 
-constexpr uint32_t SAMPLE_RATE = 16000;
-constexpr size_t CHUNK = 256;  // отсчётов за одну запись в I2S (16 мс)
+constexpr uint32_t SAMPLE_RATE = 16000;  // голос, звуки, очередь ответа и образец
+constexpr uint32_t OUT_RATE = 48000;     // динамик
+constexpr size_t CHUNK = 256;            // отсчётов 16 кГц за проход (16 мс)
+constexpr size_t OUT_CHUNK = CHUNK * 3;  // те же 16 мс на 48 кГц
 constexpr uint32_t IDLE_START_MS = 100;  // начать играть, если новых данных нет столько
 constexpr uint32_t OVERFLOW_LOG_PERIOD_MS = 1000;
 constexpr size_t TONES = 5;         // сигналов в Tone (размер custom_ в AudioOut.h)
@@ -57,12 +59,14 @@ bool AudioOut::begin(const AudioOutConfig& config) {
   }
 
   i2s_.setPins(config_.bclkPin, config_.lrcPin, config_.dinPin);
-  // Стерео 16 бит, оба канала одинаковые — так проверено на MAX98357A.
-  if (!i2s_.begin(I2S_MODE_STD, SAMPLE_RATE, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO)) {
+  // Стерео 16 бит, оба канала одинаковые — так проверено на MAX98357A. Всегда 48 кГц: частота на
+  // лету не меняется (щелчки и сбой выравнивания образца).
+  if (!i2s_.begin(I2S_MODE_STD, OUT_RATE, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO)) {
     Serial.println("audio_out: не удалось запустить I2S");
     return false;
   }
 
+  refDelayMs_ = config_.refDelayMs;
   return xTaskCreatePinnedToCore(taskEntry, "audio_out", 4096, this, 6, nullptr, 0) == pdPASS;
 }
 
@@ -70,21 +74,52 @@ void AudioOut::setMusicSource(MusicSource source) {
   music_ = source;
 }
 
-size_t AudioOut::mixMusic(int16_t* mono, size_t n) {
-  static int16_t music[CHUNK];
-  const size_t m = music_ ? music_(music, CHUNK) : 0;
+// Музыка 48 кГц (или 16 кГц через ×3) — под голосом, с общей громкостью.
+void AudioOut::mixMusic(int16_t* out) {
+  static int16_t music[OUT_CHUNK];
+  static int16_t low[CHUNK];
+  uint32_t rate = OUT_RATE;
+  size_t m = music_ ? music_(music, OUT_CHUNK, rate) : 0;
   if (m == 0) {
-    return n;
+    if (musicWasUp_) musicUp_.reset();  // следующий поток — без хвоста прошлого
+    musicWasUp_ = false;
+    return;
   }
-  for (size_t i = n; i < m; i++) {
-    mono[i] = 0;  // голос короче музыки — дальше только музыка
+  if (rate != OUT_RATE) {
+    m = m < CHUNK ? m : CHUNK;
+    memcpy(low, music, m * sizeof(int16_t));
+    memset(low + m, 0, (CHUNK - m) * sizeof(int16_t));
+    musicUp_.process(low, CHUNK, music);
+    musicWasUp_ = true;
+    m = OUT_CHUNK;
   }
   const float volume = volume_;
   for (size_t i = 0; i < m; i++) {
-    const int32_t mixed = mono[i] + static_cast<int32_t>(music[i] * volume);
-    mono[i] = static_cast<int16_t>(mixed > 32767 ? 32767 : (mixed < -32768 ? -32768 : mixed));
+    const int32_t mixed = out[i] + static_cast<int32_t>(music[i] * volume);
+    out[i] = static_cast<int16_t>(mixed > 32767 ? 32767 : (mixed < -32768 ? -32768 : mixed));
   }
-  return m > n ? m : n;
+}
+
+void AudioOut::setRefDelay(uint32_t ms) {
+  refDelayMs_ = ms;
+}
+
+// Смесь 48 кГц → ÷3 → образец 16 кГц; новый сдвиг вносится здесь же (тишина или пропуск).
+void AudioOut::pushReference(const int16_t* out) {
+  static int16_t ref[CHUNK];
+  const uint32_t target = refDelayMs_;
+  if (target > refAppliedMs_) {
+    pushRefSilence(target - refAppliedMs_);
+  } else if (target < refAppliedMs_) {
+    refSkip_ += msToSamples(refAppliedMs_ - target);
+  }
+  refAppliedMs_ = target;
+  const size_t n = refDown_.process(out, OUT_CHUNK, ref);
+  const size_t skip = refSkip_ < n ? refSkip_ : n;
+  refSkip_ -= skip;
+  if (n > skip) {
+    xStreamBufferSend(reference_, ref + skip, (n - skip) * sizeof(int16_t), 0);
+  }
 }
 
 size_t AudioOut::write(const int16_t* pcm, size_t samples) {
@@ -181,72 +216,69 @@ size_t AudioOut::renderTone(int16_t* dst, size_t samples) {
   return n;
 }
 
-void AudioOut::run() {
-  static int16_t mono[CHUNK];
-  static int16_t stereo[CHUNK * 2];
+// Голос 16 кГц этого прохода: тон или очередь ответа (с громкостью), остаток — тишина.
+size_t AudioOut::renderVoice(int16_t* voice) {
+  if (stopRequest_) {
+    stopRequest_ = false;
+    // Задачи не ждут на очереди (все вызовы с таймаутом 0), поэтому reset безопасен.
+    xStreamBufferReset(queue_);
+    toneActive_ = false;
+    queueStarted_ = false;
+  }
+  if (!toneActive_) {
+    applySounds();
+  }
+  const int request = toneRequest_;
+  if (request >= 0) {
+    toneRequest_ = -1;
+    tone_ = static_cast<Tone>(request);
+    tonePos_ = 0;
+    toneActive_ = true;
+  }
+  size_t n = 0;
+  if (toneActive_) {
+    n = renderTone(voice, CHUNK);
+  } else {
+    const size_t available = xStreamBufferBytesAvailable(queue_) / sizeof(int16_t);
+    if (!queueStarted_ && available > 0 &&
+        (available >= msToSamples(config_.prebufferMs) || millis() - lastWriteMs_ >= IDLE_START_MS)) {
+      queueStarted_ = true;
+    }
+    if (queueStarted_) {
+      n = xStreamBufferReceive(queue_, voice, CHUNK * sizeof(int16_t), 0) / sizeof(int16_t);
+      playedBytes_ += static_cast<uint32_t>(n * sizeof(int16_t));  // кусок уйдёт в I2S в этом же проходе
+      if (n == 0) {
+        queueStarted_ = false;  // очередь кончилась — снова ждём предзаполнения
+      }
+      const float volume = volume_;
+      for (size_t i = 0; i < n; i++) {
+        voice[i] = (int16_t)(voice[i] * volume);
+      }
+    }
+  }
+  memset(voice + n, 0, (CHUNK - n) * sizeof(int16_t));
+  return n;
+}
 
-  // I2S пишется непрерывно (в паузах — тишиной), поэтому образец сдвигается
-  // на задержку DMA один раз и дальше остаётся выровнен с динамиком.
-  pushRefSilence(config_.refDelayMs);
+void AudioOut::run() {
+  static int16_t voice[CHUNK];
+  static int16_t out[OUT_CHUNK];
+  static int16_t stereo[OUT_CHUNK * 2];
+
+  // I2S пишется непрерывно (в паузах — тишиной) и всегда целыми кусками по 16 мс, поэтому образец
+  // сдвигается на задержку DMA один раз и дальше остаётся выровнен с динамиком (ревью №1).
+  refAppliedMs_ = refDelayMs_;
+  pushRefSilence(refAppliedMs_);
 
   for (;;) {
-    if (stopRequest_) {
-      stopRequest_ = false;
-      // Задачи не ждут на очереди (все вызовы с таймаутом 0), поэтому reset безопасен.
-      xStreamBufferReset(queue_);
-      toneActive_ = false;
-      queueStarted_ = false;
+    renderVoice(voice);
+    voiceUp_.process(voice, CHUNK, out);  // всегда: фильтр не рвётся между кусками
+    mixMusic(out);                        // музыка — под голосом; образец ниже — уже смесь
+    for (size_t i = 0; i < OUT_CHUNK; i++) {
+      stereo[2 * i] = out[i];
+      stereo[2 * i + 1] = out[i];
     }
-
-    if (!toneActive_) {
-      applySounds();
-    }
-
-    const int request = toneRequest_;
-    if (request >= 0) {
-      toneRequest_ = -1;
-      tone_ = static_cast<Tone>(request);
-      tonePos_ = 0;
-      toneActive_ = true;
-    }
-
-    size_t n = 0;
-    if (toneActive_) {
-      n = renderTone(mono, CHUNK);
-    } else {
-      const size_t available = xStreamBufferBytesAvailable(queue_) / sizeof(int16_t);
-      if (!queueStarted_ && available > 0 &&
-          (available >= msToSamples(config_.prebufferMs) || millis() - lastWriteMs_ >= IDLE_START_MS)) {
-        queueStarted_ = true;
-      }
-      if (queueStarted_) {
-        n = xStreamBufferReceive(queue_, mono, CHUNK * sizeof(int16_t), 0) / sizeof(int16_t);
-        playedBytes_ += static_cast<uint32_t>(n * sizeof(int16_t));  // кусок уйдёт в I2S в этом же проходе
-        if (n == 0) {
-          queueStarted_ = false;  // очередь кончилась — снова ждём предзаполнения
-        } else {
-          const float volume = volume_;
-          for (size_t i = 0; i < n; i++) {
-            mono[i] = (int16_t)(mono[i] * volume);
-          }
-        }
-      }
-    }
-
-    n = mixMusic(mono, n);  // музыка — под голосом; образец ниже — уже смесь
-
-    if (n == 0) {
-      // Играть нечего: пишем тишину. И в I2S, и в образец — так образец не
-      // «уезжает» при каждой паузе в ответе (ревью №1).
-      memset(mono, 0, sizeof(mono));
-      n = CHUNK;
-    }
-
-    for (size_t i = 0; i < n; i++) {
-      stereo[2 * i] = mono[i];
-      stereo[2 * i + 1] = mono[i];
-    }
-    i2s_.write(stereo, n * 2 * sizeof(int16_t));  // блокируется, пока DMA не освободится
-    xStreamBufferSend(reference_, mono, n * sizeof(int16_t), 0);
+    i2s_.write(stereo, sizeof(stereo));  // блокируется, пока DMA не освободится
+    pushReference(out);
   }
 }

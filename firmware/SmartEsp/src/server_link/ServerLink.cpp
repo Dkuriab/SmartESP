@@ -17,7 +17,7 @@ constexpr UBaseType_t COMMAND_LENGTH = 16;
 constexpr size_t AUDIO_BUFFER_SAMPLES = 16000 * 2;  // 2 с принятого звука
 constexpr size_t SEND_PER_PASS = 8;  // сообщений за проход, чтобы приём не простаивал
 constexpr size_t JSON_BUFFER = 192;
-constexpr size_t HELLO_BUFFER = 640;  // hello с хэшами пяти звуков
+constexpr size_t HELLO_BUFFER = 768;  // hello с хэшами пяти звуков, caps и stream_rates
 static_assert(TONE_COUNT == 5, "soundHashes_ в ServerLink.h — по строке на сигнал");
 constexpr uint32_t LOG_PERIOD_MS = 1000;
 

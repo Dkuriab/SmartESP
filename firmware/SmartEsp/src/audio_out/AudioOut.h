@@ -1,9 +1,10 @@
 #pragma once
 
-// audio_out — динамик (MAX98357A по I2S).
+// audio_out — динамик (MAX98357A по I2S), всегда 48 кГц (прошивка 0.7.0).
 // Проигрывает очередь звука (ответ сервера) и звуки-сигналы: встроенные образцы или свои
-// (присланные ядром, setSound).
-// Всё, что ушло на динамик, параллельно кладётся в буфер «образца» —
+// (присланные ядром, setSound) — всё это 16 кГц, на динамик идёт через многофазное ×3; музыка
+// (setMusicSource) — 48 кГц напрямую или 16 кГц через ×3.
+// Всё, что ушло на динамик, через фильтр ÷3 (до ~7 кГц) кладётся в буфер «образца» 16 кГц —
 // по нему voice_frontend вычитает звук колонки из микрофона (эхоподавление).
 
 #include <Arduino.h>
@@ -14,15 +15,18 @@
 #include "freertos/queue.h"
 #include "freertos/stream_buffer.h"
 #include "../common/Types.h"
+#include "Resampler.h"
 
-// Источник музыки (stream_player): заполнить dst до samples отсчётами, вернуть сколько; 0 — тишина.
-using MusicSource = std::function<size_t(int16_t* dst, size_t samples)>;
+// Источник музыки (stream_player): dst вмещает samples отсчётов 48 кГц (16 мс). Источник пишет
+// в rate свою частоту (48000 или 16000) и отдаёт не больше samples · rate / 48000 отсчётов;
+// вернуть сколько; 0 — тишина.
+using MusicSource = std::function<size_t(int16_t* dst, size_t samples, uint32_t& rate)>;
 
 struct AudioOutConfig {
   int bclkPin;
   int lrcPin;
   int dinPin;
-  uint32_t refDelayMs = 80;     // сдвиг образца: задержка DMA динамика
+  uint32_t refDelayMs = 20;     // сдвиг образца: задержка DMA динамика (48 кГц; меняется калибровкой)
   uint32_t queueSeconds = 30;   // ёмкость очереди ответа (в PSRAM)
   uint32_t prebufferMs = 100;   // сколько накопить перед началом воспроизведения
 };
@@ -65,7 +69,11 @@ class AudioOut {
   // Читать после isPlaying(): если тот вернул false, весь доигранный звук уже учтён.
   uint32_t playedBytes() const;
 
-  // Образец для эхоподавления: ровно samples отсчётов, нули там, где тишина.
+  // Новый сдвиг образца, мс (калибровка эха): больше — образцу добавится тишина, меньше —
+  // пропустится лишнее. Безопасно вызывать из другой задачи.
+  void setRefDelay(uint32_t ms);
+
+  // Образец для эхоподавления (16 кГц): ровно samples отсчётов, нули там, где тишина.
   // Безопасно вызывать из другой задачи (audio_in). Возвращает samples.
   size_t readReference(int16_t* dst, size_t samples);
 
@@ -75,7 +83,9 @@ class AudioOut {
   size_t renderTone(int16_t* dst, size_t samples);
   void applySounds();
   void pushRefSilence(uint32_t ms);
-  size_t mixMusic(int16_t* mono, size_t n);
+  size_t renderVoice(int16_t* voice);
+  void mixMusic(int16_t* out);
+  void pushReference(const int16_t* out);
 
   AudioOutConfig config_{};
   I2SClass i2s_;
@@ -91,6 +101,7 @@ class AudioOut {
   volatile uint32_t lastWriteMs_ = 0;
   std::atomic<uint32_t> playedBytes_{0};  // пишет только задача воспроизведения
   std::atomic<bool> queueStarted_{false}; // очередь играет (пишет только задача)
+  std::atomic<uint32_t> refDelayMs_{0};   // нужный сдвиг образца (setRefDelay)
   uint32_t lastOverflowLogMs_ = 0;
 
   // Состояние задачи воспроизведения (меняется только в ней).
@@ -98,4 +109,10 @@ class AudioOut {
   size_t tonePos_ = 0;  // сколько отсчётов образца уже отдано
   int16_t* custom_[5] = {};     // свои звуки по порядку Tone; nullptr — встроенный
   size_t customLen_[5] = {};
+  Upsampler3 voiceUp_;          // голос и звуки 16 → 48 кГц
+  Upsampler3 musicUp_;          // музыка 16 кГц → 48 кГц
+  Decimator3 refDown_;          // смесь 48 → образец 16 кГц
+  uint32_t refAppliedMs_ = 0;   // сдвиг, уже внесённый в образец
+  size_t refSkip_ = 0;          // сколько отсчётов образца пропустить (сдвиг уменьшили)
+  bool musicWasUp_ = false;     // прошлый кусок музыки шёл через ×3
 };

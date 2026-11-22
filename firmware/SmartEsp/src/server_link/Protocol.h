@@ -17,6 +17,8 @@ constexpr size_t TONE_COUNT = 5;  // сигналов в Tone
 size_t encodeHello(const char* fwVersion, const char* deviceId, char* out, size_t capacity,
                    const char (*sounds)[65] = nullptr);
 // Протокол 5 — ещё и потоки звука (stream_start / stream_stop / stream_volume, событие stream_status).
+// Прошивка 0.7.0 (протокол тот же): в caps ещё «echo», поле "stream_rates":[16000,48000]; команды
+// echo_calibrate / echo_delay и событие echo_status — см. EchoMessages.h.
 
 // wake / utterance_end / barge_in / playback_done / busy / played с полем turn
 // (reason для utterance_end, level для wake, bytes для played). 0 — не хватило места.
