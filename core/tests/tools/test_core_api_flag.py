@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from smartesp.config import ConnectorConfig, wants_core_api
+from smartesp.config import Config, ConnectorConfig, wants_core_api
 from smartesp.tools import ConnectorSpec, McpHub
 from smartesp.tools.connector import Connector
 
@@ -37,3 +37,8 @@ async def test_only_flagged_connector_gets_core_env(tmp_path: Path) -> None:
     plain_env = plain._env()  # pyright: ignore[reportPrivateUsage]
     assert flagged_env["SMARTESP_TOKEN"] == "t" and flagged_env["SMARTESP_URL"] == CORE_ENV["SMARTESP_URL"]
     assert plain_env.get("SMARTESP_TOKEN") != "t"
+
+
+def test_our_music_connector_asks_for_core_api() -> None:
+    connectors = {c.id: c for c in Config().connectors}
+    assert wants_core_api(connectors["music"]) and not wants_core_api(connectors["weather"])

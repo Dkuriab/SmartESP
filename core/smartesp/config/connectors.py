@@ -33,6 +33,8 @@ DEFAULT_CONNECTORS: tuple[tuple[str, str, dict[str, str], bool], ...] = (
     ("claude_tasks", "Задачи Клоду", {"CLAUDE_TASK_FOLDERS": ""}, False),
     # поиск DuckDuckGo и чтение страниц (без локальных адресов); настроек нет
     ("web", "Интернет", {}, True),
+    # музыка, радио и звук Mac на колонках (прошивка 0.6.0+); ходит в API ядра (core_api в smartesp.json)
+    ("music", "Музыка на колонках", {"MUSIC_FOLDERS": "", "MUSIC_RADIO": "", "MUSIC_MAC_DEVICE": ""}, True),
 )
 # наши клиенты ядра (папка clients/<id>): (id, имя, окружение, включён ли, команда). Ядро их запускает
 # и держит; адрес и токен API ядра они получают в окружении. Бот выключен, пока владелец не включит
