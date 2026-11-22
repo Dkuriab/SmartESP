@@ -13,9 +13,9 @@ function state() {
     config: makeConfig({ connectors: configured }),
     status: makeStatus({
       connectors: [
-        { id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add'], error: '' },
-        { id: 'weather', name: 'Погода', state: 'failed', tools: [], error: 'упал' },
-        { id: 'extra', name: 'Чужой', state: 'starting', tools: [], error: '' },
+        { id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add'], error: '', kind: 'mcp' as const },
+        { id: 'weather', name: 'Погода', state: 'failed', tools: [], error: 'упал', kind: 'mcp' as const },
+        { id: 'extra', name: 'Чужой', state: 'starting', tools: [], error: '', kind: 'mcp' as const },
       ],
     }),
   })

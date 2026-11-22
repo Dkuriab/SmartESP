@@ -603,6 +603,16 @@ export interface components {
              * @default
              */
             error: string;
+            /**
+             * Kind
+             * @default mcp
+             * @enum {string}
+             */
+            kind: "mcp" | "client";
+            /** Log */
+            log?: string[];
+            /** Suggestions */
+            suggestions?: components["schemas"]["SuggestionOut"][];
             /** Settings */
             settings?: components["schemas"]["ConnectorSettingOut"][];
             /**
@@ -618,7 +628,10 @@ export interface components {
         };
         /**
          * ConnectorOut
-         * @description MCP-коннектор: состояние, инструменты (как их видит модель; только у готового), ошибка.
+         * @description Коннектор или клиент ядра: состояние, инструменты (как их видит модель; только у готового), ошибка.
+         *
+         *     kind: mcp — коннектор с инструментами; client — программа-клиент ядра (бот Telegram): у неё
+         *     журнал (последние строки) и предложения «Добавить» вместо инструментов.
          */
         ConnectorOut: {
             /** Id */
@@ -637,13 +650,23 @@ export interface components {
              * @default
              */
             error: string;
+            /**
+             * Kind
+             * @default mcp
+             * @enum {string}
+             */
+            kind: "mcp" | "client";
+            /** Log */
+            log?: string[];
+            /** Suggestions */
+            suggestions?: components["schemas"]["SuggestionOut"][];
         };
         /**
          * ConnectorSettingOut
          * @description Настройка, объявленная коннектором (smartesp.json): ключ env, подпись, тип, значение.
          *
-         *     type: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», secret — скрытое
-         *     (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто.
+         *     type: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», pairs — «ключ=значение;…»,
+         *     secret — скрытое (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто.
          */
         ConnectorSettingOut: {
             /** Key */
@@ -654,7 +677,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "text" | "path" | "list" | "secret" | "flag";
+            type: "text" | "path" | "list" | "secret" | "flag" | "pairs";
             /**
              * Hint
              * @default
@@ -966,6 +989,18 @@ export interface components {
         StopOut: {
             /** Stopped */
             stopped: boolean;
+        };
+        /**
+         * SuggestionOut
+         * @description Предложение клиента дописать value в настройку-список key («Добавить»); text — для людей.
+         */
+        SuggestionOut: {
+            /** Key */
+            key: string;
+            /** Value */
+            value: string;
+            /** Text */
+            text: string;
         };
         /**
          * TargetIO

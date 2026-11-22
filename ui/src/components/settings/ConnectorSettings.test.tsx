@@ -17,7 +17,7 @@ const details = [
     name: 'Погода',
     state: 'failed' as const,
     tools: [],
-    error: '',
+    error: '', kind: 'mcp' as const,
     settings: [text('WEATHER_PLACE', 'Город', '', 'например, Москва')],
     note: '',
     example: '',
@@ -27,7 +27,7 @@ const details = [
     name: 'Калькулятор',
     state: 'ready' as const,
     tools: [],
-    error: '',
+    error: '', kind: 'mcp' as const,
     settings: [],
     note: 'Папки и инструменты Клода настраиваются только в config.yaml',
     example: 'connectors:\n  - id: claude_tasks',
@@ -37,7 +37,7 @@ const details = [
     name: 'Задачи Клоду',
     state: 'disabled' as const,
     tools: [],
-    error: '',
+    error: '', kind: 'mcp' as const,
     settings: [
       { key: 'CLAUDE_TASK_FOLDERS', title: 'Папки для задач', type: 'list' as const, hint: '', value: 'дом=/tmp/h' },
       { key: 'OFF', title: 'Open Food Facts', type: 'flag' as const, hint: '', value: '' },
@@ -52,9 +52,9 @@ function setup(id: string, over: Partial<CoreState> = {}) {
   const actions = makeActions()
   const status = makeStatus({
     connectors: [
-      { id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add', 'calc_mul'], error: '' },
-      { id: 'weather', name: 'Погода', state: 'failed', tools: [], error: 'Коннектор упал' },
-      { id: 'claude_tasks', name: 'Задачи Клоду', state: 'disabled', tools: [], error: '' },
+      { id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add', 'calc_mul'], error: '', kind: 'mcp' as const },
+      { id: 'weather', name: 'Погода', state: 'failed', tools: [], error: 'Коннектор упал', kind: 'mcp' as const },
+      { id: 'claude_tasks', name: 'Задачи Клоду', state: 'disabled', tools: [], error: '', kind: 'mcp' as const },
     ],
   })
   const selected = { kind: 'connector' as const, id }

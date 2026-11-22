@@ -15,9 +15,9 @@ function state(over: Partial<CoreState> = {}): CoreState {
     status: makeStatus({
       ollama: { reachable: true, loaded: ['qwen3:latest'] },
       connectors: [
-        { id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add'], error: '' },
-        { id: 'notes', name: 'Заметки', state: 'failed', tools: [], error: 'упал' },
-        { id: 'claude_tasks', name: 'Задачи Клоду', state: 'disabled', tools: [], error: '' },
+        { id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add'], error: '', kind: 'mcp' },
+        { id: 'notes', name: 'Заметки', state: 'failed', tools: [], error: 'упал', kind: 'mcp' },
+        { id: 'claude_tasks', name: 'Задачи Клоду', state: 'disabled', tools: [], error: '', kind: 'mcp' },
       ],
     }),
     ...over,

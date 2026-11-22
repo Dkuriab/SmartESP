@@ -103,8 +103,8 @@ describe('SideList: коннекторы и живая подсветка', () =
   ]
   const status = makeStatus({
     connectors: [
-      { id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add'], error: '' },
-      { id: 'notes', name: 'Заметки', state: 'failed', tools: [], error: 'упал' },
+      { id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add'], error: '', kind: 'mcp' },
+      { id: 'notes', name: 'Заметки', state: 'failed', tools: [], error: 'упал', kind: 'mcp' },
     ],
   })
 

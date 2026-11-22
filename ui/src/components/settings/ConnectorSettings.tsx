@@ -3,7 +3,7 @@
 import type { ReactElement } from 'react'
 import { isApplying } from '../../schema/blocks'
 import type { ConnectorItem } from '../../schema/connectors'
-import { CONNECTOR_STATES, connectorToggle, connectorsLocked, listConnectors } from '../../schema/connectors'
+import { CONNECTOR_STATES, connectorToggle, connectorsLocked, listConnectors, withPair } from '../../schema/connectors'
 import type { CoreActions } from '../../state/actions'
 import type { ConnectorSetting, CoreState } from '../../state/model'
 import ConnectorForm from './ConnectorForm'
@@ -54,13 +54,39 @@ function Env({ env }: { env: ConnectorItem['env'] }) {
   )
 }
 
+type ClientProps = { connector: ConnectorItem; settings: ConnectorSetting[]; locked: boolean; onSave: (env: Record<string, string>) => Promise<string> }
+
+/** Клиент ядра (бот): кто ему написал — «Добавить» в список; последние строки журнала. */
+function ClientParts({ connector, settings, locked, onSave }: ClientProps) {
+  const add = (key: string, value: string) => {
+    const current = settings.find((s) => s.key === key)?.value ?? ''
+    void onSave({ [key]: withPair(current, value) })
+  }
+  return (
+    <>
+      {connector.suggestions.length > 0 && <div className="cap set-label">Написали боту</div>}
+      {connector.suggestions.map((s) => (
+        <div key={s.value} className="field">
+          <span className="val-text" title={s.value}>{s.text}</span>
+          <button type="button" className="btn" disabled={locked} onClick={() => add(s.key, s.value)}>Добавить</button>
+        </div>
+      ))}
+      <details className="job-log" open={connector.state === 'failed'}>
+        <summary className="cap">{`Журнал (${connector.log.length})`}</summary>
+        <pre className="client-log">{connector.log.slice(-60).join('\n') || 'пусто'}</pre>
+      </details>
+    </>
+  )
+}
+
 export default function ConnectorSettings(props: Props) {
   const { connector, applying, locked, liveTool, onToggle, settings = NO_SETTINGS, onSave = noSave, note } = props
   const declared = new Set(settings.map((s) => s.key))
+  const client = connector.kind === 'client'
   return (
     <div className="set">
-      <h3 className="set-title cut">🧩 {connector.name}</h3>
-      <div className="set-sub">Коннектор · {connector.id}</div>
+      <h3 className="set-title cut">{client ? '💬' : '🧩'} {connector.name}</h3>
+      <div className="set-sub">{client ? 'Клиент ядра' : 'Коннектор'} · {connector.id}</div>
       <label className="field">
         <span className="lbl">Включён</span>
         <input
@@ -78,8 +104,9 @@ export default function ConnectorSettings(props: Props) {
         <span className="val-text">{liveTool ? `работает: ${liveTool}` : CONNECTOR_STATES[connector.state]}</span>
       </div>
       {connector.error && <div className="set-note bad">{connector.error}</div>}
-      <div className="cap set-label">Инструменты</div>
-      {connector.tools.length > 0 ? (
+      {client && <ClientParts connector={connector} settings={settings} locked={locked} onSave={onSave} />}
+      {!client && <div className="cap set-label">Инструменты</div>}
+      {client ? null : connector.tools.length > 0 ? (
         <div className="set-tools">
           {connector.tools.map((t) => (
             <span key={t} className={`set-tool${t === liveTool ? ' live' : ''}`}>{t}</span>

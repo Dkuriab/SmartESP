@@ -391,3 +391,13 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Журнал клиента ядра (бота) в его панели. */
+.client-log {
+  max-height: 200px;
+  overflow: auto;
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: pre-wrap;
+}

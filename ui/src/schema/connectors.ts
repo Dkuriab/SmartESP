@@ -14,6 +14,12 @@ export type ConnectorItem = {
   error: string
   /** Окружение из настроек; значения секретов скрыты. */
   env: Array<{ key: string; value: string }>
+  /** mcp — коннектор с инструментами; client — программа-клиент ядра (бот Telegram). */
+  kind: 'mcp' | 'client'
+  /** Последние строки журнала клиента. */
+  log: string[]
+  /** Предложения клиента дописать значение в настройку-список («Добавить»). */
+  suggestions: Array<{ key: string; value: string; text: string }>
 }
 
 export const CONNECTOR_STATES: Record<ConnectorStateName, string> = {
@@ -54,13 +60,44 @@ export function listConnectors(state: CoreState): ConnectorItem[] {
       tools: now?.tools ?? [],
       error: now?.error ?? '',
       env: envOf(c.env),
+      kind: c.kind === 'client' || now?.kind === 'client' ? 'client' : 'mcp',
+      log: now?.log ?? [],
+      suggestions: now?.suggestions ?? [],
     }
   })
   for (const c of live) {
     if (items.some((x) => x.id === c.id)) continue
-    items.push({ id: c.id, name: c.name, enabled: c.state !== 'disabled', state: c.state, tools: c.tools, error: c.error ?? '', env: [] })
+    items.push({
+      id: c.id,
+      name: c.name,
+      enabled: c.state !== 'disabled',
+      state: c.state,
+      tools: c.tools,
+      error: c.error ?? '',
+      env: [],
+      kind: c.kind ?? 'mcp',
+      log: c.log ?? [],
+      suggestions: c.suggestions ?? [],
+    })
   }
   return items
+}
+
+/** Только коннекторы с инструментами (без клиентов ядра). */
+export function listToolConnectors(state: CoreState): ConnectorItem[] {
+  return listConnectors(state).filter((c) => c.kind === 'mcp')
+}
+
+/** Клиенты ядра (бот Telegram): источники ходов на схеме. */
+export function listClients(state: CoreState): ConnectorItem[] {
+  return listConnectors(state).filter((c) => c.kind === 'client')
+}
+
+/** Список «ключ=значение;…» с добавленной записью value (та же запись с тем же ключом — заменяется). */
+export function withPair(list: string, value: string): string {
+  const key = value.split('=')[0]?.trim() ?? ''
+  const items = list.split(';').map((x) => x.trim()).filter((x) => x && x.split('=')[0]?.trim() !== key)
+  return [...items, value].join(';')
 }
 
 /**

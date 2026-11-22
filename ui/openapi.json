@@ -1987,6 +1987,29 @@
             "title": "Error",
             "default": ""
           },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mcp",
+              "client"
+            ],
+            "title": "Kind",
+            "default": "mcp"
+          },
+          "log": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Log"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestionOut"
+            },
+            "type": "array",
+            "title": "Suggestions"
+          },
           "settings": {
             "items": {
               "$ref": "#/components/schemas/ConnectorSettingOut"
@@ -2046,6 +2069,29 @@
             "type": "string",
             "title": "Error",
             "default": ""
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "mcp",
+              "client"
+            ],
+            "title": "Kind",
+            "default": "mcp"
+          },
+          "log": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Log"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestionOut"
+            },
+            "type": "array",
+            "title": "Suggestions"
           }
         },
         "type": "object",
@@ -2056,7 +2102,7 @@
           "tools"
         ],
         "title": "ConnectorOut",
-        "description": "MCP-коннектор: состояние, инструменты (как их видит модель; только у готового), ошибка."
+        "description": "Коннектор или клиент ядра: состояние, инструменты (как их видит модель; только у готового), ошибка.\n\nkind: mcp — коннектор с инструментами; client — программа-клиент ядра (бот Telegram): у неё\nжурнал (последние строки) и предложения «Добавить» вместо инструментов."
       },
       "ConnectorSettingOut": {
         "properties": {
@@ -2075,7 +2121,8 @@
               "path",
               "list",
               "secret",
-              "flag"
+              "flag",
+              "pairs"
             ],
             "title": "Type"
           },
@@ -2097,7 +2144,7 @@
           "type"
         ],
         "title": "ConnectorSettingOut",
-        "description": "Настройка, объявленная коннектором (smartesp.json): ключ env, подпись, тип, значение.\n\ntype: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», secret — скрытое\n(значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто."
+        "description": "Настройка, объявленная коннектором (smartesp.json): ключ env, подпись, тип, значение.\n\ntype: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», pairs — «ключ=значение;…»,\nsecret — скрытое (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто."
       },
       "CoreInfoOut": {
         "properties": {
@@ -2731,6 +2778,30 @@
         ],
         "title": "StopOut",
         "description": "Остановка файла: stopped=False — файл не играл."
+      },
+      "SuggestionOut": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "value",
+          "text"
+        ],
+        "title": "SuggestionOut",
+        "description": "Предложение клиента дописать value в настройку-список key («Добавить»); text — для людей."
       },
       "TargetIO": {
         "properties": {

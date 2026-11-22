@@ -136,7 +136,7 @@ describe('reduce: колонки', () => {
 describe('reduce: коннекторы', () => {
   it('loaded connectors кладёт список с настройками', () => {
     const setting = { key: 'WEATHER_PLACE', title: 'Город', type: 'text' as const, hint: '', value: 'Тверь' }
-    const data = [{ id: 'weather', name: 'Погода', state: 'ready' as const, tools: [], error: '', settings: [setting], note: '', example: '' }]
+    const data = [{ id: 'weather', name: 'Погода', state: 'ready' as const, tools: [], error: '', kind: 'mcp' as const, settings: [setting], note: '', example: '' }]
     expect(initialState().connectors).toBeNull()
     expect(reduce(initialState(), { type: 'loaded', resource: 'connectors', data }).connectors).toEqual(data)
   })

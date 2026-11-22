@@ -3,7 +3,7 @@ import type { Edge, Node } from '@xyflow/react'
 import type { CoreState, Turn } from '../state/model'
 import type { ExecutorItem } from './blocks'
 import { KNOWN_STAGES, asList, executorUnavailable, listDevices, listExecutors, modelWithoutTools, voiceLabel } from './blocks'
-import { CONNECTOR_STATES, listConnectors, modelInMemory } from './connectors'
+import { CONNECTOR_STATES, listClients, listToolConnectors, modelInMemory } from './connectors'
 
 export type Graph = { nodes: Node[]; edges: Edge[] }
 
@@ -38,14 +38,21 @@ function column(count: number, x: number, i: number, gap = GAP): { x: number; y:
 /** Узлы колонок (или подсказка) и обработчиков. */
 function leftNodes(state: CoreState, kinds: string[], configured: string[], turn?: Turn): Node[] {
   const devices = listDevices(state).map((d) => ({ id: d.device_id, name: d.name, connected: d.connected }))
+  const clients = listClients(state).filter((c) => c.enabled)
   const sources = new Set(turn?.annotations.map((a) => a.source))
   const nodes: Node[] = []
-  if (devices.length === 0) {
+  const count = devices.length + clients.length
+  if (count === 0) {
     nodes.push({ id: 'hint', type: 'hint', position: column(1, X_0, 0), data: { label: HINT } })
   }
   devices.forEach((d, i) => {
     const data = { label: d.name || d.id, offline: !d.connected, lit: turn?.device_id === d.id, kind: 'device', id: d.id }
-    nodes.push({ id: `device:${d.id}`, type: 'device', position: column(devices.length, X_0, i), data })
+    nodes.push({ id: `device:${d.id}`, type: 'device', position: column(count, X_0, i), data })
+  })
+  // клиенты ядра (бот Telegram) — тоже источники ходов: ход из бота подсвечивает его узел
+  clients.forEach((c, i) => {
+    const data = { label: `💬 ${c.name}`, offline: c.state !== 'ready', lit: !!turn && turn.source === c.id, kind: 'connector', id: c.id }
+    nodes.push({ id: `client:${c.id}`, type: 'device', position: column(count, X_0, devices.length + i), data })
   })
   kinds.forEach((kind, i) => {
     const enabled = configured.includes(kind)
@@ -129,10 +136,13 @@ function buildEdges(state: CoreState, configured: string[], executors: ExecutorI
   const link = (source: string, target: string, lit: boolean, strong = false, targetHandle?: string) =>
     edges.push({ id: `${source}->${target}`, source, target, targetHandle, data: { lit, strong: lit && strong } })
   const head = entry ? execId(entry.id) : undefined
-  for (const { device_id: id } of listDevices(state)) {
-    const mine = turn?.device_id === id
-    if (configured.length === 0 && head) link(`device:${id}`, head, mine, false, 'in-left')
-    for (const k of configured) link(`device:${id}`, `stage:${k}`, mine, sources.has(k))
+  const starts = [
+    ...listDevices(state).map((d) => ({ node: `device:${d.device_id}`, mine: turn?.device_id === d.device_id })),
+    ...listClients(state).filter((c) => c.enabled).map((c) => ({ node: `client:${c.id}`, mine: !!turn && turn.source === c.id })),
+  ]
+  for (const { node, mine } of starts) {
+    if (configured.length === 0 && head) link(node, head, mine, false, 'in-left')
+    for (const k of configured) link(node, `stage:${k}`, mine, sources.has(k))
   }
   if (head) for (const k of configured) link(`stage:${k}`, head, !!turn, sources.has(k), 'in-left')
   const noTools = new Set(executors.filter((e) => modelWithoutTools(state, e.model)).map((e) => e.id))
@@ -165,7 +175,7 @@ function executorNodes(state: CoreState, executors: ExecutorItem[], path: string
 /** Узлы коннекторов под голосом: состояние; инструменты выбранного хода — lit; работающий — live. */
 function connectorNodes(state: CoreState, fading: Fading, turn?: Turn): Node[] {
   const used = new Set((turn?.tools ?? []).map((t) => t.connector))
-  return listConnectors(state).map((c, i) => {
+  return listToolConnectors(state).map((c, i) => {
     const now = state.live.connectors[c.id]
     const data = {
       label: c.name,
@@ -202,7 +212,7 @@ function toolEdges(state: CoreState, fading: Fading, turn?: Turn): Edge[] {
   }
   for (const t of turn?.tools ?? []) add(t.executor, t.connector, false)
   for (const [connector, now] of Object.entries(state.live.connectors)) add(now.executor, connector, true)
-  const known = new Set([...listExecutors(state).map((e) => execId(e.id)), ...listConnectors(state).map((c) => `connector:${c.id}`)])
+  const known = new Set([...listExecutors(state).map((e) => execId(e.id)), ...listToolConnectors(state).map((c) => `connector:${c.id}`)])
   return [...edges.values()].filter((e) => known.has(e.source) && known.has(e.target))
 }
 

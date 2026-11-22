@@ -3,7 +3,8 @@
 // короткая работа отмечена не меньше 1,2 с.
 import type { ReactNode } from 'react'
 import { isApplying, listDevices, listExecutors, listStages, stagesLocked, stagesWith, voiceLabel } from '../../schema/blocks'
-import { connectorToggle, connectorsLocked, listConnectors } from '../../schema/connectors'
+import type { ConnectorItem } from '../../schema/connectors'
+import { connectorToggle, connectorsLocked, listClients, listConnectors, listToolConnectors } from '../../schema/connectors'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState, Selection } from '../../state/model'
 import AccessInfo from '../common/AccessInfo'
@@ -98,14 +99,15 @@ function Executors(props: Props) {
   )
 }
 
-/** Коннекторы с переключателем; упавший — красная точка. */
-function Connectors(props: Props) {
-  const { state, actions } = props
-  const list = listConnectors(state)
+type GroupProps = Props & { title: string; icon: string; list: ConnectorItem[] }
+
+/** Коннекторы (или клиенты ядра) с переключателем; упавший — красная точка. */
+function Connectors(props: GroupProps) {
+  const { state, actions, title, icon, list } = props
   if (list.length === 0) return null
   const locked = connectorsLocked(state)
   return (
-    <Section title="Коннекторы">
+    <Section title={title}>
       {list.map((c) => {
         const toggle = (
           <input
@@ -120,7 +122,7 @@ function Connectors(props: Props) {
         )
         const now = state.live.connectors[c.id]
         const sub = c.state === 'failed' ? <span role="img" className="dotr" aria-label="ошибка" /> : undefined
-        return <Row key={c.id} icon="🧩" label={c.name} sub={sub} target={{ kind: 'connector', id: c.id }} props={props} extra={toggle} live={now ? `${now.tool}…` : undefined} />
+        return <Row key={c.id} icon={icon} label={c.name} sub={sub} target={{ kind: 'connector', id: c.id }} props={props} extra={toggle} live={now ? `${now.tool}…` : undefined} />
       })}
     </Section>
   )
@@ -141,7 +143,8 @@ export default function SideList(props: Props) {
       <Section title="Голос">
         <Row icon="🔈" label="Голос" sub={voiceLabel(state) ?? '—'} target={{ kind: 'voice', id: 'voice' }} props={props} />
       </Section>
-      <Connectors {...working} />
+      <Connectors {...working} title="Коннекторы" icon="🧩" list={listToolConnectors(state)} />
+      <Connectors {...working} title="Клиенты" icon="💬" list={listClients(state)} />
       <AccessInfo loadAccess={actions.loadAccess} online={state.connection === 'online'} />
     </>
   )

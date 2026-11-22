@@ -43,7 +43,7 @@ describe('SchemaView: живая подсветка', () => {
   function draw(over = {}) {
     const status = makeStatus({
       ollama: { reachable: true, loaded: ['qwen3:latest'] },
-      connectors: [{ id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add'], error: '' }],
+      connectors: [{ id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add'], error: '', kind: 'mcp' }],
     })
     const state = makeState({ config: makeConfig({ connectors }), status, ...over })
     render(<div style={{ width: 800, height: 600 }}><SchemaView state={state} actions={makeActions()} /></div>)
