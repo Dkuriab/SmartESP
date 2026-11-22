@@ -1810,6 +1810,26 @@
       "post": {
         "summary": "Resync",
         "operationId": "resync_api_v1_sounds_sync_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "колонка; нет — все подключённые",
+              "title": "Device Id"
+            },
+            "description": "колонка; нет — все подключённые"
+          }
+        ],
         "responses": {
           "202": {
             "description": "Successful Response",
@@ -1820,21 +1840,102 @@
             }
           },
           "401": {
-            "description": "Unauthorized",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorOut"
                 }
               }
-            }
+            },
+            "description": "Unauthorized"
           },
           "409": {
-            "description": "Conflict",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sounds/copy": {
+      "post": {
+        "summary": "Copy Sounds",
+        "operationId": "copy_sounds_api_v1_sounds_copy_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "откуда копировать",
+              "title": "Device Id"
+            },
+            "description": "откуда копировать"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SoundsCopyOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
                 }
               }
             }
@@ -1866,20 +1967,13 @@
           {
             "name": "device_id",
             "in": "query",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)",
+              "type": "string",
+              "description": "колонка (MAC); может быть не в сети — получит звук при подключении",
               "title": "Device Id"
             },
-            "description": "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)"
+            "description": "колонка (MAC); может быть не в сети — получит звук при подключении"
           }
         ],
         "requestBody": {
@@ -1988,20 +2082,13 @@
           {
             "name": "device_id",
             "in": "query",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)",
+              "type": "string",
+              "description": "колонка (MAC); может быть не в сети — получит звук при подключении",
               "title": "Device Id"
             },
-            "description": "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)"
+            "description": "колонка (MAC); может быть не в сети — получит звук при подключении"
           }
         ],
         "responses": {
@@ -2414,6 +2501,172 @@
         "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/api/v1/people/{person_id}/links": {
+      "post": {
+        "summary": "Add Link",
+        "operationId": "add_link_api_v1_people__person_id__links_post",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkIO"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/api/v1/people/{person_id}/links/{channel}/{account}": {
+      "delete": {
+        "summary": "Remove Link",
+        "operationId": "remove_link_api_v1_people__person_id__links__channel___account__delete",
+        "parameters": [
+          {
+            "name": "person_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Person Id"
+            }
+          },
+          {
+            "name": "channel",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Channel"
+            }
+          },
+          {
+            "name": "account",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonOut"
+                }
+              }
+            }
           },
           "401": {
             "content": {
@@ -3224,6 +3477,13 @@
             "pattern": "^[a-z0-9_-]{1,32}$",
             "title": "Source",
             "default": "api"
+          },
+          "account": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[^\\x00-\\x1f\\x7f/\\\\]*$",
+            "title": "Account",
+            "default": ""
           }
         },
         "type": "object",
@@ -3231,7 +3491,7 @@
           "text"
         ],
         "title": "AskIn",
-        "description": "Вопрос через API текстом: текст, кто спрашивает (\"\" — неизвестно) и откуда (для ленты)."
+        "description": "Вопрос через API текстом: текст, кто спрашивает (\"\" — неизвестно), откуда (для ленты) и\nаккаунт в этом канале (id пользователя Telegram; по нему ядро находит человека из «Людей»)."
       },
       "AskOut": {
         "properties": {
@@ -3272,6 +3532,13 @@
             "pattern": "^[a-z0-9_-]{1,32}$",
             "title": "Source",
             "default": "api"
+          },
+          "account": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[^\\x00-\\x1f\\x7f/\\\\]*$",
+            "title": "Account",
+            "default": ""
           }
         },
         "type": "object",
@@ -3402,38 +3669,6 @@
         ],
         "title": "CloudModelOut",
         "description": "Модель облачного сервиса (цены — доллары за 1 млн токенов; неизвестно — null)."
-      },
-      "CommonSoundOut": {
-        "properties": {
-          "tone": {
-            "type": "string",
-            "enum": [
-              "wake",
-              "error",
-              "thinking",
-              "listen",
-              "attention"
-            ],
-            "title": "Tone"
-          },
-          "sound": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SoundRefOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "tone",
-          "sound"
-        ],
-        "title": "CommonSoundOut",
-        "description": "Общий звук сигнала (для всех колонок); None — встроенный."
       },
       "ConfigOut": {
         "properties": {
@@ -3826,15 +4061,6 @@
             ],
             "title": "Tone"
           },
-          "source": {
-            "type": "string",
-            "enum": [
-              "builtin",
-              "all",
-              "device"
-            ],
-            "title": "Source"
-          },
           "sound": {
             "anyOf": [
               {
@@ -3866,12 +4092,11 @@
         "type": "object",
         "required": [
           "tone",
-          "source",
           "sound",
           "delivery"
         ],
         "title": "DeviceSoundOut",
-        "description": "Сигнал на колонке: source — builtin | all (общий) | device (свой); sound — None у встроенного;\ndelivery — ok | pending | sending | failed | unsupported (прошивка без звуков) | offline."
+        "description": "Сигнал на колонке: sound — желаемый звук (None — встроенный); delivery — ok (на колонке) |\npending | sending | failed (error — причина) | unsupported (прошивка без звуков) | offline (ждёт\nподключения колонки)."
       },
       "DeviceSoundsOut": {
         "properties": {
@@ -4205,6 +4430,27 @@
         "title": "KitOut",
         "description": "Набор для обучения."
       },
+      "LinkIO": {
+        "properties": {
+          "channel": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Channel"
+          },
+          "account": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Account"
+          }
+        },
+        "type": "object",
+        "required": [
+          "channel",
+          "account"
+        ],
+        "title": "LinkIO",
+        "description": "Связь с аккаунтом канала: channel — как source хода (\"telegram\"), account — id в канале."
+      },
       "ModelOut": {
         "properties": {
           "name": {
@@ -4264,7 +4510,7 @@
           "name"
         ],
         "title": "PersonIn",
-        "description": "Имя человека: идёт в справку модели и в _meta.person инструментов."
+        "description": "Имя человека: идёт в справку модели, в ленту и в _meta.person_name скиллов."
       },
       "PersonOut": {
         "properties": {
@@ -4290,6 +4536,13 @@
           "stale_samples": {
             "type": "integer",
             "title": "Stale Samples"
+          },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/LinkIO"
+            },
+            "type": "array",
+            "title": "Links"
           }
         },
         "type": "object",
@@ -4298,10 +4551,11 @@
           "name",
           "created_at",
           "samples",
-          "stale_samples"
+          "stale_samples",
+          "links"
         ],
         "title": "PersonOut",
-        "description": "Человек: образцы текущей модели и сколько устаревших (другой модели, в узнавании не участвуют)."
+        "description": "Человек: постоянный id (скиллам — _meta.person), имя, образцы текущей модели, сколько устаревших\n(другой модели, в узнавании не участвуют) и связи с аккаунтами каналов."
       },
       "PhraseOut": {
         "properties": {
@@ -4555,15 +4809,25 @@
         "title": "SoundSetOut",
         "description": "Итог загрузки: звук и обрезан ли он до 3 с."
       },
-      "SoundsOut": {
+      "SoundsCopyOut": {
         "properties": {
-          "common": {
+          "devices": {
             "items": {
-              "$ref": "#/components/schemas/CommonSoundOut"
+              "type": "string"
             },
             "type": "array",
-            "title": "Common"
-          },
+            "title": "Devices"
+          }
+        },
+        "type": "object",
+        "required": [
+          "devices"
+        ],
+        "title": "SoundsCopyOut",
+        "description": "Кому скопирован набор звуков колонки."
+      },
+      "SoundsOut": {
+        "properties": {
           "devices": {
             "items": {
               "$ref": "#/components/schemas/DeviceSoundsOut"
@@ -4574,11 +4838,10 @@
         },
         "type": "object",
         "required": [
-          "common",
           "devices"
         ],
         "title": "SoundsOut",
-        "description": "Общие звуки и звуки каждой известной колонки."
+        "description": "Звуки каждой известной колонки (из настроек или хоть раз подключавшейся)."
       },
       "SpeakerModelOut": {
         "properties": {
@@ -5311,6 +5574,11 @@
           "person": {
             "type": "string",
             "title": "Person",
+            "default": ""
+          },
+          "person_id": {
+            "type": "string",
+            "title": "Person Id",
             "default": ""
           },
           "kind": {

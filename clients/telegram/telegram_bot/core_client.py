@@ -1,8 +1,8 @@
 """Клиент API ядра: ход текстом и голосом.
 
 Договор (дизайн 2.3; полное описание — README.md, раздел «Как бот говорит с ядром»):
-- `POST /api/v1/ask`, JSON `{text, person, source: "telegram"}` → 200 `{answer, turn_id}`;
-- `POST /api/v1/ask/voice`, multipart: файл `audio` (OGG/Opus), поля `person`, `source`
+- `POST /api/v1/ask`, JSON `{text, person, source: "telegram", account}` → 200 `{answer, turn_id}`;
+- `POST /api/v1/ask/voice`, multipart: файл `audio` (OGG/Opus), поля `person`, `source`, `account`
   → 200 `{answer, turn_id}`;
 - заголовок `Authorization: Bearer <токен ядра>`; 401/403 — токен не принят;
   400/413/422 — ядро отклонило запрос; остальное — ядро недоступно.
@@ -63,22 +63,23 @@ class CoreClient:
             trust_env=False,
         )
 
-    async def ask(self, text: str, *, person: str) -> str:
-        """Ход текстом от имени `person`; возвращает ответ Кузи.
+    async def ask(self, text: str, *, person: str, account: str = "") -> str:
+        """Ход текстом от имени `person`; `account` — `user_id` в Telegram строкой: по нему ядро
+        находит человека из «Людей» (его постоянный id и имя). Возвращает ответ Кузи.
 
         Ошибки — `CoreUnavailableError`, `CoreUnauthorizedError`, `CoreRejectedError`.
         """
-        return await self._post("/api/v1/ask", json={"text": text, "person": person, "source": SOURCE})
+        body = {"text": text, "person": person, "source": SOURCE, "account": account}
+        return await self._post("/api/v1/ask", json=body)
 
-    async def ask_voice(self, audio: bytes, *, person: str) -> str:
-        """Ход голосовым (OGG/Opus из Telegram) от имени `person`; возвращает ответ Кузи.
-
-        Ошибки — как у `ask`.
+    async def ask_voice(self, audio: bytes, *, person: str, account: str = "") -> str:
+        """Ход голосовым (OGG/Opus из Telegram) от имени `person` (`account` — как у `ask`);
+        возвращает ответ Кузи. Ошибки — как у `ask`.
         """
         return await self._post(
             "/api/v1/ask/voice",
             files={"audio": ("voice.ogg", audio, "audio/ogg")},
-            data={"person": person, "source": SOURCE},
+            data={"person": person, "source": SOURCE, "account": account},
         )
 
     async def _post(self, path: str, **request: Any) -> str:

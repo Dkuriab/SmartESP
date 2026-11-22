@@ -48,35 +48,59 @@ def test_to_wav() -> None:
         assert (wav.getframerate(), wav.getnchannels(), wav.getnframes()) == (16000, 1, 160)
 
 
-def test_library_choices_last_action_wins(tmp_path: Path) -> None:
-    library = SoundLibrary(tmp_path)
+def test_library_per_speaker_and_copy(tmp_path: Path) -> None:
+    library = SoundLibrary(tmp_path, ["A", "B"])
     bell = library.add(b"\x01\x00" * 10, "bell.mp3")
-    library.assign("wake", bell, None)
-    assert library.choice("A", "wake") == ("all", bell)
-    own = library.add(b"\x02\x00" * 10, "own.wav")
-    library.assign("wake", own, "A")
-    library.assign("error", None, "A")  # явно встроенный
-    assert library.choice("A", "wake") == ("device", own)
-    assert library.choice("B", "wake") == ("all", bell)
-    assert library.choice("A", "error") == ("builtin", None)
-    library.assign("wake", None, None)  # «для всех» сбрасывает выбор колонки
-    assert library.choice("A", "wake") == ("builtin", None)
-    assert library.pcm(own.sha256) is None and library.pcm(bell.sha256) is None  # ненужные удалены
+    library.assign("wake", bell, "A")
+    assert library.sound("A", "wake") == bell and library.sound("B", "wake") is None
+    assert library.copy("A", ["A", "B", "C"]) == ["B", "C"]
+    assert library.sound("C", "wake") == bell and sorted(library.devices()) == ["A", "B", "C"]
+    for device in ("A", "B", "C"):
+        library.assign("wake", None, device)
+    assert library.pcm(bell.sha256) is None  # ни у кого — файл удалён
 
 
 def test_library_persists_and_ignores_garbage(tmp_path: Path) -> None:
     library = SoundLibrary(tmp_path)
     bell = library.add(b"\x01\x00" * 10, "bell.mp3")
-    library.assign("thinking", bell, None)
     library.assign("listen", bell, "A")
+    library.remember("B")
     again = SoundLibrary(tmp_path)
-    assert again.common()["thinking"] == bell and again.choice("A", "listen") == ("device", bell)
+    assert again.sound("A", "listen") == bell and sorted(again.devices()) == ["A", "B"]
     assert again.pcm(bell.sha256) == b"\x01\x00" * 10
     assert again.pcm("../sounds") is None
-    (tmp_path / "sounds.json").write_text(json.dumps({"all": {"wake": {"sha256": "x"}, "bell": {}}}))
-    assert SoundLibrary(tmp_path).common()["wake"] is None
+    (tmp_path / "sounds.json").write_text(
+        json.dumps({"devices": {"A": {"wake": {"sha256": "x"}, "bell": {}}}})
+    )
+    assert SoundLibrary(tmp_path).sound("A", "wake") is None
     (tmp_path / "sounds.json").write_text("{")
-    assert SoundLibrary(tmp_path).common()["wake"] is None
+    assert SoundLibrary(tmp_path).devices() == []
+
+
+def _old_file(tmp_path: Path, bell: SoundRef) -> None:
+    """Файл прежнего вида: общий слой all и выборы колонок (null — явный встроенный)."""
+    data = {"all": {"wake": vars(bell), "error": vars(bell)}, "devices": {"A": {"error": None}}}
+    (tmp_path / "sounds.json").write_text(json.dumps(data))
+
+
+def test_migration_moves_all_into_known_speakers(tmp_path: Path) -> None:
+    bell = SoundLibrary(tmp_path).add(b"\x01\x00" * 10, "bell.mp3")
+    _old_file(tmp_path, bell)
+    library = SoundLibrary(tmp_path, ["B"])  # B — из настроек, A — из файла
+    assert library.sound("A", "wake") == bell and library.sound("A", "error") is None  # явный встроенный
+    assert library.sound("B", "wake") == bell and library.sound("B", "error") == bell
+    saved = json.loads((tmp_path / "sounds.json").read_text())
+    assert "all" not in saved and set(saved["devices"]) == {"A", "B"}
+
+
+def test_migration_waits_for_first_known_speaker(tmp_path: Path) -> None:
+    bell = SoundLibrary(tmp_path).add(b"\x01\x00" * 10, "bell.mp3")
+    (tmp_path / "sounds.json").write_text(json.dumps({"all": {"wake": vars(bell)}}))
+    library = SoundLibrary(tmp_path)
+    assert library.devices() == [] and library.pcm(bell.sha256) is not None  # файл не потерян
+    library.remember("C")
+    assert library.sound("C", "wake") == bell
+    assert "all" not in json.loads((tmp_path / "sounds.json").read_text())
 
 
 def test_sound_ref_duration(tmp_path: Path) -> None:

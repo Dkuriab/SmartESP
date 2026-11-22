@@ -22,11 +22,11 @@ CORE_EMPTY = "Кузя ничего не ответил."
 class Core(Protocol):
     """Ход через ядро (реализация — `CoreClient`, в тестах — подделка)."""
 
-    async def ask(self, text: str, *, person: str) -> str:
-        """Ход текстом; возвращает ответ Кузи."""
+    async def ask(self, text: str, *, person: str, account: str = "") -> str:
+        """Ход текстом (account — user_id в Telegram строкой); возвращает ответ Кузи."""
         ...
 
-    async def ask_voice(self, audio: bytes, *, person: str) -> str:
+    async def ask_voice(self, audio: bytes, *, person: str, account: str = "") -> str:
         """Ход голосовым OGG/Opus; возвращает ответ Кузи."""
         ...
 
@@ -55,15 +55,18 @@ class Assistant:
             return None
         return self._users.get(user_id)
 
-    async def text(self, person: str, text: str) -> str:
-        """Текстовое сообщение → ход ядра; возвращает текст ответа в чат."""
-        return await self._turn(self._core.ask(text, person=person))
+    async def text(self, person: str, text: str, account: str = "") -> str:
+        """Текстовое сообщение → ход ядра; возвращает текст ответа в чат.
 
-    async def voice(self, person: str, audio: bytes) -> str:
+        account — `user_id` отправителя строкой: по нему ядро узнаёт человека из «Людей».
+        """
+        return await self._turn(self._core.ask(text, person=person, account=account))
+
+    async def voice(self, person: str, audio: bytes, account: str = "") -> str:
         """Голосовое (OGG/Opus) → ход ядра; возвращает текст ответа в чат."""
-        return await self._turn(self._core.ask_voice(audio, person=person))
+        return await self._turn(self._core.ask_voice(audio, person=person, account=account))
 
-    async def photo(self, person: str, photo: bytes, caption: str | None) -> str:
+    async def photo(self, person: str, photo: bytes, caption: str | None, account: str = "") -> str:
         """Фото: найден штрихкод → ход «штрихкод <код>, <подпись>»; нет — просьба переснять."""
         code = await asyncio.to_thread(self._read_barcode, photo)
         if code is None:
@@ -71,7 +74,7 @@ class Assistant:
         text = f"штрихкод {code}"
         if caption and caption.strip():
             text = f"{text}, {caption.strip()}"
-        return await self.text(person, text)
+        return await self.text(person, text, account)
 
     async def _turn(self, call: Awaitable[str]) -> str:
         """Ждёт ответ ядра и переводит ошибки в понятные человеку ответы."""

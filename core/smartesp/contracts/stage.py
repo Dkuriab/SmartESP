@@ -22,6 +22,7 @@ class Annotation:
     reference: bool = False
     to_model: bool = True  # False — только в ленту и журнал, модели не идёт
     person: str = ""  # обработчик узнал, кто говорит: имя человека (станет человеком хода)
+    person_id: str = ""  # и его постоянный id (скиллам — в _meta.person)
 
 
 class Stage(Protocol):

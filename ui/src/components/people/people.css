@@ -93,6 +93,17 @@
   color: var(--muted);
 }
 
+.people-link-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.people-link-add .val {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
 @media (max-width: 700px) {
   .people-full {
     flex-direction: column;

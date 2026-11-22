@@ -1,13 +1,20 @@
-// Выбранный человек: имя (переименовать), удаление, запись образцов голоса и их список.
+// Выбранный человек: имя (переименовать), удаление, образцы голоса, связи с аккаунтами каналов.
 import { useState } from 'react'
 import type { CoreActions } from '../../state/actions'
 import type { CoreState } from '../../state/model'
 import type { Person } from '../../state/peopleActions'
+import { telegramAccounts } from './knownAccounts'
+import PersonLinks from './PersonLinks'
 import SampleList from './SampleList'
 import SampleRecorder from './SampleRecorder'
 import type { PeopleData } from './usePeople'
 
 type Props = { person: Person; modelReady: boolean; state: CoreState; actions: CoreActions; data: PeopleData }
+
+/** Аккаунты, уже связанные с кем-то из людей: «канал/аккаунт». */
+function takenAccounts(people: Person[] | null): Set<string> {
+  return new Set((people ?? []).flatMap((p) => p.links.map((k) => `${k.channel}/${k.account}`)))
+}
 
 /** Имя с кнопкой «Сохранить» (видна, когда имя изменили). */
 function NameField({ person, actions, data }: Omit<Props, 'modelReady' | 'state'>) {
@@ -39,6 +46,8 @@ export default function PersonView({ person, modelReady, state, actions, data }:
       {person.stale_samples > 0 && (
         <div className="set-note warn">{`Образцов от прежней модели: ${person.stale_samples} — в узнавании не участвуют, запиши голос заново.`}</div>
       )}
+      <PersonLinks person={person} known={telegramAccounts(state)} taken={takenAccounts(data.people)} actions={actions} onChanged={(p) => data.replace(p.id, p)} />
+      <div className="set-note">{`Постоянный id: ${person.id} — по нему заметки и таймеры остаются за человеком и после переименования.`}</div>
       <div className="record-buttons">
         {confirm ? (
           <>

@@ -57,9 +57,13 @@ async def understand(
 
 
 def take_person(turn: Turn) -> None:
-    """Человек хода из пометок (обработчик узнал голос), если его ещё нет: канал API главнее."""
-    if not turn.person:
-        turn.person = next((a.person for a in turn.annotations if a.person), "")
+    """Человек хода (имя и постоянный id) из пометок — обработчик узнал голос, — если его ещё нет:
+    человек, которого назвал канал API, главнее."""
+    if turn.person or turn.person_id:
+        return
+    found = next((a for a in turn.annotations if a.person), None)
+    if found is not None:
+        turn.person, turn.person_id = found.person, found.person_id
 
 
 def nothing_to_answer(turn: Turn) -> bool:

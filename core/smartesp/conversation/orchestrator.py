@@ -258,7 +258,9 @@ class Orchestrator(PartSlots):
         ответа цели: тогда он у фоновой задачи.
         """
         turn.path = [handoffs.entry_id(parts.executor)]
-        CALL_CONTEXT.set(CallContext(turn.person or None, turn.utterance.device_id))  # скиллам: кто и откуда
+        CALL_CONTEXT.set(
+            CallContext(turn.person_id or None, turn.utterance.device_id, turn.person)
+        )  # кто, откуда
         async with closing(watched(parts.executor.run(messages)), keep=lambda: turn.deferred) as stream:
             try:
                 first = await first_part(

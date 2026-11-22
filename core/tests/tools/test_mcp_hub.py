@@ -44,9 +44,10 @@ async def test_turn_context_gives_person_and_speaker(hub: McpHub):
     from smartesp.contracts import CALL_CONTEXT, CallContext
 
     await hub.start([spec("a")])
-    token = CALL_CONTEXT.set(CallContext("Аня", "AA:BB"))
+    token = CALL_CONTEXT.set(CallContext("a1b2c3d4", "AA:BB", "Аня"))
     try:
-        assert (await hub.call("whoami", {}, None)).text == "Аня@AA:BB"  # «сделай погромче» — эта колонка
+        # постоянный id, имя для показа и колонка («сделай погромче» — эта колонка)
+        assert (await hub.call("whoami", {}, None)).text == "a1b2c3d4 (Аня)@AA:BB"
         assert (await hub.call("whoami", {}, "Даша")).text == "Даша@AA:BB"  # явный человек важнее
     finally:
         CALL_CONTEXT.reset(token)

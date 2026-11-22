@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 
 from smartesp.contracts import (
     SOUND_TONES,
@@ -73,20 +73,17 @@ class SoundDeliveries:
         self._publish(device_id)  # состояние известно, даже если досылать нечего
         self.start(device_id)
 
-    def start_all(self, *, retry: bool = False) -> None:
-        """Доставка на все колонки, которые сейчас на связи и умеют звуки; retry — забыть неудачи."""
-        for device_id in [d for d, ok in self._supported.items() if ok]:
-            if self._targets.device_sounds(device_id) is not None:
-                if retry:
-                    self._clear(device_id)
-                self.start(device_id)
+    def retry(self, device_id: str | None = None) -> None:
+        """Повтор после неудач: колонке device_id или всем, что на связи и умеют звуки (None)."""
+        self.changed([device_id] if device_id is not None else list(self._supported))
 
-    def changed(self, tone: SoundTone) -> None:
-        """Назначение сигнала изменилось: прежние неудачи по нему забыты, доставка на все колонки."""
-        for key in [key for key in self._states if key[1] == tone]:
-            del self._states[key]
-        self._publish(None)
-        self.start_all()
+    def changed(self, devices: Iterable[str]) -> None:
+        """Наборы колонок изменились: их прежние неудачи забыты, подключённым — доставка сейчас."""
+        for device_id in devices:
+            self._clear(device_id)
+            self._publish(device_id)
+            if self._supported.get(device_id) and self._targets.device_sounds(device_id) is not None:
+                self.start(device_id)
 
     def start(self, device_id: str) -> None:
         """Сверяет колонку с назначениями (в фоне); уже идёт — пройдёт ещё раз после."""

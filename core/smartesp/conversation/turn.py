@@ -77,7 +77,8 @@ class Turn:
     tools: list[dict[str, object]] = field(default_factory=list[dict[str, object]])
     exchanges: list[ToolExchange] = field(default_factory=list[ToolExchange])  # те же вызовы для истории
     source: str = ""  # ход через API: откуда вопрос ("telegram"); у колонки — пусто
-    person: str = ""  # кто спрашивает: назван каналом API или узнан по голосу; неизвестно — пусто
+    person: str = ""  # кто спрашивает (имя): назван каналом API или узнан по голосу; неизвестно — пусто
+    person_id: str = ""  # его постоянный id (скиллам — _meta.person); неизвестно — пусто
     guard: GuardTag = ""  # страховка честности: "retried" (повторный прогон) или "fallback" (честная фраза)
 
     def elapsed_ms(self) -> float:

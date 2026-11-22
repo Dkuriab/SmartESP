@@ -75,11 +75,6 @@ class TurnActivity:
             if self._turn.deferred:
                 self._done()
 
-    @property
-    def person(self) -> str:
-        """Человек хода ("" — неизвестен)."""
-        return self._turn.person
-
     def finish(self) -> None:
         """Ход закончен: текущий исполнитель — done (если ответ не отложен: тот закончит сам)."""
         if not self._turn.deferred:
@@ -130,15 +125,6 @@ class TurnActivity:
 
     def _ids(self) -> dict[str, object]:
         return {"turn_id": turn_id(self._turn), "device_id": self._turn.utterance.device_id}
-
-
-def current_person() -> str | None:
-    """Человек хода текущей задачи (узнан по голосу или назван каналом API); вне хода или не узнан — None.
-
-    Читается в момент вызова: человек, узнанный после начала хода, тоже виден.
-    """
-    activity = _current.get()
-    return (activity.person or None) if activity is not None else None
 
 
 def watched(parts: AsyncIterator[ReplyPart]) -> AsyncIterator[ReplyPart]:

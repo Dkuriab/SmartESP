@@ -13,5 +13,7 @@ $CLI lib install "WebSockets@2.7.2" "ArduinoJson@7.4.3" >/dev/null
 
 # Готовый образ для обновления по воздуху (приложение → колонка → «Обновить прошивку»):
 # firmware/build/SmartEsp.ino.bin
-$CLI compile --fqbn "$FQBN" --warnings all --output-dir "$ROOT/firmware/build" "$ROOT/firmware/SmartEsp"
+# Своя разметка (firmware/SmartEsp/partitions.csv): слот прошивки 4 МБ, а проверка размера
+# схемы ESP SR 16M рассчитана на 3 МБ — поднимаем её до размера слота.
+$CLI compile --fqbn "$FQBN" --build-property upload.maximum_size=4194304 --warnings all --output-dir "$ROOT/firmware/build" "$ROOT/firmware/SmartEsp"
 echo "Образ для обновления по воздуху: $ROOT/firmware/build/SmartEsp.ino.bin"

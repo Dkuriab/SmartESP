@@ -54,43 +54,57 @@ def _file(data: bytes) -> dict[str, tuple[str, bytes, str]]:
     return {"file": ("bell.wav", data, "audio/wav")}
 
 
-async def test_upload_overview_preview_reset(
+A = {"device_id": "A"}
+
+
+async def test_upload_overview_preview_reset_copy(
     sounds_client: tuple[httpx.AsyncClient, FakeSoundTargets],
 ) -> None:
-    client, _ = sounds_client
-    response = await client.post("/api/v1/sounds/wake", files=_file(_beep()), headers=HEADERS)
+    client, targets = sounds_client
+    response = await client.post("/api/v1/sounds/wake", params=A, files=_file(_beep()), headers=HEADERS)
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["trimmed"] is False and body["sound"]["name"] == "bell.wav"
     sha = body["sound"]["sha256"]
     overview = (await client.get("/api/v1/sounds", headers=HEADERS)).json()
-    assert {"tone": "wake", "sound": body["sound"]} in overview["common"]
-    wake = next(t for t in overview["devices"][0]["tones"] if t["tone"] == "wake")
-    assert wake["source"] == "all" and overview["devices"][0]["supported"] is True
+    device = next(d for d in overview["devices"] if d["device_id"] == "A")
+    wake = next(t for t in device["tones"] if t["tone"] == "wake")
+    assert wake["sound"] == body["sound"] and device["supported"] is True and "common" not in overview
     wav = await client.get(f"/api/v1/sounds/files/{sha}", headers=HEADERS)
     assert wav.status_code == 200 and wav.headers["content-type"] == "audio/wav"
     assert wav.content.startswith(b"RIFF")
-    assert (
-        await client.delete("/api/v1/sounds/wake", params={"device_id": "A"}, headers=HEADERS)
-    ).status_code == 204
+    targets.speakers["B"] = (False, None)
+    copied = await client.post("/api/v1/sounds/copy", params=A, headers=HEADERS)
+    assert copied.status_code == 200 and copied.json() == {"devices": ["B"]}
+    assert (await client.delete("/api/v1/sounds/wake", params=A, headers=HEADERS)).status_code == 204
     overview = (await client.get("/api/v1/sounds", headers=HEADERS)).json()
-    wake = next(t for t in overview["devices"][0]["tones"] if t["tone"] == "wake")
-    assert wake["source"] == "builtin"
+    sound_of = {
+        d["device_id"]: next(t for t in d["tones"] if t["tone"] == "wake")["sound"]
+        for d in overview["devices"]
+    }
+    assert sound_of["A"] is None and sound_of["B"] == body["sound"]  # копия у B своя
+    assert (await client.post("/api/v1/sounds/sync", params=A, headers=HEADERS)).status_code == 202
     assert (await client.post("/api/v1/sounds/sync", headers=HEADERS)).status_code == 202
 
 
 async def test_refusals(sounds_client: tuple[httpx.AsyncClient, FakeSoundTargets]) -> None:
     client, _ = sounds_client
-    bad_tone = await client.post("/api/v1/sounds/bell", files=_file(_beep()), headers=HEADERS)
+    bad_tone = await client.post("/api/v1/sounds/bell", params=A, files=_file(_beep()), headers=HEADERS)
     assert bad_tone.status_code == 422
+    no_device = await client.post("/api/v1/sounds/wake", files=_file(_beep()), headers=HEADERS)
+    assert no_device.status_code == 422  # «для всех» больше нет: колонка обязательна
     unknown = await client.post(
         "/api/v1/sounds/wake", params={"device_id": "Z"}, files=_file(_beep()), headers=HEADERS
     )
     assert unknown.status_code == 404
-    assert (await client.post("/api/v1/sounds/wake", files=_file(b""), headers=HEADERS)).status_code == 422
-    silent = await client.post("/api/v1/sounds/wake", files=_file(bytes(3200)), headers=HEADERS)
+    assert (
+        await client.post("/api/v1/sounds/copy", params={"device_id": "Z"}, headers=HEADERS)
+    ).status_code == 404
+    empty = await client.post("/api/v1/sounds/wake", params=A, files=_file(b""), headers=HEADERS)
+    assert empty.status_code == 422
+    silent = await client.post("/api/v1/sounds/wake", params=A, files=_file(bytes(3200)), headers=HEADERS)
     assert silent.status_code == 422 and silent.json()["detail"] == "В файле нет звука"
-    ffmpeg = await client.post("/api/v1/sounds/wake", files=_file(b"noffmpeg"), headers=HEADERS)
+    ffmpeg = await client.post("/api/v1/sounds/wake", params=A, files=_file(b"noffmpeg"), headers=HEADERS)
     assert ffmpeg.status_code == 503
     assert (await client.get("/api/v1/sounds/files/" + "0" * 64, headers=HEADERS)).status_code == 404
     assert (await client.get("/api/v1/sounds")).status_code == 401

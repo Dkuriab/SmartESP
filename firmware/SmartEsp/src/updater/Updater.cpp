@@ -12,7 +12,7 @@
 
 namespace {
 
-constexpr const char* PARTITION = "spiffs";  // раздел LittleFS в разметке esp_sr_16
+constexpr const char* PARTITION = "spiffs";  // раздел LittleFS (partitions.csv)
 constexpr const char* MODEL_FILE = "/wakeword.bin";
 constexpr const char* MODEL_TEMP = "/wakeword.tmp";
 constexpr const char* MODEL_META = "/wakeword.cfg";
@@ -202,7 +202,7 @@ bool Updater::download(UpdateError& error) {
     return false;
   }
   if (firmware ? !Update.begin(request_.size, U_FLASH) : false) {
-    error = UpdateError::Size;  // не помещается в половину флеша
+    error = UpdateError::Size;  // не помещается в слот (старая разметка — 3 МБ)
     http.end();
     return false;
   }
