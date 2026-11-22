@@ -7,7 +7,7 @@
 namespace {
 
 constexpr int SAMPLE_RATE = 16000;
-constexpr int PROTOCOL_VERSION = 4;  // 4: команда update и событие update_status
+constexpr int PROTOCOL_VERSION = 5;  // 4: update и update_status; 5: stream_* и stream_status
 
 const char* eventTypeName(ClientEventType type) {
   switch (type) {
@@ -18,6 +18,7 @@ const char* eventTypeName(ClientEventType type) {
     case ClientEventType::Busy: return "busy";
     case ClientEventType::Played: return "played";
     case ClientEventType::UpdateStatus: return "update_status";
+    case ClientEventType::StreamStatus: return "stream_status";
   }
   return "";
 }
@@ -95,6 +96,40 @@ bool readUpdate(const JsonDocument& doc, UpdateRequest& out) {
   return true;
 }
 
+const char* streamStateName(StreamState state) {
+  switch (state) {
+    case StreamState::Playing: return "playing";
+    case StreamState::Ended: return "ended";
+    case StreamState::Stopped: return "stopped";
+    case StreamState::Failed: return "failed";
+  }
+  return "";
+}
+
+const char* streamErrorName(StreamError error) {
+  switch (error) {
+    case StreamError::None: return "";
+    case StreamError::Download: return "download";
+    case StreamError::Rate: return "rate";
+  }
+  return "";
+}
+
+// Команда stream_start: номер, путь, частота; громкость (нет — 1) и live (нет — false).
+bool readStream(const JsonDocument& doc, StreamRequest& out) {
+  JsonVariantConst id = doc["stream"];
+  JsonVariantConst rate = doc["rate"];
+  if (!id.is<uint32_t>() || id.as<uint32_t>() == 0 || !rate.is<uint32_t>()) return false;
+  out.id = id.as<uint32_t>();
+  out.rate = rate.as<uint32_t>();
+  if (!readText(doc, "path", out.path, sizeof(out.path)) || out.path[0] != '/') return false;
+  JsonVariantConst volume = doc["volume"];
+  const float level = volume.is<float>() ? volume.as<float>() : 1.0f;
+  out.volume = level < 0.0f ? 0.0f : (level > 1.0f ? 1.0f : level);
+  out.live = doc["live"] | false;
+  return true;
+}
+
 const char* reasonName(UtteranceEndReason reason) {
   switch (reason) {
     case UtteranceEndReason::Vad: return "vad";
@@ -166,6 +201,13 @@ size_t encodeClientEvent(const ClientEvent& event, char* out, size_t capacity) {
   if (event.type == ClientEventType::Played) {
     doc["bytes"] = event.bytes;
   }
+  if (event.type == ClientEventType::StreamStatus) {
+    doc.remove("turn");
+    doc["stream"] = event.turn;
+    doc["state"] = streamStateName(event.streamState);
+    doc["played"] = event.bytes;
+    doc["error"] = streamErrorName(event.streamError);
+  }
   if (event.type == ClientEventType::UpdateStatus) {
     doc.remove("turn");
     doc["what"] = updateKindName(event.updateKind);
@@ -209,6 +251,19 @@ bool decodeServerCommand(const char* json, size_t length, ServerCommand& out) {
   } else if (strcmp(type, "update") == 0) {
     cmd.type = ServerCommandType::Update;
     if (!readUpdate(doc, cmd.update)) return false;
+  } else if (strcmp(type, "stream_start") == 0) {
+    cmd.type = ServerCommandType::StreamStart;
+    if (!readStream(doc, cmd.stream)) return false;
+  } else if (strcmp(type, "stream_stop") == 0) {
+    cmd.type = ServerCommandType::StreamStop;
+    JsonVariantConst id = doc["stream"];
+    cmd.turn = id.is<uint32_t>() ? id.as<uint32_t>() : 0;
+  } else if (strcmp(type, "stream_volume") == 0) {
+    cmd.type = ServerCommandType::StreamVolume;
+    JsonVariantConst value = doc["value"];
+    if (!value.is<float>()) return false;
+    const float volume = value.as<float>();
+    cmd.volume = volume < 0.0f ? 0.0f : (volume > 1.0f ? 1.0f : volume);
   } else if (strcmp(type, "stop_playback") == 0) {
     cmd.type = ServerCommandType::StopPlayback;
   } else if (strcmp(type, "volume") == 0) {

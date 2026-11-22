@@ -86,6 +86,30 @@ struct StoredModel {
   char word[48];
 };
 
+// ---------- поток звука (stream_player, протокол 5) ----------
+
+enum class StreamState : uint8_t {
+  Playing,  // поток открыт (и раз в ~1 с, пока играет)
+  Ended,    // поток кончился и доигран
+  Stopped,  // остановлен командой (или новым потоком)
+  Failed,   // не открылся или неверная команда
+};
+
+enum class StreamError : uint8_t {
+  None,
+  Download,  // HTTP-ошибка, нет связи или обрыв
+  Rate,      // частота не 16000
+};
+
+// Что играть (команда stream_start): PCM s16le моно по HTTP с SERVER_HOST:SERVER_PORT.
+struct StreamRequest {
+  uint32_t id;      // номер потока (выдаёт ядро)
+  uint32_t rate;    // частота PCM, Гц
+  float volume;     // громкость музыки 0..1 (относительно общей)
+  bool live;        // живой поток: на время разговора глушится, но читается дальше
+  char path[96];    // «/device/stream/<токен>»
+};
+
 // hello шлёт сам server_link при подключении, поэтому его здесь нет.
 enum class ClientEventType : uint8_t {
   Wake,
@@ -95,6 +119,7 @@ enum class ClientEventType : uint8_t {
   Busy,    // ответ на announce/listen, когда колонка занята
   Played,  // сколько звука ответа уже доиграно (раз в ~0,5 с и перед playback_done)
   UpdateStatus,  // ход и итог обновления по воздуху (updater)
+  StreamStatus,  // состояние потока звука (stream_player): turn — номер потока, bytes — доиграно
 };
 
 struct ClientEvent {
@@ -108,6 +133,9 @@ struct ClientEvent {
   UpdateState updateState;
   UpdateError updateError;
   uint32_t total;             // размер файла обновления, байт
+  // только для StreamStatus
+  StreamState streamState;
+  StreamError streamError;
 };
 
 // ---------- команды сервер → ESP ----------
@@ -123,14 +151,18 @@ enum class ServerCommandType : uint8_t {
   Announce,    // ядро само начинает ответ
   Listen,      // ядро просит слушать (вопрос от самой колонки)
   Update,      // ядро присылает обновление (прошивку или модель слова) — его делает updater
+  StreamStart,   // играть поток звука (stream_player)
+  StreamStop,    // остановить поток (turn — его номер, 0 — любой)
+  StreamVolume,  // громкость музыки (volume)
 };
 
 struct ServerCommand {
   ServerCommandType type;
-  uint32_t turn;  // для StopListening, ReplyStart, ReplyEnd, CancelTurn, Announce, Listen; иначе 0
-  float volume;   // для Volume, 0..1
+  uint32_t turn;  // для StopListening, ReplyStart, ReplyEnd, CancelTurn, Announce, Listen, StreamStop; иначе 0
+  float volume;   // для Volume и StreamVolume, 0..1
   Tone tone;      // для PlayTone
   UpdateRequest update;  // для Update
+  StreamRequest stream;  // для StreamStart
 };
 
 // ---------- действия session → модули (выполняет SmartEsp.ino) ----------
