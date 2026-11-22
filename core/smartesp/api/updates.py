@@ -11,7 +11,7 @@ from smartesp.contracts import UpdatePort, UpdateRefusedError
 
 from .schemas import ErrorOut
 
-MAX_UPLOAD = 0x300000 + 1  # прошивка — не больше половины флеша; на байт больше — уже «слишком большая»
+MAX_UPLOAD = 0x400000 + 1  # прошивка — не больше слота (4 МБ); на байт больше — уже «слишком большая»
 
 
 def add_update_routes(secured: APIRouter, updates: UpdatePort | None) -> None:

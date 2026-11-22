@@ -22,7 +22,7 @@ from smartesp.contracts import SOUND_TONES, UpdateRefusedError, UpdateWhat
 
 _log = logging.getLogger(__name__)
 TOKEN_TTL_S = 900.0  # 15 минут: колонке хватит, ссылка не живёт вечно
-MAX_FIRMWARE = 0x300000  # половина флеша под прошивку (разметка esp_sr_16), байт
+MAX_FIRMWARE = 0x400000  # слот прошивки (firmware/SmartEsp/partitions.csv), байт
 MAX_MODEL = 1024 * 1024
 ESP_IMAGE_MAGIC = 0xE9  # первый байт образа прошивки ESP32
 MODEL_META = ("cutoff", "window", "arena")
