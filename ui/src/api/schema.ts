@@ -467,6 +467,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sounds/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Copy Sounds */
+        post: operations["copy_sounds_api_v1_sounds_copy_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sounds/{tone}": {
         parameters: {
             query?: never;
@@ -837,18 +854,6 @@ export interface components {
             completion_price: number | null;
         };
         /**
-         * CommonSoundOut
-         * @description Общий звук сигнала (для всех колонок); None — встроенный.
-         */
-        CommonSoundOut: {
-            /**
-             * Tone
-             * @enum {string}
-             */
-            tone: "wake" | "error" | "thinking" | "listen" | "attention";
-            sound: components["schemas"]["SoundRefOut"] | null;
-        };
-        /**
          * ConfigOut
          * @description Настройки: целиком, изменённые владельцем и разделы, требующие перезапуска.
          */
@@ -1044,8 +1049,9 @@ export interface components {
         };
         /**
          * DeviceSoundOut
-         * @description Сигнал на колонке: source — builtin | all (общий) | device (свой); sound — None у встроенного;
-         *     delivery — ok | pending | sending | failed | unsupported (прошивка без звуков) | offline.
+         * @description Сигнал на колонке: sound — желаемый звук (None — встроенный); delivery — ok (на колонке) |
+         *     pending | sending | failed (error — причина) | unsupported (прошивка без звуков) | offline (ждёт
+         *     подключения колонки).
          */
         DeviceSoundOut: {
             /**
@@ -1053,11 +1059,6 @@ export interface components {
              * @enum {string}
              */
             tone: "wake" | "error" | "thinking" | "listen" | "attention";
-            /**
-             * Source
-             * @enum {string}
-             */
-            source: "builtin" | "all" | "device";
             sound: components["schemas"]["SoundRefOut"] | null;
             /**
              * Delivery
@@ -1357,12 +1358,18 @@ export interface components {
             trimmed: boolean;
         };
         /**
+         * SoundsCopyOut
+         * @description Кому скопирован набор звуков колонки.
+         */
+        SoundsCopyOut: {
+            /** Devices */
+            devices: string[];
+        };
+        /**
          * SoundsOut
-         * @description Общие звуки и звуки каждой известной колонки.
+         * @description Звуки каждой известной колонки (из настроек или хоть раз подключавшейся).
          */
         SoundsOut: {
-            /** Common */
-            common: components["schemas"]["CommonSoundOut"][];
             /** Devices */
             devices: components["schemas"]["DeviceSoundsOut"][];
         };
@@ -3280,7 +3287,10 @@ export interface operations {
     };
     resync_api_v1_sounds_sync_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description колонка; нет — все подключённые */
+                device_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3314,13 +3324,81 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorOut"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    copy_sounds_api_v1_sounds_copy_post: {
+        parameters: {
+            query: {
+                /** @description откуда копировать */
+                device_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SoundsCopyOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     set_sound_api_v1_sounds__tone__post: {
         parameters: {
-            query?: {
-                /** @description только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются) */
-                device_id?: string | null;
+            query: {
+                /** @description колонка (MAC); может быть не в сети — получит звук при подключении */
+                device_id: string;
             };
             header?: never;
             path: {
@@ -3401,9 +3479,9 @@ export interface operations {
     };
     reset_sound_api_v1_sounds__tone__delete: {
         parameters: {
-            query?: {
-                /** @description только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются) */
-                device_id?: string | null;
+            query: {
+                /** @description колонка (MAC); может быть не в сети — получит звук при подключении */
+                device_id: string;
             };
             header?: never;
             path: {

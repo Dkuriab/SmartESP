@@ -114,6 +114,7 @@ export function makeActions(): CoreActions {
     resetSound: vi.fn().mockResolvedValue(true),
     fetchSound: vi.fn().mockResolvedValue(null),
     resyncSounds: vi.fn(),
+    copySounds: vi.fn().mockResolvedValue(true),
     loadCloudModels: vi.fn().mockResolvedValue([]),
     setCloudKey: vi.fn(),
     setToken: vi.fn(),

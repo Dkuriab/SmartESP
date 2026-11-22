@@ -1,4 +1,4 @@
-// Звуки колонки: названия сигналов, подписи источника и доставки, прослушивание встроенного.
+// Звуки колонки: названия сигналов, подписи звука и доставки, прослушивание встроенного.
 import type { DeviceSound, SoundTone } from '../../state/soundActions'
 import { playBlob, stopPlayback } from './voice'
 
@@ -14,22 +14,20 @@ export const TONE_LABELS: Record<SoundTone, string> = {
 export const TONE_ORDER: SoundTone[] = ['wake', 'listen', 'thinking', 'attention', 'error']
 
 const DELIVERY: Record<DeviceSound['delivery'], string> = {
-  ok: '',
-  pending: 'ждёт отправки',
-  sending: 'отправляется…',
-  failed: 'не доставлен',
-  unsupported: '',
-  offline: 'колонка получит его при подключении',
+  ok: 'на колонке',
+  pending: 'доставляется',
+  sending: 'доставляется',
+  failed: 'ошибка',
+  unsupported: 'колонка не умеет свои звуки',
+  offline: 'ждёт подключения колонки',
 }
 
-/** Откуда звук: встроенный, общий для всех или свой этой колонки (с именем файла). */
-export function sourceText(sound: DeviceSound): string {
-  if (sound.source === 'builtin' || !sound.sound) return 'встроенный'
-  const name = `${sound.sound.name} · ${sound.sound.duration_s.toFixed(1)} с`
-  return sound.source === 'all' ? `общий: ${name}` : `только здесь: ${name}`
+/** Какой звук задан: встроенный или свой файл (имя и длина). */
+export function soundText(sound: DeviceSound): string {
+  return sound.sound ? `${sound.sound.name} · ${sound.sound.duration_s.toFixed(1)} с` : 'встроенный'
 }
 
-/** Состояние доставки на колонку; всё на месте — пусто. */
+/** Состояние доставки на колонку; у ошибки — причина. */
 export function deliveryText(sound: DeviceSound): string {
   const text = DELIVERY[sound.delivery]
   return sound.delivery === 'failed' && sound.error ? `${text}: ${sound.error}` : text

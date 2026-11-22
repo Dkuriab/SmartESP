@@ -1,4 +1,5 @@
-// Действия со своими звуками колонок: обзор, замена файлом, встроенный, прослушивание, повтор доставки.
+// Действия со своими звуками колонок: обзор, замена файлом, встроенный, копия на другие колонки,
+// прослушивание, повтор доставки. Звуки задаются только колонке (не в сети — получит при подключении).
 import type { components } from '../api/schema'
 import type { Client } from './actions'
 import type { Dispatch } from './request'
@@ -16,14 +17,16 @@ export const SOUND_TOO_BIG = 'Файл больше 10 МБ — для сигн�
 export type SoundActions = {
   /** Назначения и доставка по колонкам; ошибка — null (без уведомления: обзор перечитывается часто). */
   loadSounds(): Promise<SoundsOverview | null>
-  /** Заменяет звук сигнала файлом: всем колонкам (deviceId null) или одной; отказ — уведомление. */
-  uploadSound(tone: SoundTone, file: File, deviceId: string | null): Promise<boolean>
-  /** Встроенный звук сигнала всем колонкам (null) или одной. */
-  resetSound(tone: SoundTone, deviceId: string | null): Promise<boolean>
+  /** Заменяет звук сигнала колонки файлом; отказ — уведомление. */
+  uploadSound(tone: SoundTone, file: File, deviceId: string): Promise<boolean>
+  /** Встроенный звук сигнала колонки. */
+  resetSound(tone: SoundTone, deviceId: string): Promise<boolean>
+  /** Набор звуков колонки — всем другим известным колонкам; итог — уведомлением. */
+  copySounds(deviceId: string): Promise<boolean>
   /** Свой звук (WAV) по SHA-256 или null. */
   fetchSound(sha256: string): Promise<Blob | null>
-  /** Повторить доставку на колонки после неудачи. */
-  resyncSounds(): Promise<void>
+  /** Повторить доставку на колонку после неудачи. */
+  resyncSounds(deviceId: string): Promise<void>
 }
 
 export function createSoundActions(client: Client, dispatch: Dispatch): SoundActions {
@@ -37,7 +40,7 @@ export function createSoundActions(client: Client, dispatch: Dispatch): SoundAct
         dispatch({ type: 'notice', notice: { text: SOUND_TOO_BIG, tone: 'error' } })
         return false
       }
-      const params = { path: { tone }, query: deviceId ? { device_id: deviceId } : {} }
+      const params = { path: { tone }, query: { device_id: deviceId } }
       const data = new FormData()
       data.append('file', file)
       // в схеме файл — строка (binary); на деле уходит FormData с самим файлом
@@ -51,7 +54,7 @@ export function createSoundActions(client: Client, dispatch: Dispatch): SoundAct
       return outcome.ok
     },
     async resetSound(tone, deviceId) {
-      const params = { path: { tone }, query: deviceId ? { device_id: deviceId } : {} }
+      const params = { path: { tone }, query: { device_id: deviceId } }
       const outcome = await sendNotify(dispatch, () => client.DELETE('/api/v1/sounds/{tone}', { params }))
       return outcome.ok
     },
@@ -60,8 +63,17 @@ export function createSoundActions(client: Client, dispatch: Dispatch): SoundAct
       const outcome = await sendNotify(dispatch, () => client.GET('/api/v1/sounds/files/{sha256}', { params, parseAs: 'blob' }))
       return outcome.ok ? (outcome.data as Blob) : null
     },
-    async resyncSounds() {
-      await sendNotify(dispatch, () => client.POST('/api/v1/sounds/sync'))
+    async copySounds(deviceId) {
+      const params = { query: { device_id: deviceId } }
+      const outcome = await sendNotify(dispatch, () => client.POST('/api/v1/sounds/copy', { params }))
+      if (!outcome.ok) return false
+      const count = outcome.data.devices.length
+      const text = count ? `Звуки скопированы на другие колонки: ${count}` : 'Других колонок нет'
+      dispatch({ type: 'notice', notice: { text, tone: 'ok' } })
+      return true
+    },
+    async resyncSounds(deviceId) {
+      await sendNotify(dispatch, () => client.POST('/api/v1/sounds/sync', { params: { query: { device_id: deviceId } } }))
     },
   }
 }
