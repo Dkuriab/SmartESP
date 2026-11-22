@@ -30,12 +30,13 @@ async def test_ask_sends_text_person_and_source() -> None:
         return httpx.Response(200, json={"answer": "Привет!", "turn_id": "t1"})
 
     async with client(handler) as core:
-        assert await core.ask("привет", person="Аня") == "Привет!"
+        assert await core.ask("привет", person="Аня", account="111") == "Привет!"
     request = seen[0]
     assert request.method == "POST"
     assert str(request.url) == "http://core:8765/api/v1/ask"
     assert request.headers["authorization"] == "Bearer tok"
-    assert json.loads(request.content) == {"text": "привет", "person": "Аня", "source": "telegram"}
+    body = {"text": "привет", "person": "Аня", "source": "telegram", "account": "111"}
+    assert json.loads(request.content) == body
 
 
 async def test_ask_voice_sends_multipart_audio() -> None:
@@ -46,7 +47,7 @@ async def test_ask_voice_sends_multipart_audio() -> None:
         return httpx.Response(200, json={"answer": "Слышу", "turn_id": "t2"})
 
     async with client(handler) as core:
-        assert await core.ask_voice(b"OggS-audio", person="Аня") == "Слышу"
+        assert await core.ask_voice(b"OggS-audio", person="Аня", account="111") == "Слышу"
     request = seen[0]
     assert str(request.url) == "http://core:8765/api/v1/ask/voice"
     assert request.headers["authorization"] == "Bearer tok"
@@ -57,6 +58,7 @@ async def test_ask_voice_sends_multipart_audio() -> None:
     assert b"OggS-audio" in body
     assert b'name="person"' in body and "Аня".encode() in body
     assert b'name="source"' in body and b"telegram" in body
+    assert b'name="account"' in body and b"111" in body
 
 
 @pytest.mark.parametrize(

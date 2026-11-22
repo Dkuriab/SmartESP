@@ -41,7 +41,7 @@ class Harness:
 async def test_text_is_answered_while_typing() -> None:
     harness = Harness(FakeCore("Привет, Аня!", delay=0.05))
     await harness.send(text="привет")
-    assert harness.core.calls == [("text", "привет", "Аня")]
+    assert harness.core.calls == [("text", "привет", "Аня", "111")]
     assert harness.session.sent_texts() == ["Привет, Аня!"]
     assert "typing" in harness.session.actions()
 
@@ -67,7 +67,7 @@ async def test_voice_is_downloaded_and_sent_to_core() -> None:
     harness = Harness(FakeCore("Слышу"))
     harness.session.files["voice-1"] = b"OggS-audio"
     await harness.send(voice=Voice(file_id="voice-1", file_unique_id="v", duration=2))
-    assert harness.core.calls == [("voice", b"OggS-audio", "Аня")]
+    assert harness.core.calls == [("voice", b"OggS-audio", "Аня", "111")]
     assert harness.session.sent_texts() == ["Слышу"]
 
 
@@ -86,7 +86,7 @@ async def test_photo_uses_largest_size_and_caption() -> None:
         PhotoSize(file_id="big", file_unique_id="b", width=1280, height=960),
     ]
     await harness.send(photo=sizes, caption="200 г")
-    assert harness.core.calls == [("text", "штрихкод 4601234567893, 200 г", "Аня")]
+    assert harness.core.calls == [("text", "штрихкод 4601234567893, 200 г", "Аня", "111")]
     assert harness.session.sent_texts() == ["Записано"]
 
 

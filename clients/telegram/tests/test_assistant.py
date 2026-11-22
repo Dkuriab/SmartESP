@@ -34,27 +34,27 @@ def test_person_only_for_allowed_users() -> None:
 
 async def test_text_goes_to_core_with_person() -> None:
     core = FakeCore("Привет, Аня!")
-    assert await assistant(core).text("Аня", "привет") == "Привет, Аня!"
-    assert core.calls == [("text", "привет", "Аня")]
+    assert await assistant(core).text("Аня", "привет", "111") == "Привет, Аня!"
+    assert core.calls == [("text", "привет", "Аня", "111")]
 
 
 async def test_voice_goes_to_core_as_audio() -> None:
     core = FakeCore("Слышу")
     assert await assistant(core).voice("Аня", b"OggS") == "Слышу"
-    assert core.calls == [("voice", b"OggS", "Аня")]
+    assert core.calls == [("voice", b"OggS", "Аня", "")]
 
 
 async def test_photo_with_barcode_and_caption() -> None:
     core = FakeCore("Записано")
-    reply = await assistant(core, barcode="4601234567893").photo("Аня", b"jpeg", " 200 г ")
+    reply = await assistant(core, barcode="4601234567893").photo("Аня", b"jpeg", " 200 г ", "111")
     assert reply == "Записано"
-    assert core.calls == [("text", "штрихкод 4601234567893, 200 г", "Аня")]
+    assert core.calls == [("text", "штрихкод 4601234567893, 200 г", "Аня", "111")]
 
 
 async def test_photo_with_barcode_without_caption() -> None:
     core = FakeCore()
     await assistant(core, barcode="96385074").photo("Аня", b"jpeg", None)
-    assert core.calls == [("text", "штрихкод 96385074", "Аня")]
+    assert core.calls == [("text", "штрихкод 96385074", "Аня", "")]
 
 
 async def test_photo_without_barcode_does_not_bother_core() -> None:

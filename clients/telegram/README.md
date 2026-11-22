@@ -92,12 +92,16 @@ uv run telegram-bot --settings путь.toml  # или из другого фа�
 Запрос, `Content-Type: application/json`:
 
 ```json
-{"text": "штрихкод 4601234567893, 200 г", "person": "Имя", "source": "telegram"}
+{"text": "штрихкод 4601234567893, 200 г", "person": "Имя", "source": "telegram", "account": "123456789"}
 ```
 
 - `text` — непустая строка: текст сообщения или «штрихкод <цифры>[, <подпись>]»;
 - `person` — имя человека из `[users]`;
-- `source` — всегда `"telegram"` (в ленте ядра — источник «Telegram»).
+- `source` — всегда `"telegram"` (в ленте ядра — источник «Telegram»);
+- `account` — `user_id` отправителя в Telegram строкой. Ядро ищет человека, связанного с
+  этим аккаунтом во вкладке «Люди» («Связи»): нашло — ход идёт от его имени и с его
+  постоянным id (заметки, таймеры, еда — его); нет — id `telegram:<user_id>` и имя из
+  `person`. Голос в ходах через бота ядро не узнаёт: человека знает канал.
 
 Ответ 200:
 
@@ -114,7 +118,8 @@ uv run telegram-bot --settings путь.toml  # или из другого фа�
 - `audio` — файл `voice.ogg`, `Content-Type: audio/ogg` (OGG/Opus, как его
   отдаёт Telegram);
 - `person` — имя человека;
-- `source` — `telegram`.
+- `source` — `telegram`;
+- `account` — `user_id` отправителя строкой (как у `/ask`).
 
 Ответ — как у `/ask`: 200 `{"answer", "turn_id"}`.
 

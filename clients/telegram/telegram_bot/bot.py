@@ -25,7 +25,7 @@ DOWNLOAD_FAILED = "Не получилось скачать файл из Telegr
 
 
 class AccessMiddleware(BaseMiddleware):
-    """Пропускает только допущенных людей и кладёт имя человека в `person`.
+    """Пропускает только допущенных людей; имя человека — в `person`, `user_id` строкой — в `account`.
 
     Чужим — молчание; в журнал — только `user_id`, без текста сообщения.
     """
@@ -50,6 +50,7 @@ class AccessMiddleware(BaseMiddleware):
                 self._on_stranger(user.id, user.full_name or user.username or "")
             return None
         data["person"] = person
+        data["account"] = str(user_id)  # по нему ядро находит человека из «Людей»
         return await handler(event, data)
 
 
@@ -74,26 +75,27 @@ async def _on_start(message: Message) -> None:
     await message.answer(GREETING)
 
 
-async def _on_text(message: Message, bot: Bot, assistant: Assistant, person: str) -> None:
+async def _on_text(message: Message, bot: Bot, assistant: Assistant, person: str, account: str) -> None:
     async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
-        reply = await assistant.text(person, message.text or "")
+        reply = await assistant.text(person, message.text or "", account)
     await _reply(message, reply)
 
 
-async def _on_voice(message: Message, bot: Bot, assistant: Assistant, person: str) -> None:
+async def _on_voice(message: Message, bot: Bot, assistant: Assistant, person: str, account: str) -> None:
     assert message.voice is not None  # гарантирует фильтр F.voice
     async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
         audio = await _download(bot, message.voice.file_id)
-        reply = DOWNLOAD_FAILED if audio is None else await assistant.voice(person, audio)
+        reply = DOWNLOAD_FAILED if audio is None else await assistant.voice(person, audio, account)
     await _reply(message, reply)
 
 
-async def _on_photo(message: Message, bot: Bot, assistant: Assistant, person: str) -> None:
+async def _on_photo(message: Message, bot: Bot, assistant: Assistant, person: str, account: str) -> None:
     assert message.photo  # гарантирует фильтр F.photo
     largest = max(message.photo, key=lambda size: size.width * size.height)
     async with ChatActionSender.typing(bot=bot, chat_id=message.chat.id):
         photo = await _download(bot, largest.file_id)
-        reply = DOWNLOAD_FAILED if photo is None else await assistant.photo(person, photo, message.caption)
+        caption = message.caption
+        reply = DOWNLOAD_FAILED if photo is None else await assistant.photo(person, photo, caption, account)
     await _reply(message, reply)
 
 
