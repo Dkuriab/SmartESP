@@ -253,6 +253,7 @@ async def stop(parts: Assembly) -> None:
     logger.info("Остановка: колонки отключены")
     await parts.live.unload_all()
     await parts.voices.aclose()
+    await parts.training.aclose()  # шаг обучения (подпроцесс) не переживает ядро
     parts.run_file.remove()
     logger.info("Остановка: готово")
 
@@ -264,4 +265,5 @@ async def finish(parts: Assembly) -> None:
     await parts.announcer.aclose()
     await parts.files.aclose()
     await parts.voices.aclose()
+    await parts.training.aclose()
     await parts.hub.aclose()

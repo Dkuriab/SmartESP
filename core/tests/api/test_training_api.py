@@ -89,3 +89,29 @@ async def test_record_errors_and_targets(tmp_path: Path) -> None:
         bad = [{"id": "kuzya", "title": "", "positive": []}]
         assert (await client.put(f"{P}/ww/targets", json=bad, headers=HEADERS)).status_code == 422
         assert (await client.put(f"{P}/nope/targets", json=targets, headers=HEADERS)).status_code == 404
+
+
+async def test_steps_job_and_runs(tmp_path: Path) -> None:
+    import asyncio
+    import sys
+
+    async with _client(tmp_path, None) as client:
+        manifest = json.loads((tmp_path / "trainers" / "ww" / "smartesp.json").read_text("utf-8"))
+        manifest["command"] = [sys.executable, "-c"]
+        manifest["steps"] = [
+            {"id": "train", "title": "Обучить", "per_target": True, "args": ["print('{target}')"]}
+        ]
+        (tmp_path / "trainers" / "ww" / "smartesp.json").write_text(json.dumps(manifest), "utf-8")
+        assert (await client.get(f"{P}/ww/job", headers=HEADERS)).json() is None
+        started = await client.post(f"{P}/ww/steps/train", json={"target": "kuzya"}, headers=HEADERS)
+        assert started.status_code == 202 and started.json()["status"] == "running"
+        job = started.json()
+        for _ in range(100):
+            job = (await client.get(f"{P}/ww/job", headers=HEADERS)).json()
+            if job["status"] != "running":
+                break
+            await asyncio.sleep(0.05)
+        assert job["status"] == "done" and job["log"] == ["kuzya"]
+        assert (await client.post(f"{P}/ww/steps/nope", json={}, headers=HEADERS)).status_code == 404
+        assert (await client.get(f"{P}/ww/runs", headers=HEADERS)).json() == []
+        assert (await client.delete(f"{P}/ww/job", headers=HEADERS)).status_code == 204

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 
 from . import progress
@@ -14,8 +15,9 @@ def run_synth(paths: Paths, target_id: str = "") -> None:
     """Синтезирует все фразы цели (или всех целей) — и «Откликаться на», и «Не откликаться на»."""
     targets = [find_target(paths, target_id)] if target_id else load_targets(paths)
     phrases = list(dict.fromkeys(p for t in targets for p in (*t.positive, *t.negative)))
+    uv = os.environ.get("UV") or shutil.which("uv") or "uv"  # из приложения PATH может не знать uv
     command = [
-        "uv", "run", "--project", str(REPO_DIR / "core"), "python", str(KIT_DIR / "synth_core.py"),
+        uv, "run", "--project", str(REPO_DIR / "core"), "python", str(KIT_DIR / "synth_core.py"),
         "--voices", str(data_home() / "voices"), "--out", str(paths.synth),
         "--phrases", json.dumps(phrases, ensure_ascii=False),
     ]  # fmt: skip

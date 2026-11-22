@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 
 @dataclass(frozen=True)
@@ -26,6 +26,37 @@ class PhraseRecords:
 
 
 @dataclass(frozen=True)
+class TrainStep:
+    """Шаг обучения набора: id, название, пояснение; per_target — шаг делается для выбранной цели."""
+
+    id: str
+    title: str
+    hint: str = ""
+    per_target: bool = False
+
+
+JobStatus = Literal["running", "done", "failed", "cancelled"]
+
+
+@dataclass(frozen=True)
+class TrainJob:
+    """Шаг, который идёт или шёл последним: ход (стадия, сколько из скольки), журнал, итог."""
+
+    kit: str
+    step: str
+    target: str
+    status: JobStatus
+    started_at: float  # time.time()
+    finished_at: float | None = None
+    stage: str = ""
+    done: int = 0
+    total: int = 0
+    error: str = ""
+    log: tuple[str, ...] = ()  # последние строки журнала
+    result: dict[str, object] | None = None
+
+
+@dataclass(frozen=True)
 class TrainKit:
     """Набор для обучения (папка trainers/<id>) с целями владельца и счётом записей по фразам."""
 
@@ -35,6 +66,7 @@ class TrainKit:
     record_hint: str  # подсказка при записи: как говорить
     targets: tuple[TrainTarget, ...]
     phrases: tuple[PhraseRecords, ...]  # все фразы целей, в порядке появления
+    steps: tuple[TrainStep, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -48,6 +80,10 @@ class PhraseRecording:
 
 class TrainingLookupError(LookupError):
     """Нет такого набора, фразы или записи."""
+
+
+class TrainingBusyError(Exception):
+    """Уже идёт шаг обучения: одновременно — только один (обучение занимает весь процессор)."""
 
 
 class RecordRefusedError(Exception):
@@ -87,4 +123,23 @@ class TrainingPort(Protocol):
 
     def delete_recording(self, kit: str, phrase: str, person: str, name: str) -> None:
         """Удаляет запись; нет — TrainingLookupError."""
+        ...
+
+    def start_step(self, kit: str, step: str, target: str = "", run: str = "") -> TrainJob:
+        """Запускает шаг набора (для цели target; run — прогон для встраивания, пусто — последний).
+
+        Нет набора, шага или цели — TrainingLookupError; уже идёт шаг — TrainingBusyError.
+        """
+        ...
+
+    async def stop_job(self) -> None:
+        """Останавливает идущий шаг (если есть)."""
+        ...
+
+    def job(self, kit: str) -> TrainJob | None:
+        """Идущий или последний шаг набора; не было — None."""
+        ...
+
+    def runs(self, kit: str) -> list[dict[str, object]]:
+        """Итоги прогонов набора (result.json без кривой), новые первыми."""
         ...

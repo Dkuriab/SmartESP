@@ -9,7 +9,7 @@ import unicodedata
 from pathlib import Path
 from typing import Any, cast
 
-from smartesp.contracts import TrainTarget
+from smartesp.contracts import TrainStep, TrainTarget
 
 MAX_TARGETS = 10
 MAX_PHRASES = 40  # в одном списке цели
@@ -27,6 +27,26 @@ class KitSpec:
         self.description = str(data.get("description") or "")
         self.record_hint = str(data.get("record_hint") or "")
         self.default_targets = check_targets(data.get("targets") or [])
+        self.command = [str(a) for a in cast(list[object], data.get("command") or [])]
+        self.steps = _steps(data.get("steps"))
+        self.step_args = {
+            str(s.get("id")): [str(a) for a in s.get("args") or []] for s in _step_dicts(data.get("steps"))
+        }
+
+
+def _step_dicts(raw: object) -> list[dict[str, Any]]:
+    return [cast(dict[str, Any], s) for s in cast(list[object], raw)] if isinstance(raw, list) else []
+
+
+def _steps(raw: object) -> tuple[TrainStep, ...]:
+    """Шаги набора из описания: [{id, title, hint, per_target, args}]."""
+    return tuple(
+        TrainStep(
+            str(s["id"]), str(s.get("title") or s["id"]), str(s.get("hint") or ""), bool(s.get("per_target"))
+        )
+        for s in _step_dicts(raw)
+        if s.get("id")
+    )
 
 
 def discover(trainers: Path) -> list[KitSpec]:

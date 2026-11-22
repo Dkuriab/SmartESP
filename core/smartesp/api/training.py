@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -14,8 +15,10 @@ from smartesp.contracts import (
     NothingHeardError,
     PhraseRecording,
     RecordRefusedError,
+    TrainingBusyError,
     TrainingLookupError,
     TrainingPort,
+    TrainJob,
     TrainKit,
     TrainTarget,
 )
@@ -39,6 +42,15 @@ class PhraseOut(BaseModel):
     people: dict[str, int]
 
 
+class StepOut(BaseModel):
+    """Шаг обучения; per_target — делается для выбранной цели."""
+
+    id: str
+    title: str
+    hint: str
+    per_target: bool
+
+
 class KitOut(BaseModel):
     """Набор для обучения."""
 
@@ -48,6 +60,31 @@ class KitOut(BaseModel):
     record_hint: str
     targets: list[TargetIO]
     phrases: list[PhraseOut]
+    steps: list[StepOut]
+
+
+class StepIn(BaseModel):
+    """Запуск шага: цель (для шагов цели) и прогон (для встраивания; пусто — последний)."""
+
+    target: str = ""
+    run: str = ""
+
+
+class JobOut(BaseModel):
+    """Шаг, который идёт или шёл последним; времена — секунды Unix."""
+
+    kit: str
+    step: str
+    target: str
+    status: Literal["running", "done", "failed", "cancelled"]
+    started_at: float
+    finished_at: float | None
+    stage: str
+    done: int
+    total: int
+    error: str
+    log: list[str]
+    result: dict[str, Any] | None
 
 
 class RecordIn(BaseModel):
@@ -77,6 +114,10 @@ def _kit_out(kit: TrainKit) -> KitOut:
     return KitOut.model_validate(dataclasses.asdict(kit))
 
 
+def _job_out(job: TrainJob) -> JobOut:
+    return JobOut.model_validate(dataclasses.asdict(job))
+
+
 def _out(item: PhraseRecording) -> RecordingOut:
     return RecordingOut.model_validate(dataclasses.asdict(item))
 
@@ -88,7 +129,7 @@ def _http_errors() -> Iterator[None]:
         yield
     except TrainingLookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
-    except RecordRefusedError as error:
+    except (RecordRefusedError, TrainingBusyError) as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     except (NothingHeardError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
@@ -131,3 +172,28 @@ def add_training_routes(secured: APIRouter, training: TrainingPort | None) -> No
     def delete_recording(kit: str, name: str, phrase: str = Query(), person: str = Query()) -> None:
         with _http_errors():
             port().delete_recording(kit, phrase, person, name)
+
+    _add_job_routes(secured, port)
+
+
+def _add_job_routes(secured: APIRouter, port: Callable[[], TrainingPort]) -> None:
+    """Шаги обучения: запуск, ход, остановка; итоги прогонов."""
+
+    @secured.post("/training/{kit}/steps/{step}", status_code=202, responses=_ERRORS)
+    async def start_step(kit: str, step: str, body: StepIn) -> JobOut:  # async: шаг — задача в цикле ядра
+        with _http_errors():
+            return _job_out(port().start_step(kit, step, body.target, body.run))
+
+    @secured.get("/training/{kit}/job", responses=_ERRORS)
+    def get_job(kit: str) -> JobOut | None:
+        job = port().job(kit)
+        return _job_out(job) if job is not None else None
+
+    @secured.delete("/training/{kit}/job", status_code=204, responses=_ERRORS)
+    async def stop_job(kit: str) -> None:
+        await port().stop_job()
+
+    @secured.get("/training/{kit}/runs", responses=_ERRORS)
+    def get_runs(kit: str) -> list[dict[str, Any]]:
+        with _http_errors():
+            return port().runs(kit)
