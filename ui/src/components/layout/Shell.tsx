@@ -9,6 +9,7 @@ import CoreTab from '../core/CoreTab'
 import RestartBanner from '../common/RestartBanner'
 import TokenScreen from '../common/TokenScreen'
 import TrainingTab from '../training/TrainingTab'
+import PeopleTab from '../people/PeopleTab'
 import Feed from '../feed/Feed'
 import SchemaView from '../schema/SchemaView'
 import SettingsPanel from '../settings/SettingsPanel'
@@ -52,7 +53,8 @@ export default function Shell({ state, actions }: Props) {
       )}
       {tab === 'core' && <CoreTab state={state} actions={actions} />}
       {tab === 'training' && <TrainingTab state={state} actions={actions} />}
-      {tab !== 'core' && tab !== 'training' && (
+      {tab === 'people' && <PeopleTab state={state} actions={actions} />}
+      {tab !== 'core' && tab !== 'training' && tab !== 'people' && (
         <Feed turns={state.turns} executors={listExecutors(state)} selectedId={state.selectedTurnId} onSelect={actions.selectTurn} full={full} />
       )}
       <TopBar state={state} tab={tab} onTab={setTab} overlay={full ? undefined : overlay} onOverlay={setOverlay} />

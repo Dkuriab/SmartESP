@@ -7,6 +7,8 @@ import { createExecutorActions } from './executorActions'
 import type { FileActions } from './fileActions'
 import { createFileActions } from './fileActions'
 import type { CloudModel, Config, Notice, Selection } from './model'
+import type { PeopleActions } from './peopleActions'
+import { createPeopleActions } from './peopleActions'
 import type { Dispatch } from './request'
 import { send, sendNotify } from './request'
 import type { SentExecutors } from './sentExecutors'
@@ -22,6 +24,7 @@ export type StageEntry = { kind: string; timeout_ms?: number; quiet_reply?: bool
 export type CoreActions = ExecutorActions &
   FileActions &
   TrainingActions &
+  PeopleActions &
   CoreTabActions & {
   /** Частичная правка настроек; description показывается, пока она применяется. */
   patchConfig(patch: Record<string, unknown>, description: string): Promise<void>
@@ -131,6 +134,7 @@ export function createActions(deps: ActionDeps): CoreActions {
     ...createExecutorActions({ dispatch, getConfig, sent }, sendPatch),
     ...createFileActions(client, dispatch),
     ...createTrainingActions(client, dispatch),
+    ...createPeopleActions(client, dispatch),
     ...(deps.coreTab ?? createCoreActions(client, dispatch, deps.token)),
     patchConfig: patch,
     saveConnectorEnv,
