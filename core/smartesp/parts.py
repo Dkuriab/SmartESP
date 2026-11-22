@@ -185,7 +185,8 @@ def control(
         supports_tools=capabilities.supports_tools,
         executor_states=lambda: live.members_warmth,
         connectors=tools.states,
-        ask=parts.orchestrator.ask,  # ход через API: тот же путь, что с колонки, ответ текстом
+        # ход через API: тот же путь, что с колонки, ответ текстом; человек — по связи с аккаунтом
+        ask=lambda question: parts.orchestrator.ask(parts.people.identify(question)),
         decode=decode_audio,  # голосовое (OGG/Opus, WAV) → PCM для распознавания
         unload=ollama.unload,  # «Выгрузить» в интерфейсе: только модель, что сейчас в памяти
         cloud_models=lambda: catalog.models(store.config.cloud.base_url, store.config.cloud.api_key),

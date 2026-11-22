@@ -41,7 +41,8 @@ async def run_turn(core_reply: httpx.Response, text: str) -> tuple[list[str], li
 async def test_text_turn_through_http() -> None:
     sent, seen = await run_turn(httpx.Response(200, json={"answer": "Готово", "turn_id": "t"}), "включи свет")
     assert sent == ["Готово"]
-    assert json.loads(seen[0].content) == {"text": "включи свет", "person": "Аня", "source": "telegram"}
+    body = {"text": "включи свет", "person": "Аня", "source": "telegram", "account": "111"}
+    assert json.loads(seen[0].content) == body
     assert seen[0].headers["authorization"] == "Bearer tok"
 
 

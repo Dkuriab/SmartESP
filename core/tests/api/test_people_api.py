@@ -64,6 +64,26 @@ async def test_add_record_rename_delete(tmp_path: Path) -> None:
         assert (await client.get(P)).status_code == 401  # без токена
 
 
+async def test_links(tmp_path: Path) -> None:
+    async with _client(_people(tmp_path, [])) as client:
+        anya = (await client.post(P, json={"name": "Аня"}, headers=HEADERS)).json()
+        bob = (await client.post(P, json={"name": "Боб"}, headers=HEADERS)).json()
+        assert anya["links"] == []
+        link = {"channel": "telegram", "account": "111"}
+        linked = (await client.post(f"{P}/{anya['id']}/links", json=link, headers=HEADERS)).json()
+        assert linked["links"] == [link]
+        taken = await client.post(f"{P}/{bob['id']}/links", json=link, headers=HEADERS)
+        assert taken.status_code == 422 and "Аня" in taken.json()["detail"]
+        bad = await client.post(
+            f"{P}/{bob['id']}/links", json={"channel": "Tg", "account": "1"}, headers=HEADERS
+        )
+        assert bad.status_code == 422
+        gone = await client.delete(f"{P}/{anya['id']}/links/telegram/111", headers=HEADERS)
+        assert gone.status_code == 200 and gone.json()["links"] == []
+        again = await client.delete(f"{P}/{anya['id']}/links/telegram/111", headers=HEADERS)
+        assert again.status_code == 404
+
+
 async def test_bad_names(tmp_path: Path) -> None:
     async with _client(_people(tmp_path, [])) as client:
         await client.post(P, json={"name": "Аня"}, headers=HEADERS)

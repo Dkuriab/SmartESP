@@ -22,14 +22,14 @@ class FakeCore:
         self.answer = answer
         self.error = error
         self.delay = delay
-        self.calls: list[tuple[str, object, str]] = []
+        self.calls: list[tuple[str, object, str, str]] = []  # (вид, содержимое, имя, аккаунт)
 
-    async def ask(self, text: str, *, person: str) -> str:
-        self.calls.append(("text", text, person))
+    async def ask(self, text: str, *, person: str, account: str = "") -> str:
+        self.calls.append(("text", text, person, account))
         return await self._reply()
 
-    async def ask_voice(self, audio: bytes, *, person: str) -> str:
-        self.calls.append(("voice", audio, person))
+    async def ask_voice(self, audio: bytes, *, person: str, account: str = "") -> str:
+        self.calls.append(("voice", audio, person, account))
         return await self._reply()
 
     async def _reply(self) -> str:

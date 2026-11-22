@@ -173,8 +173,8 @@ class CorePort(Protocol):
         """
         ...
 
-    async def ask_voice(self, audio: bytes, person: str, source: str) -> Answer:
-        """Ход через API голосом: звук (OGG/Opus, WAV) → распознавание → как ask.
+    async def ask_voice(self, audio: bytes, person: str, source: str, account: str = "") -> Answer:
+        """Ход через API голосом: звук (OGG/Opus, WAV) → распознавание → как ask (account — как в Question).
 
         Звук не разобрать — AudioUndecodable; нет программы разбора или ядро не готово — AskUnavailable.
         """

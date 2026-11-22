@@ -286,10 +286,10 @@ class Core:
         """Ход через API текстом; ядро не готово или останавливается — AskUnavailable."""
         return await self._ask(question)
 
-    async def ask_voice(self, audio: bytes, person: str, source: str) -> Answer:
+    async def ask_voice(self, audio: bytes, person: str, source: str, account: str = "") -> Answer:
         """Голосовой ход: звук → PCM → ход; не разобрать — AudioUndecodable, нет ffmpeg — AskUnavailable."""
         pcm = await self._decode(audio)
-        return await self._ask(Question(pcm=pcm, person=person, source=source))
+        return await self._ask(Question(pcm=pcm, person=person, source=source, account=account))
 
     # ---- внутреннее ----
 

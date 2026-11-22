@@ -8,6 +8,7 @@ export type Person = components['schemas']['PersonOut']
 export type VoiceSample = components['schemas']['SampleOut']
 export type Recognition = components['schemas']['RecognitionOut']
 export type SpeakerModel = components['schemas']['SpeakerModelOut']
+export type PersonLink = components['schemas']['LinkIO']
 
 /** Итог записи образца: образец или текст отказа («колонка занята», «ничего не услышала»). */
 export type SampleOutcome = { ok: true; sample: VoiceSample } | { ok: false; text: string }
@@ -25,6 +26,10 @@ export type PeopleActions = {
   recordSample(personId: string, deviceId: string): Promise<SampleOutcome>
   /** Удаляет образец; true — удалён. */
   deleteSample(personId: string, sampleId: string): Promise<boolean>
+  /** Связывает человека с аккаунтом канала; человек после правки или null (ошибка — уведомлением). */
+  addLink(personId: string, channel: string, account: string): Promise<Person | null>
+  /** Убирает связь; человек после правки или null (ошибка — уведомлением). */
+  removeLink(personId: string, channel: string, account: string): Promise<Person | null>
   /** Последние узнавания, новые первыми; ошибка — пусто. */
   loadRecognitions(): Promise<Recognition[]>
   /** Модель узнавания голоса; ошибка — null. */
@@ -59,6 +64,16 @@ export function createPeopleActions(client: Client, dispatch: Dispatch): PeopleA
     async deleteSample(personId, sampleId) {
       const params = { path: { person_id: personId, sample_id: sampleId } }
       return (await sendNotify(dispatch, () => client.DELETE('/api/v1/people/{person_id}/samples/{sample_id}', { params }))).ok
+    },
+    async addLink(personId, channel, account) {
+      const body = { channel, account }
+      const outcome = await sendNotify(dispatch, () => client.POST('/api/v1/people/{person_id}/links', { ...path(personId), body }))
+      return outcome.ok ? outcome.data : null
+    },
+    async removeLink(personId, channel, account) {
+      const params = { path: { person_id: personId, channel, account } }
+      const outcome = await sendNotify(dispatch, () => client.DELETE('/api/v1/people/{person_id}/links/{channel}/{account}', { params }))
+      return outcome.ok ? outcome.data : null
     },
     async loadRecognitions() {
       const outcome = await send(dispatch, () => client.GET('/api/v1/people/recognitions'))

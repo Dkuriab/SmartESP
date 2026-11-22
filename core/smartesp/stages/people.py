@@ -63,6 +63,12 @@ class PeopleStage:
             return [Annotation(text=UNKNOWN_NOTE, source=self.name, data=data, to_model=False)]
         return [
             Annotation(
-                text=found.name, source=self.name, data=data, label=LABEL, reference=True, person=found.name
+                text=found.name,
+                source=self.name,
+                data=data,
+                label=LABEL,
+                reference=True,
+                person=found.name,
+                person_id=found.person_id,
             )
         ]

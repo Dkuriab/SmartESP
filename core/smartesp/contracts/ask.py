@@ -10,14 +10,18 @@ class Question:
     """Вопрос через API.
 
     text — вопрос текстом; пусто — голосовой вопрос, его звук в pcm (s16le, 16 кГц, моно;
-    пустой pcm — в голосовом нечего распознать). person — кто спрашивает ("" — неизвестно);
-    source — откуда вопрос ("telegram"), для ленты.
+    пустой pcm — в голосовом нечего распознать). person — имя того, кто спрашивает ("" — неизвестно);
+    source — откуда вопрос ("telegram"), для ленты; account — кто спрашивает в этом канале (id
+    пользователя Telegram строкой; "" — неизвестно). person_id — постоянный id человека: ставит ядро
+    по связи (source, account) с человеком из «Людей», без связи — "<source>:<account>".
     """
 
     text: str = ""
     pcm: bytes = b""
     person: str = ""
     source: str = "api"
+    account: str = ""
+    person_id: str = ""
 
 
 @dataclass(frozen=True)

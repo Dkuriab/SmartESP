@@ -49,6 +49,23 @@ async def test_ask_text_goes_through_core_and_feed(tmp_path: Path) -> None:
     await finish(core)
 
 
+async def test_ask_account_resolves_linked_person_or_guest(tmp_path: Path) -> None:
+    core = make_core(tmp_path, fake_kinds(ollama_factory([])))
+    start(core)
+    await eventually(lambda: core.core.state == "ready")
+    async with client(core) as http:
+        anya = (await http.post("/api/v1/people", json={"name": "Аня"}, headers=HEADERS)).json()
+        link = {"channel": "telegram", "account": "111"}
+        await http.post(f"/api/v1/people/{anya['id']}/links", json=link, headers=HEADERS)
+        for account in ("111", "222"):
+            body = {"text": "Который час?", "person": "Гость", "source": "telegram", "account": account}
+            assert (await http.post("/api/v1/ask", json=body, headers=HEADERS)).status_code == 200
+        turns = (await http.get("/api/v1/turns", headers=HEADERS)).json()
+    assert {(t["person_id"], t["person"]) for t in turns} == {(anya["id"], "Аня"), ("telegram:222", "Гость")}
+    await stop(core)
+    await finish(core)
+
+
 @pytest.mark.skipif(find_ffmpeg() is None, reason="нет ffmpeg")
 async def test_ask_voice_decodes_and_recognizes(tmp_path: Path) -> None:
     core = make_core(tmp_path, fake_kinds(ollama_factory([]), text="Который час?"))

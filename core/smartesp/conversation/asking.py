@@ -188,7 +188,13 @@ class ApiTurns:
         )
         title = source_title(question.source)
         return Turn(
-            utterance, title, received, text=question.text, source=question.source, person=question.person
+            utterance,
+            title,
+            received,
+            text=question.text,
+            source=question.source,
+            person=question.person,
+            person_id=question.person_id,
         )
 
     async def _handle(self, turn: Turn, parts: AskParts) -> None:
@@ -226,7 +232,9 @@ class ApiTurns:
         """Читает ответ сети целиком (с передачами) в turn; сбой исполнителя — ход с ошибкой."""
         turn.path = [handoffs.entry_id(executor)]
         try:
-            CALL_CONTEXT.set(CallContext(turn.person or None, ""))  # ход через API: колонки нет
+            CALL_CONTEXT.set(
+                CallContext(turn.person_id or None, "", turn.person)
+            )  # ход через API: колонки нет
             async with closing(watched(executor.run(messages))) as stream:
                 first = await first_part(
                     stream, _no_signal, self._first_part_limit_s, self._first_part_limit_s

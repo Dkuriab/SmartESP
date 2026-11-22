@@ -18,6 +18,7 @@ from smartesp.contracts import (
     NothingHeardError,
     PeopleLookupError,
     Person,
+    Question,
     Recognition,
     RecordRefusedError,
     SpeakerModelMissingError,
@@ -28,6 +29,7 @@ from smartesp.contracts import (
 )
 
 from .fetching import Fetch, ModelFetcher
+from .links import clean_link, guest_id, owner
 from .matching import best_match, has_voice
 from .store import PeopleStore, clean_name, new_id
 
@@ -72,6 +74,7 @@ class People:
         self._people = {p.id: p for p in self._store.load()}
         self._recent: collections.deque[Recognition] = collections.deque(maxlen=RECENT)
         self._warming: asyncio.Task[None] | None = None
+        self._guests: dict[str, str] = {}  # id гостя канала → имя, которое прислал клиент (в памяти)
 
     # --- реестр ---
 
@@ -118,6 +121,48 @@ class People:
         if len(samples) == len(person.samples):
             raise PeopleLookupError("нет такого образца")
         self._put(dataclasses.replace(person, samples=samples))
+
+    # --- связи с аккаунтами каналов ---
+
+    def add_link(self, person_id: str, channel: str, account: str) -> Person:
+        """Связь человека с аккаунтом; аккаунт у другого человека — ValueError."""
+        person, link = self._get(person_id), clean_link(channel, account)
+        other = owner(self._people.values(), link)
+        if other is not None and other.id != person_id:
+            raise ValueError(f"{link.channel} {link.account} уже связан с «{other.name}»")
+        if link in person.links:
+            return person
+        _log.info("Люди: «%s» связан с %s", person.name, link.channel)
+        return self._put(dataclasses.replace(person, links=(*person.links, link)))
+
+    def remove_link(self, person_id: str, channel: str, account: str) -> Person:
+        """Убирает связь человека с аккаунтом."""
+        person = self._get(person_id)
+        links = tuple(k for k in person.links if (k.channel, k.account) != (channel, account))
+        if len(links) == len(person.links):
+            raise PeopleLookupError("нет такой связи")
+        return self._put(dataclasses.replace(person, links=links))
+
+    def identify(self, question: Question) -> Question:
+        """Человек вопроса через API по связи (source, account); см. PeoplePort.identify."""
+        if not question.account:
+            return question
+        try:
+            link = clean_link(question.source, question.account)
+        except ValueError:
+            return question  # аккаунт не годится в id: вопрос — без человека, как без account
+        found = owner(self._people.values(), link)
+        if found is not None:
+            return dataclasses.replace(question, person_id=found.id, person=found.name)
+        guest = guest_id(link)
+        if question.person:
+            self._guests[guest] = question.person  # имя гостя — для «В работе» и ленты
+        return dataclasses.replace(question, person_id=guest)
+
+    def name_of(self, person_id: str) -> str:
+        """Имя по постоянному id; неизвестен — сам id."""
+        person = self._people.get(person_id)
+        return person.name if person is not None else self._guests.get(person_id, person_id)
 
     # --- образцы и узнавание ---
 

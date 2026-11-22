@@ -124,7 +124,8 @@ class McpHub:
             return ToolResult(f"Нет инструмента «{name}».", is_error=True)
         connector, tool = route
         context = CALL_CONTEXT.get() or CallContext()
-        meta = {"person": person or context.person, "device": context.device_id}
+        name = context.person_name if person is None else ""  # имя — только к id из контекста хода
+        meta = {"person": person or context.person, "person_name": name, "device": context.device_id}
         return await connector.call(
             tool, arguments, {k: v for k, v in meta.items() if v}, self._call_timeout_s
         )

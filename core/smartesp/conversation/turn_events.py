@@ -69,6 +69,7 @@ def finished_data(turn: Turn) -> dict[str, object]:
         "origin": turn.utterance.origin,
         "source": turn.source,
         "person": turn.person,
+        "person_id": turn.person_id,
         "kind": "turn",
     }
 

@@ -28,6 +28,17 @@ async def test_ask_text(client: httpx.AsyncClient, core: FakeCore) -> None:
     assert core.questions == [Question(text="штрихкод 4601234567893, 200 г", person="Аня", source="telegram")]
 
 
+async def test_ask_account_text_and_voice(client: httpx.AsyncClient, core: FakeCore) -> None:
+    body = {"text": "Привет", "person": "Аня", "source": "telegram", "account": " 123456 "}
+    assert (await client.post(ASK, json=body, headers=HEADERS)).status_code == 200
+    assert core.questions == [Question(text="Привет", person="Аня", source="telegram", account="123456")]
+    data = {"person": "Аня", "source": "telegram", "account": "123456"}
+    assert (await client.post(VOICE, files=voice_files(), data=data, headers=HEADERS)).status_code == 200
+    assert core.voices_asked == [(OGG, "Аня", "telegram", "123456")]
+    bad = {"text": "Привет", "source": "telegram", "account": "../x"}
+    assert (await client.post(ASK, json=bad, headers=HEADERS)).status_code == 422
+
+
 async def test_ask_defaults(client: httpx.AsyncClient, core: FakeCore) -> None:
     response = await client.post(ASK, json={"text": "Привет"}, headers=HEADERS)
     assert response.status_code == 200
@@ -71,7 +82,7 @@ async def test_ask_voice(client: httpx.AsyncClient, core: FakeCore) -> None:
     response = await client.post(VOICE, files=voice_files(), data=data, headers=HEADERS)
     assert response.status_code == 200
     assert response.json() == {"answer": "Голос услышан", "turn_id": "api1"}
-    assert core.voices_asked == [(OGG, "Аня", "telegram")]
+    assert core.voices_asked == [(OGG, "Аня", "telegram", "")]
 
 
 async def test_ask_voice_too_large_is_413(client: httpx.AsyncClient, core: FakeCore) -> None:

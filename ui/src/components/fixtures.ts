@@ -21,6 +21,7 @@ export function makeTurn(id: number, over: Partial<Turn> = {}): Turn {
     origin: 'wake',
     source: '',
     person: '',
+    person_id: '',
     kind: 'turn',
     ...over,
   }
@@ -100,6 +101,8 @@ export function makeActions(): CoreActions {
     deletePerson: vi.fn().mockResolvedValue(true),
     recordSample: vi.fn(),
     deleteSample: vi.fn().mockResolvedValue(true),
+    addLink: vi.fn().mockResolvedValue(null),
+    removeLink: vi.fn().mockResolvedValue(null),
     loadRecognitions: vi.fn().mockResolvedValue([]),
     loadSpeakerModel: vi.fn().mockResolvedValue(null),
     downloadSpeakerModel: vi.fn().mockResolvedValue(null),
