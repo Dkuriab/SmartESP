@@ -39,8 +39,9 @@ def pid() -> str:
 @server.tool(description="Кто просит (из _meta.person)")
 def whoami(ctx: Context) -> str:
     meta = ctx.request_context.meta or {}
-    device = meta.get("device")
-    return str(meta.get("person", "никто")) + (f"@{device}" if device else "")
+    device, name = meta.get("device"), meta.get("person_name")
+    who = str(meta.get("person", "никто")) + (f" ({name})" if name else "")
+    return who + (f"@{device}" if device else "")
 
 
 @server.tool(description="Папка данных и переменная окружения")

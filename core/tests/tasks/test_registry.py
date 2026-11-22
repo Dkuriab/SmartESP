@@ -139,3 +139,12 @@ def test_new_tasks_beyond_limit_are_dropped_after_old_finished_go() -> None:
     board.report(TaskReport("s", "a", status="done"))
     board.report(TaskReport("s", "c", "C"))  # законченная уступает место
     assert [t.id for t in board.tasks()] == ["b", "c"]
+
+
+def test_person_id_from_skill_is_shown_by_name() -> None:
+    names = {"a1b2c3d4": "Аня"}
+    board = TaskRegistry(None, person_name=lambda p: names.get(p, p))
+    board.report(TaskReport("timers", "t1", "Таймер", person="a1b2c3d4"))
+    board.report(TaskReport("timers", "t1", "", status="done"))  # без человека — прежнее имя
+    board.report(TaskReport("timers", "t2", "Таймер", person="telegram:7"))
+    assert sorted(t.person for t in board.tasks()) == ["telegram:7", "Аня"]

@@ -1,6 +1,6 @@
 """Модуль разговора: ход целиком от реплики до звука ответа."""
 
-from .activity import current_person, tool_observer
+from .activity import tool_observer
 from .history import History
 from .orchestrator import Orchestrator
 from .prompt import build_messages
@@ -11,7 +11,6 @@ __all__ = [
     "Orchestrator",
     "build_messages",
     "clean_for_speech",
-    "current_person",
     "is_meaningless",
     "split_sentences",
     "take_style",

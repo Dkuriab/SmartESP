@@ -42,13 +42,16 @@ class TaskRegistry:
         events: EventSink | None,
         device_name: Callable[[str], str] = lambda device_id: device_id,
         *,
+        person_name: Callable[[str], str] = lambda person_id: person_id,
         clock: Callable[[], float] = time.time,
         keep_s: float = KEEP_S,
         max_tasks: int = MAX_TASKS,
     ) -> None:
-        """events — куда публиковать; device_name — имя колонки по id; clock — настенные часы."""
+        """events — куда публиковать; device_name — имя колонки по id; person_name — имя человека по
+        постоянному id (скиллы сообщают id, интерфейсу нужно имя); clock — настенные часы."""
         self._events = events
         self._device_name = device_name
+        self._person_name = person_name
         self._clock = clock
         self._keep_s = keep_s
         self._max_tasks = max_tasks
@@ -107,7 +110,7 @@ class TaskRegistry:
             finished_at=now if finished else None,
             device_id=device_id,
             device_name=self._device_name(device_id) if device_id else "",
-            person=report.person or (old.person if old else ""),
+            person=self._person_name(report.person) if report.person else (old.person if old else ""),
             result=_clip(report.result, RESULT_CHARS) or (old.result if old else ""),
         )
 

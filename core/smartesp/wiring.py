@@ -19,7 +19,7 @@ from smartesp.api import BodyLimit, LogBuffer, add_device_files, add_device_stre
 from smartesp.config import Config, ConfigFile
 from smartesp.config.connectors import REPO_DIR
 from smartesp.contracts import Analyzer
-from smartesp.conversation import current_person, tool_observer
+from smartesp.conversation import tool_observer
 from smartesp.devices import WebSocketConnection
 from smartesp.events import EventBus
 from smartesp.kinds import Kinds, Ollama, build_answering, connector_specs
@@ -51,7 +51,7 @@ from smartesp.stages import PEOPLE_VOICES, SYSTEM_FACTS
 from smartesp.streams import Streams, capture_probe, ffmpeg_decoder
 from smartesp.stt import decode_file, find_ffmpeg
 from smartesp.tasks import TaskRegistry
-from smartesp.tools import McpHub, with_person
+from smartesp.tools import McpHub
 from smartesp.training import Training
 from smartesp.updates import Updates
 
@@ -71,11 +71,10 @@ logger = logging.getLogger("smartesp")
 async def _answering(
     config: Config, kinds: Kinds, capabilities: CapabilityCache, tools: McpHub
 ) -> tuple[Analyzer, ExecutorNetwork]:
-    """Обработчики и сеть из настроек; вызовы инструментов сети — в живую подсветку хода,
-    человек хода — в `_meta.person` вызовов."""
+    """Обработчики и сеть из настроек; вызовы инструментов сети — в живую подсветку хода
+    (человек и колонка хода доходят до `_meta` вызовов через CALL_CONTEXT)."""
     observe = tool_observer(tools.connector_of)
-    toolbox = with_person(tools, current_person)
-    return await build_answering(config, kinds, capabilities.get, toolbox, observe)
+    return await build_answering(config, kinds, capabilities.get, tools, observe)
 
 
 async def _build_answering(
@@ -111,7 +110,8 @@ def assemble(
     hub, history, orchestrator, announcer, files, use_speech = conversation(config, bus)
     live = live_answering(orchestrator, turn_wait_s=TURN_WAIT_S, unload_s=UNLOAD_S, warm_s=WARM_UP_TIMEOUT_S)
     capabilities = CapabilityCache(ollama.capabilities)
-    tasks = TaskRegistry(bus, hub.device_name)  # «В работе»: запоздавшие ответы и задачи коннекторов
+    # «В работе»: запоздавшие ответы и задачи коннекторов; человек задачи — по имени, не по id
+    tasks = TaskRegistry(bus, hub.device_name, person_name=lambda person_id: parts.people.name_of(person_id))
     orchestrator.use_tasks(tasks)
     tools = McpHub(
         home,
