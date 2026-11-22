@@ -1261,6 +1261,305 @@
         }
       }
     },
+    "/api/v1/training/{kit}/steps/{step}": {
+      "post": {
+        "summary": "Start Step",
+        "operationId": "start_step_api_v1_training__kit__steps__step__post",
+        "parameters": [
+          {
+            "name": "kit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kit"
+            }
+          },
+          {
+            "name": "step",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Step"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOut"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/api/v1/training/{kit}/job": {
+      "get": {
+        "summary": "Get Job",
+        "operationId": "get_job_api_v1_training__kit__job_get",
+        "parameters": [
+          {
+            "name": "kit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/JobOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Job Api V1 Training  Kit  Job Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Stop Job",
+        "operationId": "stop_job_api_v1_training__kit__job_delete",
+        "parameters": [
+          {
+            "name": "kit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kit"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/api/v1/training/{kit}/runs": {
+      "get": {
+        "summary": "Get Runs",
+        "operationId": "get_runs_api_v1_training__kit__runs_get",
+        "parameters": [
+          {
+            "name": "kit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Kit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response Get Runs Api V1 Training  Kit  Runs Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/api/v1/core": {
       "get": {
         "summary": "Get Core",
@@ -1994,6 +2293,99 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "JobOut": {
+        "properties": {
+          "kit": {
+            "type": "string",
+            "title": "Kit"
+          },
+          "step": {
+            "type": "string",
+            "title": "Step"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "done",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "started_at": {
+            "type": "number",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "done": {
+            "type": "integer",
+            "title": "Done"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "log": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Log"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kit",
+          "step",
+          "target",
+          "status",
+          "started_at",
+          "finished_at",
+          "stage",
+          "done",
+          "total",
+          "error",
+          "log",
+          "result"
+        ],
+        "title": "JobOut",
+        "description": "Шаг, который идёт или шёл последним; времена — секунды Unix."
+      },
       "KitOut": {
         "properties": {
           "id": {
@@ -2025,6 +2417,13 @@
             },
             "type": "array",
             "title": "Phrases"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/StepOut"
+            },
+            "type": "array",
+            "title": "Steps"
           }
         },
         "type": "object",
@@ -2034,7 +2433,8 @@
           "description",
           "record_hint",
           "targets",
-          "phrases"
+          "phrases",
+          "steps"
         ],
         "title": "KitOut",
         "description": "Набор для обучения."
@@ -2271,6 +2671,52 @@
         ],
         "title": "StatusOut",
         "description": "Сводка ядра."
+      },
+      "StepIn": {
+        "properties": {
+          "target": {
+            "type": "string",
+            "title": "Target",
+            "default": ""
+          },
+          "run": {
+            "type": "string",
+            "title": "Run",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "StepIn",
+        "description": "Запуск шага: цель (для шагов цели) и прогон (для встраивания; пусто — последний)."
+      },
+      "StepOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "hint": {
+            "type": "string",
+            "title": "Hint"
+          },
+          "per_target": {
+            "type": "boolean",
+            "title": "Per Target"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "hint",
+          "per_target"
+        ],
+        "title": "StepOut",
+        "description": "Шаг обучения; per_target — делается для выбранной цели."
       },
       "StopOut": {
         "properties": {

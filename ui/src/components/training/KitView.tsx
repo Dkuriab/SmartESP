@@ -6,6 +6,7 @@ import type { TrainKit, TrainTarget } from '../../state/trainingActions'
 import PhraseTable from './PhraseTable'
 import RecordPanel from './RecordPanel'
 import TargetEditor from './TargetEditor'
+import TrainPanel from './TrainPanel'
 
 type Props = {
   kit: TrainKit
@@ -38,6 +39,11 @@ export default function KitView({ kit, state, actions, onChanged, onRecorded }: 
         <RecordPanel kit={kit} phrase={current} onPhrase={setPhrase} state={state} actions={actions} onRecorded={onRecorded} />
         <PhraseTable kit={kit} selected={current} onSelect={setPhrase} />
       </section>
+      {kit.steps.length > 0 && (
+        <section className="training-col" aria-label="Обучение">
+          <TrainPanel kit={kit} actions={actions} />
+        </section>
+      )}
     </div>
   )
 }

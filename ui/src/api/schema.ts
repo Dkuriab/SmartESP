@@ -330,6 +330,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/training/{kit}/steps/{step}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Step */
+        post: operations["start_step_api_v1_training__kit__steps__step__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/{kit}/job": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_api_v1_training__kit__job_get"];
+        put?: never;
+        post?: never;
+        /** Stop Job */
+        delete: operations["stop_job_api_v1_training__kit__job_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training/{kit}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Runs */
+        get: operations["get_runs_api_v1_training__kit__runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/core": {
         parameters: {
             query?: never;
@@ -709,6 +761,41 @@ export interface components {
             detail?: components["schemas"]["ValidationError"][];
         };
         /**
+         * JobOut
+         * @description Шаг, который идёт или шёл последним; времена — секунды Unix.
+         */
+        JobOut: {
+            /** Kit */
+            kit: string;
+            /** Step */
+            step: string;
+            /** Target */
+            target: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "done" | "failed" | "cancelled";
+            /** Started At */
+            started_at: number;
+            /** Finished At */
+            finished_at: number | null;
+            /** Stage */
+            stage: string;
+            /** Done */
+            done: number;
+            /** Total */
+            total: number;
+            /** Error */
+            error: string;
+            /** Log */
+            log: string[];
+            /** Result */
+            result: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
          * KitOut
          * @description Набор для обучения.
          */
@@ -725,6 +812,8 @@ export interface components {
             targets: components["schemas"]["TargetIO"][];
             /** Phrases */
             phrases: components["schemas"]["PhraseOut"][];
+            /** Steps */
+            steps: components["schemas"]["StepOut"][];
         };
         /**
          * ModelOut
@@ -839,6 +928,36 @@ export interface components {
             executors?: components["schemas"]["ExecutorStateOut"][];
             /** Connectors */
             connectors?: components["schemas"]["ConnectorOut"][];
+        };
+        /**
+         * StepIn
+         * @description Запуск шага: цель (для шагов цели) и прогон (для встраивания; пусто — последний).
+         */
+        StepIn: {
+            /**
+             * Target
+             * @default
+             */
+            target: string;
+            /**
+             * Run
+             * @default
+             */
+            run: string;
+        };
+        /**
+         * StepOut
+         * @description Шаг обучения; per_target — делается для выбранной цели.
+         */
+        StepOut: {
+            /** Id */
+            id: string;
+            /** Title */
+            title: string;
+            /** Hint */
+            hint: string;
+            /** Per Target */
+            per_target: boolean;
         };
         /**
          * StopOut
@@ -2058,6 +2177,243 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    start_step_api_v1_training__kit__steps__step__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kit: string;
+                step: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StepIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    get_job_api_v1_training__kit__job_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kit: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobOut"] | null;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    stop_job_api_v1_training__kit__job_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kit: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    get_runs_api_v1_training__kit__runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kit: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
             };
             /** @description Unauthorized */
             401: {

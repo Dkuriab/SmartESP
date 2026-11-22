@@ -152,3 +152,73 @@
     width: auto;
   }
 }
+
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.steps li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.job {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.job-failed {
+  border-color: var(--red);
+}
+
+.job-done {
+  border-color: var(--green);
+}
+
+.job-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.job-head span {
+  flex: 1;
+  color: var(--muted);
+}
+
+.job-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+
+.job-bar div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s;
+}
+
+.job-log pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.runs-table tr.best td {
+  color: var(--green);
+}

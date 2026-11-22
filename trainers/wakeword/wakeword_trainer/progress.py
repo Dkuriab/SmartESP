@@ -11,6 +11,7 @@ import time
 
 _json = False
 _last: dict[str, float] = {}
+_out = sys.stdout  # настоящий stdout: обучение перенаправляет печать microWakeWord в stderr
 
 
 def use_json(on: bool) -> None:
@@ -20,7 +21,7 @@ def use_json(on: bool) -> None:
 
 
 def _emit(data: dict[str, object], text: str) -> None:
-    print(json.dumps(data, ensure_ascii=False) if _json else text, flush=True)
+    print(json.dumps(data, ensure_ascii=False) if _json else text, file=_out, flush=True)
 
 
 def step(stage: str, done: int, total: int, *, every_s: float = 1.0) -> None:

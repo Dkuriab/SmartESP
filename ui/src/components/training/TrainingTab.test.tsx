@@ -17,6 +17,7 @@ const kit: TrainKit = {
     { phrase: 'Кузьма', people: {} },
     { phrase: 'Вася', people: { Данила: 3 } },
   ],
+  steps: [],
 }
 
 function setup() {

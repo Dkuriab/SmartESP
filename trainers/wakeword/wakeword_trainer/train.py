@@ -6,6 +6,7 @@ tools/embed_model.py), result.json (итог для вкладки «Обуче�
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
 import runpy
@@ -55,7 +56,9 @@ def _run_microwakeword(config_path: Path, steps: int, log_file: Path) -> None:
     old_argv = sys.argv
     sys.argv = argv
     try:
-        runpy.run_module("microwakeword.model_train_eval", run_name="__main__")
+        # его печать хода («\r»-строки) — в журнал (stderr), stdout — только наш ход строками JSON
+        with contextlib.redirect_stdout(sys.stderr):
+            runpy.run_module("microwakeword.model_train_eval", run_name="__main__")
     except SystemExit as stop:
         if stop.code not in (0, None):
             raise ValueError(f"обучение прервалось (код {stop.code}) — см. {log_file}") from stop

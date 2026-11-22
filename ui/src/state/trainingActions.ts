@@ -7,6 +7,10 @@ import { send, sendNotify } from './request'
 export type TrainKit = components['schemas']['KitOut']
 export type TrainTarget = components['schemas']['TargetIO']
 export type PhraseRecording = components['schemas']['RecordingOut']
+export type TrainStep = components['schemas']['StepOut']
+export type TrainJob = components['schemas']['JobOut']
+/** Итог прогона (result.json набора): поля — как пишет набор, поэтому без строгой схемы. */
+export type TrainRun = Record<string, unknown>
 
 /** Что записать: колонка, фраза из целей набора, чей голос. */
 export type RecordRequest = { kit: string; deviceId: string; phrase: string; person: string }
@@ -26,6 +30,14 @@ export type TrainingActions = {
   fetchRecording(kit: string, phrase: string, person: string, name: string): Promise<Blob | null>
   /** Удаляет запись; true — удалена. */
   deleteRecording(kit: string, phrase: string, person: string, name: string): Promise<boolean>
+  /** Запускает шаг (цель — для шагов цели, run — прогон для встраивания); ошибка — уведомлением и null. */
+  startStep(kit: string, step: string, target: string, run?: string): Promise<TrainJob | null>
+  /** Идущий или последний шаг набора; не было или ошибка — null. */
+  loadJob(kit: string): Promise<TrainJob | null>
+  /** Останавливает идущий шаг. */
+  stopJob(kit: string): Promise<void>
+  /** Итоги прогонов, новые первыми; ошибка — пусто. */
+  loadRuns(kit: string): Promise<TrainRun[]>
 }
 
 export function createTrainingActions(client: Client, dispatch: Dispatch): TrainingActions {
@@ -53,6 +65,22 @@ export function createTrainingActions(client: Client, dispatch: Dispatch): Train
       const params = { path: { kit, name }, query: { phrase, person } }
       const outcome = await send(dispatch, () => client.GET('/api/v1/training/{kit}/recordings/{name}', { params, parseAs: 'blob' }))
       return outcome.ok ? (outcome.data as Blob) : null
+    },
+    async startStep(kit, step, target, run = '') {
+      const params = { path: { kit, step } }
+      const outcome = await sendNotify(dispatch, () => client.POST('/api/v1/training/{kit}/steps/{step}', { params, body: { target, run } }))
+      return outcome.ok ? outcome.data : null
+    },
+    async loadJob(kit) {
+      const outcome = await send(dispatch, () => client.GET('/api/v1/training/{kit}/job', { params: { path: { kit } } }))
+      return outcome.ok ? (outcome.data ?? null) : null
+    },
+    async stopJob(kit) {
+      await sendNotify(dispatch, () => client.DELETE('/api/v1/training/{kit}/job', { params: { path: { kit } } }))
+    },
+    async loadRuns(kit) {
+      const outcome = await send(dispatch, () => client.GET('/api/v1/training/{kit}/runs', { params: { path: { kit } } }))
+      return outcome.ok ? (outcome.data as TrainRun[]) : []
     },
     async deleteRecording(kit, phrase, person, name) {
       const params = { path: { kit, name }, query: { phrase, person } }
