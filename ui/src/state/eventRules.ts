@@ -4,6 +4,7 @@ import type { CoreState, Device, Status, Turn } from './model'
 import { MAX_APPLIED } from './model'
 import { applyFileEvent } from './files'
 import { applyLive } from './live'
+import { applyEchoEvent } from './echo'
 import { applyStreamEvent } from './streams'
 import { applyTaskEvent } from './tasks'
 import { addTurn } from './turns'
@@ -128,6 +129,8 @@ export function applyEvent(state: CoreState, e: CoreEvent): CoreState {
       return deviceEvent(state, e)
     case 'device_update':
       return deviceUpdate(state, e)
+    case 'device_echo':
+      return applyEchoEvent(state, e)
     case 'voice_download':
       return voiceDownload(state, e.data)
     case 'voice_ready':

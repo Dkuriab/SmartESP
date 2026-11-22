@@ -79,6 +79,7 @@ export function makeActions(): CoreActions {
     playFile: vi.fn(),
     stopFile: vi.fn(),
     controlStream: vi.fn(),
+    calibrateEcho: vi.fn(),
     setStages: vi.fn(),
     setConnectors: vi.fn(),
     saveConnectorEnv: vi.fn().mockResolvedValue(''),

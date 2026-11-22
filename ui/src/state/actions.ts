@@ -14,6 +14,8 @@ import { send, sendNotify } from './request'
 import type { SentExecutors } from './sentExecutors'
 import type { SoundActions } from './soundActions'
 import { createSoundActions } from './soundActions'
+import type { EchoActions } from './echo'
+import { createEchoActions } from './echo'
 import type { StreamActions } from './streamActions'
 import { createStreamActions } from './streamActions'
 import type { TrainingActions } from './trainingActions'
@@ -28,6 +30,7 @@ export type StageEntry = { kind: string; timeout_ms?: number; quiet_reply?: bool
 export type CoreActions = ExecutorActions &
   FileActions &
   StreamActions &
+  EchoActions &
   TrainingActions &
   SoundActions &
   PeopleActions &
@@ -140,6 +143,7 @@ export function createActions(deps: ActionDeps): CoreActions {
     ...createExecutorActions({ dispatch, getConfig, sent }, sendPatch),
     ...createFileActions(client, dispatch),
     ...createStreamActions(client, dispatch),
+    ...createEchoActions(client, dispatch),
     ...createTrainingActions(client, dispatch),
     ...createSoundActions(client, dispatch),
     ...createPeopleActions(client, dispatch),
