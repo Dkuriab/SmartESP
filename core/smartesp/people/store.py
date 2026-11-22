@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from smartesp.contracts import Person, VoiceSample
+from smartesp.contracts import Person, PersonLink, VoiceSample
 
 FILE = "person.json"
 MAX_NAME = 40
@@ -57,7 +57,8 @@ def _sample(raw: dict[str, Any]) -> VoiceSample:
 
 def _person(raw: dict[str, Any]) -> Person:
     samples = tuple(_sample(s) for s in raw.get("samples", []))
-    return Person(str(raw["id"]), str(raw["name"]), float(raw["created_at"]), samples)
+    links = tuple(PersonLink(str(k["channel"]), str(k["account"])) for k in raw.get("links", []))
+    return Person(str(raw["id"]), str(raw["name"]), float(raw["created_at"]), samples, links)
 
 
 def _raw(person: Person) -> dict[str, object]:
@@ -73,7 +74,9 @@ def _raw(person: Person) -> dict[str, object]:
         }
         for s in person.samples
     ]
-    return {"id": person.id, "name": person.name, "created_at": person.created_at, "samples": samples}
+    links = [{"channel": k.channel, "account": k.account} for k in person.links]
+    head = {"id": person.id, "name": person.name, "created_at": person.created_at}
+    return {**head, "links": links, "samples": samples}
 
 
 class PeopleStore:

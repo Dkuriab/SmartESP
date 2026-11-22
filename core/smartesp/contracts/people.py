@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from .ask import Question
 from .audio import Utterance
 
 
@@ -25,13 +26,26 @@ class VoiceSample:
 
 
 @dataclass(frozen=True)
+class PersonLink:
+    """Связь человека с аккаунтом в канале: channel — как source хода ("telegram"), account — id там.
+
+    Аккаунт принадлежит не больше чем одному человеку; у человека связей может быть несколько.
+    """
+
+    channel: str
+    account: str
+
+
+@dataclass(frozen=True)
 class Person:
-    """Человек дома: id (имя папки), имя (идёт в промпт и в _meta.person), образцы голоса."""
+    """Человек дома: постоянный id (папка, _meta.person скиллам), имя (промпт, лента, _meta.person_name),
+    образцы голоса и связи с аккаунтами в каналах (Telegram и др.)."""
 
     id: str
     name: str
     created_at: float  # time.time()
     samples: tuple[VoiceSample, ...] = ()
+    links: tuple[PersonLink, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -108,6 +122,26 @@ class PeoplePort(Protocol):
 
     def delete_sample(self, person_id: str, sample_id: str) -> None:
         """Удаляет образец; нет человека или образца — PeopleLookupError."""
+        ...
+
+    def add_link(self, person_id: str, channel: str, account: str) -> Person:
+        """Связывает человека с аккаунтом канала (уже связан с ним — ничего не меняет).
+
+        Нет человека — PeopleLookupError; неверный канал или аккаунт, аккаунт у другого — ValueError.
+        """
+        ...
+
+    def remove_link(self, person_id: str, channel: str, account: str) -> Person:
+        """Убирает связь; нет человека или такой связи — PeopleLookupError."""
+        ...
+
+    def identify(self, question: Question) -> Question:
+        """Вопрос через API с человеком: связан (source, account) — его id и имя; не связан —
+        id "<source>:<account>" и имя от клиента; без account — как есть."""
+        ...
+
+    def name_of(self, person_id: str) -> str:
+        """Имя по постоянному id (человек или известный гость канала); неизвестен — сам id."""
         ...
 
     def recognitions(self) -> list[Recognition]:
