@@ -58,7 +58,7 @@ async def test_refused_when_speaker_cannot_and_file_is_dropped(tmp_path: Path) -
     ("what", "data", "meta"),
     [
         ("firmware", b"PK\x03\x04", None),  # не образ ESP32
-        ("firmware", bytes([0xE9]) * (0x300000 + 1), None),  # больше половины флеша
+        ("firmware", bytes([0xE9]) * (0x400000 + 1), None),  # больше слота прошивки
         ("model", b"", META),
         ("model", b"tflite", {"cutoff": 0.9}),  # нет окна и арены
     ],
@@ -66,3 +66,8 @@ async def test_refused_when_speaker_cannot_and_file_is_dropped(tmp_path: Path) -
 def test_bad_files_are_refused(what: str, data: bytes, meta: dict[str, object] | None) -> None:
     with pytest.raises(UpdateRefusedError):
         check_file(what, data, meta)  # type: ignore[arg-type]
+
+
+def test_firmware_bigger_than_old_slot_fits_new_slot() -> None:
+    # слот прошивки — 4 МБ (partitions.csv); образ больше прежних 3 МБ ядро пропускает
+    check_file("firmware", bytes([0xE9]) * (0x300000 + 1), None)
