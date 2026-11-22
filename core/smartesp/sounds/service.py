@@ -1,4 +1,4 @@
-"""Свои звуки сигналов: загрузка владельца → подготовка → библиотека → доставка на колонки."""
+"""Свои звуки сигналов: загрузка владельца → подготовка → набор колонки → доставка на неё."""
 
 from __future__ import annotations
 
@@ -51,52 +51,59 @@ class Sounds:
         self._folder = folder
         self._decode = decode
         self._targets = targets
-        self._library = SoundLibrary(folder)
+        # колонки из настроек известны сразу: им переносится прежний общий слой звуков
+        self._library = SoundLibrary(folder, (d.device_id for d in targets.devices()))
         self._deliveries = SoundDeliveries(self._library, targets, install, events, timeout_s)
 
     def device_connected(self, device_id: str) -> None:
-        """Колонка подключилась (слушатель хаба): досылаем ей отличия."""
+        """Колонка подключилась (слушатель хаба): она известна; досылаем ей отличия."""
+        self._library.remember(device_id)
         self._deliveries.connected(device_id)
 
     def overview(self) -> SoundsOverview:
-        """Общие звуки и звуки каждой известной колонки с доставкой."""
+        """Звуки каждой известной колонки с доставкой."""
+        connected = {d.device_id: d.connected for d in self._targets.devices()}
+        known = list(dict.fromkeys([*connected, *self._library.devices()]))
         devices = [
-            DeviceSounds(
-                info.device_id,
-                self._deliveries.supported(info.device_id),
-                self._tones(info.device_id, info.connected),
-            )
-            for info in self._targets.devices()
+            DeviceSounds(d, self._deliveries.supported(d), self._tones(d, connected.get(d, False)))
+            for d in known
         ]
-        return SoundsOverview(self._library.common(), devices)
+        return SoundsOverview(devices)
 
     async def set_sound(
-        self, tone: SoundTone, source: AsyncIterator[bytes], name: str, device_id: str | None
+        self, tone: SoundTone, source: AsyncIterator[bytes], name: str, device_id: str
     ) -> SoundSet:
-        """Готовит файл и назначает его сигналу (всем или одной колонке); см. SoundsPort."""
+        """Готовит файл и назначает его сигналу колонки; см. SoundsPort."""
         self._check_device(device_id)
         prepared = await asyncio.to_thread(prepare_sound, await self._read(source))
         if prepared is None:
             raise SoundRefusedError("undecodable", SILENT)
         sound = self._library.add(prepared.pcm, name)
         self._library.assign(tone, sound, device_id)
-        self._deliveries.changed(tone)
+        self._deliveries.changed([device_id])
         return SoundSet(sound, prepared.trimmed)
 
-    async def reset(self, tone: SoundTone, device_id: str | None) -> None:
-        """Встроенный звук сигнала всем колонкам или одной."""
+    async def reset(self, tone: SoundTone, device_id: str) -> None:
+        """Встроенный звук сигнала колонки."""
         self._check_device(device_id)
         self._library.assign(tone, None, device_id)
-        self._deliveries.changed(tone)
+        self._deliveries.changed([device_id])
+
+    def copy_to_others(self, device_id: str) -> list[str]:
+        """Набор колонки — всем другим известным колонкам; см. SoundsPort."""
+        self._check_device(device_id)
+        others = self._library.copy(device_id, self._known())
+        self._deliveries.changed(others)
+        return others
 
     def wav(self, sha256: str) -> bytes | None:
         """Звук как WAV; нет — None."""
         pcm = self._library.pcm(sha256)
         return to_wav(pcm) if pcm is not None else None
 
-    def resync(self) -> None:
-        """Повторить доставку на все подключённые колонки, забыв неудачи."""
-        self._deliveries.start_all(retry=True)
+    def resync(self, device_id: str | None = None) -> None:
+        """Повторить доставку колонке или всем подключённым, забыв неудачи."""
+        self._deliveries.retry(device_id)
 
     async def aclose(self) -> None:
         """Снимает идущие доставки."""
@@ -105,13 +112,18 @@ class Sounds:
     def _tones(self, device_id: str, connected: bool) -> list[DeviceSound]:
         tones: list[DeviceSound] = []
         for tone in SOUND_TONES:
-            source, sound = self._library.choice(device_id, tone)
             delivery, error = self._deliveries.state(device_id, tone, connected)
-            tones.append(DeviceSound(tone, source, sound, delivery, error))
+            tones.append(DeviceSound(tone, self._library.sound(device_id, tone), delivery, error))
         return tones
 
-    def _check_device(self, device_id: str | None) -> None:
-        if device_id is not None and all(d.device_id != device_id for d in self._targets.devices()):
+    def _known(self) -> list[str]:
+        """Известные колонки: из настроек, виденные хабом и с набором в библиотеке."""
+        return list(
+            dict.fromkeys([*(d.device_id for d in self._targets.devices()), *self._library.devices()])
+        )
+
+    def _check_device(self, device_id: str) -> None:
+        if device_id not in self._known():
             raise SoundRefusedError("unknown_device", UNKNOWN)
 
     async def _read(self, source: AsyncIterator[bytes]) -> bytes:

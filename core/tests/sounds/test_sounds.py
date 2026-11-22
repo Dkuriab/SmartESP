@@ -40,25 +40,46 @@ def _sounds(tmp_path: Path) -> tuple[Sounds, FakeSoundTargets, RecordingSink]:
     return Sounds(tmp_path, _decode, targets, targets.install, events=events, timeout_s=0.2), targets, events
 
 
-def _state(sounds: Sounds, device_id: str, tone: str) -> tuple[str, str]:
+def _state(sounds: Sounds, device_id: str, tone: str) -> tuple[str, bool]:
+    """Доставка сигнала и свой ли звук."""
     device = next(d for d in sounds.overview().devices if d.device_id == device_id)
     sound = next(t for t in device.tones if t.tone == tone)
-    return sound.delivery, sound.source
+    return sound.delivery, sound.sound is not None
 
 
-async def test_set_for_all_delivers_to_capable_and_skips_old(tmp_path: Path) -> None:
+async def test_set_delivers_to_that_speaker_only(tmp_path: Path) -> None:
     sounds, targets, events = _sounds(tmp_path)
-    targets.speakers = {"NEW": (True, {}), "OLD": (True, None)}
-    sounds.device_connected("NEW")
-    sounds.device_connected("OLD")
-    result = await sounds.set_sound("wake", _upload(_beep()), "bell.mp3", None)
+    targets.speakers = {"NEW": (True, {}), "OTHER": (True, {}), "OLD": (True, None)}
+    for device in targets.speakers:
+        sounds.device_connected(device)
+    result = await sounds.set_sound("wake", _upload(_beep()), "bell.mp3", "NEW")
     await _settle()
     assert [(d, t) for d, t, _ in targets.sent] == [("NEW", "wake")]
     assert targets.sent[0][2] and len(targets.sent[0][2]) % 2 == 0
-    assert _state(sounds, "NEW", "wake") == ("ok", "all")
-    assert _state(sounds, "OLD", "wake") == ("unsupported", "all")
+    assert _state(sounds, "NEW", "wake") == ("ok", True)
+    assert _state(sounds, "OTHER", "wake") == ("ok", False)
+    await sounds.set_sound("wake", _upload(_beep()), "bell.mp3", "OLD")
+    assert _state(sounds, "OLD", "wake") == ("unsupported", True)
     assert sounds.wav(result.sound.sha256) is not None and not result.trimmed
     assert any(kind == "sounds" for kind, _ in events.events)
+    await sounds.aclose()
+
+
+async def test_offline_speaker_is_editable_and_gets_sound_on_connect(tmp_path: Path) -> None:
+    sounds, targets, _ = _sounds(tmp_path)
+    targets.speakers = {"A": (True, {}), "B": (False, None)}  # B — из настроек, не в сети
+    sounds.device_connected("A")
+    await sounds.set_sound("error", _upload(_beep()), "e.wav", "A")
+    await _settle()
+    assert sounds.copy_to_others("A") == ["B"]
+    await _settle()
+    assert _state(sounds, "B", "error") == ("offline", True)  # ждёт подключения
+    targets.sent.clear()
+    targets.speakers["B"] = (True, {})
+    sounds.device_connected("B")
+    await _settle()
+    assert [(d, t) for d, t, _ in targets.sent] == [("B", "error")]
+    assert _state(sounds, "B", "error") == ("ok", True)
     await sounds.aclose()
 
 
@@ -66,7 +87,7 @@ async def test_connect_sends_only_differences(tmp_path: Path) -> None:
     sounds, targets, _ = _sounds(tmp_path)
     targets.speakers = {"A": (True, {})}
     sounds.device_connected("A")
-    sound = (await sounds.set_sound("error", _upload(_beep()), "e.wav", None)).sound
+    sound = (await sounds.set_sound("error", _upload(_beep()), "e.wav", "A")).sound
     await _settle()
     targets.sent.clear()
     # колонка переподключилась: у неё нужный error и лишний свой attention
@@ -77,21 +98,23 @@ async def test_connect_sends_only_differences(tmp_path: Path) -> None:
     await sounds.aclose()
 
 
-async def test_reset_for_one_speaker_and_failure_kept_until_retry(tmp_path: Path) -> None:
+async def test_failure_kept_until_retry(tmp_path: Path) -> None:
     sounds, targets, _ = _sounds(tmp_path)
-    targets.speakers = {"A": (True, {}), "B": (False, None)}
+    targets.speakers = {"A": (True, {})}
     sounds.device_connected("A")
-    await sounds.set_sound("thinking", _upload(_beep()), "t.ogg", None)
-    await _settle()
     targets.result, targets.error = "failed", "storage"
+    await sounds.set_sound("thinking", _upload(_beep()), "t.ogg", "A")
+    await _settle()
+    device = next(d for d in sounds.overview().devices if d.device_id == "A")
+    thinking = next(t for t in device.tones if t.tone == "thinking")
+    assert (thinking.delivery, thinking.error) == ("failed", "нет места во флеше колонки")
+    targets.result = "done"
+    sounds.resync("A")
+    await _settle()
+    assert _state(sounds, "A", "thinking") == ("ok", True)
     await sounds.reset("thinking", "A")
     await _settle()
-    assert _state(sounds, "A", "thinking") == ("failed", "builtin")
-    assert _state(sounds, "B", "thinking") == ("offline", "all")  # не подключалась — доставят потом
-    targets.result = "done"
-    sounds.resync()
-    await _settle()
-    assert _state(sounds, "A", "thinking") == ("ok", "builtin")
+    assert _state(sounds, "A", "thinking") == ("ok", False) and targets.sent[-1][2] == b""
     await sounds.aclose()
 
 
@@ -100,7 +123,7 @@ async def test_no_answer_is_failure(tmp_path: Path) -> None:
     targets.speakers = {"A": (True, {})}
     targets.result = None
     sounds.device_connected("A")
-    await sounds.set_sound("listen", _upload(_beep()), "l.wav", None)
+    await sounds.set_sound("listen", _upload(_beep()), "l.wav", "A")
     await asyncio.sleep(0.3)
     device = next(d for d in sounds.overview().devices if d.device_id == "A")
     listen = next(t for t in device.tones if t.tone == "listen")
@@ -114,8 +137,10 @@ async def test_refusals(tmp_path: Path) -> None:
     with pytest.raises(SoundRefusedError) as unknown:
         await sounds.set_sound("wake", _upload(_beep()), "x", "Z")
     assert unknown.value.reason == "unknown_device"
+    with pytest.raises(SoundRefusedError):
+        sounds.copy_to_others("Z")
     with pytest.raises(SoundRefusedError) as bad:
-        await sounds.set_sound("wake", _upload(b"bad"), "x", None)
+        await sounds.set_sound("wake", _upload(b"bad"), "x", "A")
     assert bad.value.reason == "undecodable"
     with pytest.raises(SoundRefusedError, match="нет звука"):
         await sounds.set_sound("wake", _upload(bytes(3200)), "x", "A")

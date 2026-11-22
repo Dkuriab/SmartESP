@@ -1,4 +1,6 @@
-"""Свои звуки сигналов: GET /sounds, POST и DELETE /sounds/{tone}, WAV для прослушивания, повтор доставки.
+"""Свои звуки сигналов колонок: GET /sounds, POST и DELETE /sounds/{tone}?device_id=…, копия набора на
+другие колонки, WAV для прослушивания, повтор доставки. Звуки задаются только колонке (не в сети —
+получит при подключении).
 
 Коды: 404 — колонки нет (или звука для прослушивания); 409 — звуки недоступны; 413 — файл больше
 MAX_SOUND_FILE; 422 — файл пуст, не разобрать или в нём нет звука; 503 — нет ffmpeg.
@@ -14,7 +16,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel
 
-from smartesp.contracts import SoundRef, SoundRefusal, SoundRefusedError, SoundsPort, SoundTone
+from smartesp.contracts import SoundRefusal, SoundRefusedError, SoundsPort, SoundTone
 
 from .schemas import ErrorOut
 
@@ -24,7 +26,8 @@ TOO_LARGE = "Файл больше 10 МБ — для сигнала нужен 
 EMPTY = "Пустой звуковой файл"
 NO_SOUNDS = "Звуки недоступны"
 FILE_HELP = "звук: MP3, WAV, OGG, M4A или FLAC; длиннее 3 с — обрежется"
-DEVICE_HELP = "только для этой колонки; нет — для всех (выборы колонок по сигналу сбрасываются)"
+DEVICE_HELP = "колонка (MAC); может быть не в сети — получит звук при подключении"
+RETRY_HELP = "колонка; нет — все подключённые"
 CODES: dict[SoundRefusal, int] = {"unknown_device": 404, "undecodable": 422, "unavailable": 503}
 _ERRORS: dict[int | str, dict[str, object]] = {
     code: {"model": ErrorOut} for code in (404, 409, 413, 422, 503)
@@ -47,11 +50,11 @@ class SoundSetOut(BaseModel):
 
 
 class DeviceSoundOut(BaseModel):
-    """Сигнал на колонке: source — builtin | all (общий) | device (свой); sound — None у встроенного;
-    delivery — ok | pending | sending | failed | unsupported (прошивка без звуков) | offline."""
+    """Сигнал на колонке: sound — желаемый звук (None — встроенный); delivery — ok (на колонке) |
+    pending | sending | failed (error — причина) | unsupported (прошивка без звуков) | offline (ждёт
+    подключения колонки)."""
 
     tone: Literal["wake", "error", "thinking", "listen", "attention"]
-    source: Literal["builtin", "all", "device"]
     sound: SoundRefOut | None
     delivery: Literal["ok", "pending", "sending", "failed", "unsupported", "offline"]
     error: str = ""
@@ -65,18 +68,16 @@ class DeviceSoundsOut(BaseModel):
     tones: list[DeviceSoundOut]
 
 
-class CommonSoundOut(BaseModel):
-    """Общий звук сигнала (для всех колонок); None — встроенный."""
-
-    tone: Literal["wake", "error", "thinking", "listen", "attention"]
-    sound: SoundRefOut | None
-
-
 class SoundsOut(BaseModel):
-    """Общие звуки и звуки каждой известной колонки."""
+    """Звуки каждой известной колонки (из настроек или хоть раз подключавшейся)."""
 
-    common: list[CommonSoundOut]
     devices: list[DeviceSoundsOut]
+
+
+class SoundsCopyOut(BaseModel):
+    """Кому скопирован набор звуков колонки."""
+
+    devices: list[str]
 
 
 def add_sounds_routes(secured: APIRouter, sounds: SoundsPort | None) -> None:
@@ -96,10 +97,8 @@ def _add_read_routes(secured: APIRouter, port: Callable[[], SoundsPort]) -> None
 
     @secured.get("/sounds", responses={409: {"model": ErrorOut}})
     def get_sounds() -> SoundsOut:
-        overview = port().overview()
-        common = [CommonSoundOut(tone=t, sound=_ref(s)) for t, s in overview.common.items()]
-        devices = [DeviceSoundsOut.model_validate(dataclasses.asdict(d)) for d in overview.devices]
-        return SoundsOut(common=common, devices=devices)
+        devices = [DeviceSoundsOut.model_validate(dataclasses.asdict(d)) for d in port().overview().devices]
+        return SoundsOut(devices=devices)
 
     @secured.get(
         "/sounds/files/{sha256}",
@@ -116,16 +115,23 @@ def _add_read_routes(secured: APIRouter, port: Callable[[], SoundsPort]) -> None
 def _add_change_routes(secured: APIRouter, port: Callable[[], SoundsPort]) -> None:
     """Повтор доставки, загрузка и встроенный звук."""
 
-    # до /sounds/{tone}: иначе «sync» разбирался бы как сигнал
+    # до /sounds/{tone}: иначе «sync» и «copy» разбирались бы как сигнал
     @secured.post("/sounds/sync", status_code=202, responses={409: {"model": ErrorOut}})
-    async def resync() -> None:  # async: доставка — задачи в цикле ядра
-        port().resync()
+    async def resync(device_id: Annotated[str | None, Query(description=RETRY_HELP)] = None) -> None:
+        port().resync(device_id)  # async: доставка — задачи в цикле ядра
+
+    @secured.post("/sounds/copy", responses={404: {"model": ErrorOut}, 409: {"model": ErrorOut}})
+    async def copy_sounds(device_id: Annotated[str, Query(description="откуда копировать")]) -> SoundsCopyOut:
+        try:
+            return SoundsCopyOut(devices=port().copy_to_others(device_id))
+        except SoundRefusedError as error:
+            raise HTTPException(status_code=CODES[error.reason], detail=str(error)) from error
 
     @secured.post("/sounds/{tone}", responses=_ERRORS)
     async def set_sound(
         tone: SoundTone,
         file: Annotated[UploadFile, File(description=FILE_HELP)],
-        device_id: Annotated[str | None, Query(description=DEVICE_HELP)] = None,
+        device_id: Annotated[str, Query(description=DEVICE_HELP)],
     ) -> SoundSetOut:
         if file.size is not None and file.size > MAX_SOUND_FILE:
             raise HTTPException(status_code=413, detail=TOO_LARGE)
@@ -138,17 +144,11 @@ def _add_change_routes(secured: APIRouter, port: Callable[[], SoundsPort]) -> No
         return SoundSetOut.model_validate(dataclasses.asdict(result))
 
     @secured.delete("/sounds/{tone}", status_code=204, responses=_ERRORS)
-    async def reset_sound(
-        tone: SoundTone, device_id: Annotated[str | None, Query(description=DEVICE_HELP)] = None
-    ) -> None:
+    async def reset_sound(tone: SoundTone, device_id: Annotated[str, Query(description=DEVICE_HELP)]) -> None:
         try:
             await port().reset(tone, device_id)
         except SoundRefusedError as error:
             raise HTTPException(status_code=CODES[error.reason], detail=str(error)) from error
-
-
-def _ref(sound: SoundRef | None) -> SoundRefOut | None:
-    return SoundRefOut.model_validate(dataclasses.asdict(sound)) if sound is not None else None
 
 
 async def _chunks(upload: UploadFile) -> AsyncIterator[bytes]:

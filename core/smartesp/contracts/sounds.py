@@ -1,4 +1,8 @@
-"""Договор: свои звуки сигналов колонки — назначения владельца и доставка на колонки."""
+"""Договор: свои звуки сигналов колонки — желаемый набор каждой колонки и доставка на неё.
+
+Звуки задаются только для колонки (общего слоя «для всех» нет): ядро помнит желаемый набор каждой
+известной колонки (из настроек или хоть раз подключавшейся) и досылает его при подключении.
+"""
 
 from __future__ import annotations
 
@@ -14,9 +18,7 @@ SoundTone = Literal["wake", "error", "thinking", "listen", "attention"]
 SOUND_TONES: tuple[SoundTone, ...] = ("wake", "error", "thinking", "listen", "attention")
 SOUNDS_CAP = "sounds"  # возможность колонки в hello: понимает update со звуком (прошивка 0.6.0)
 
-# Откуда звук сигнала на колонке: встроенный, общий для всех колонок, свой у этой колонки.
-SoundSource = Literal["builtin", "all", "device"]
-# Доставка: на колонке нужный; ждёт очереди; качается; не вышло; прошивка без звуков; не в сети.
+# Доставка: на колонке нужный; ждёт очереди; качается; не вышло; прошивка без звуков; ждёт подключения.
 SoundDelivery = Literal["ok", "pending", "sending", "failed", "unsupported", "offline"]
 # Почему звук не принят: колонки нет; файл не разобрать или в нём тишина; нет ffmpeg.
 SoundRefusal = Literal["unknown_device", "undecodable", "unavailable"]
@@ -41,10 +43,9 @@ class SoundSet:
 
 @dataclass(frozen=True)
 class DeviceSound:
-    """Сигнал на колонке: откуда звук, сам звук (None — встроенный), доставка и её ошибка."""
+    """Сигнал на колонке: желаемый звук (None — встроенный), доставка и её ошибка."""
 
     tone: SoundTone
-    source: SoundSource
     sound: SoundRef | None
     delivery: SoundDelivery
     error: str = ""
@@ -61,9 +62,8 @@ class DeviceSounds:
 
 @dataclass(frozen=True)
 class SoundsOverview:
-    """Общие звуки (для всех колонок; None — встроенный) и звуки каждой известной колонки."""
+    """Звуки каждой известной колонки."""
 
-    common: dict[SoundTone, SoundRef | None]
     devices: list[DeviceSounds]
 
 
@@ -99,21 +99,25 @@ class SoundsPort(Protocol):
         ...
 
     async def set_sound(
-        self, tone: SoundTone, source: AsyncIterator[bytes], name: str, device_id: str | None
+        self, tone: SoundTone, source: AsyncIterator[bytes], name: str, device_id: str
     ) -> SoundSet:
-        """Готовит файл (MP3, WAV, OGG, M4A, FLAC) и назначает его сигналу tone: всем колонкам
-        (device_id None — и сбрасывает их отдельные выборы) или одной. Доставка — в фоне.
-        Не принят — SoundRefusedError."""
+        """Готовит файл (MP3, WAV, OGG, M4A, FLAC) и назначает его сигналу tone колонки device_id
+        (колонка может быть не в сети — получит при подключении). Не принят — SoundRefusedError."""
         ...
 
-    async def reset(self, tone: SoundTone, device_id: str | None) -> None:
-        """Встроенный звук сигнала tone: всем колонкам (None) или одной. Колонки нет — SoundRefusedError."""
+    async def reset(self, tone: SoundTone, device_id: str) -> None:
+        """Встроенный звук сигнала tone на колонке. Колонки нет — SoundRefusedError."""
+        ...
+
+    def copy_to_others(self, device_id: str) -> list[str]:
+        """Копирует желаемый набор колонки всем другим известным колонкам (каждая получит его сама);
+        возвращает, кому скопировано. Колонки нет — SoundRefusedError."""
         ...
 
     def wav(self, sha256: str) -> bytes | None:
         """Звук как WAV для прослушивания; нет такого — None."""
         ...
 
-    def resync(self) -> None:
-        """Повторить доставку на все подключённые колонки (после неудачи)."""
+    def resync(self, device_id: str | None = None) -> None:
+        """Повторить доставку после неудачи: на колонку device_id или на все подключённые (None)."""
         ...
