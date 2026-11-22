@@ -157,16 +157,6 @@ class ModelOut(BaseModel):
     supports_tools: bool  # умеет вызывать инструменты (без них — не передаёт задачи)
 
 
-class CloudModelOut(BaseModel):
-    """Модель облачного сервиса (цены — доллары за 1 млн токенов; неизвестно — null)."""
-
-    id: str
-    name: str
-    tools: bool  # умеет вызывать инструменты
-    prompt_price: float | None
-    completion_price: float | None
-
-
 class VoiceOut(BaseModel):
     """Голос из каталога."""
 

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from smartesp.config import Config, ExecutorConfig, StageConfig, SttConfig
+from smartesp.config import Config, ExecutorConfig, StageConfig, SttConfig, wants_core_api
 from smartesp.contracts import (
     CLOUD_MODEL_PREFIX,
     Analyzer,
@@ -108,10 +108,13 @@ def member_specs(config: Config) -> list[MemberSpec]:
 
 
 def connector_specs(config: Config) -> list[ConnectorSpec]:
-    """Коннекторы из настроек — описания для MCP-хаба («{repo}» — путь к репозиторию)."""
+    """Коннекторы из настроек — описания для MCP-хаба («{repo}» — путь к репозиторию; core_api — из
+    smartesp.json коннектора)."""
     expanded = [c.expanded() for c in config.connectors]
     return [
-        ConnectorSpec(c.id, c.name, c.command, tuple(c.args), dict(c.env), c.enabled, c.kind)
+        ConnectorSpec(
+            c.id, c.name, c.command, tuple(c.args), dict(c.env), c.enabled, c.kind, wants_core_api(c)
+        )
         for c in expanded
     ]
 

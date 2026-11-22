@@ -7,7 +7,7 @@ import { send } from './request'
 
 export type Resource = Loaded['resource']
 
-export const ALL_RESOURCES: Resource[] = ['status', 'config', 'voices', 'models', 'turns', 'connectors', 'tasks']
+export const ALL_RESOURCES: Resource[] = ['status', 'config', 'voices', 'models', 'turns', 'connectors', 'tasks', 'streams']
 /** Что перечитать после change_applied и voice_ready. */
 export const AFTER_CHANGE: Resource[] = ['config', 'status', 'voices', 'connectors']
 /** Ollama недоступна — /models отвечает этим кодом. */
@@ -43,6 +43,10 @@ async function fetchResource(client: Client, dispatch: Dispatch, resource: Resou
     }
     case 'tasks': {
       const data = pick(await get(() => client.GET('/api/v1/tasks')))
+      return data && { resource, data }
+    }
+    case 'streams': {
+      const data = pick(await get(() => client.GET('/api/v1/streams')))
       return data && { resource, data }
     }
     case 'turns': {

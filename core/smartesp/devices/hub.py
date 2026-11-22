@@ -16,7 +16,6 @@ from .messages import (
     Busy,
     PlaybackDone,
     Played,
-    UpdateStatus,
     UtteranceEnd,
     Wake,
     cancel_turn,
@@ -192,6 +191,7 @@ class DeviceHub(CoreTurns):
             del self._sessions[session.device_id]
             logger.info("device %s disconnected", session.device_id)
             self._publish("device_disconnected", {"device_id": session.device_id})
+            self._streams.report(session.device_id, None)  # поток на ней больше не играет
         self._end_session(session)
 
     def _end_session(self, session: Session) -> None:
@@ -223,8 +223,8 @@ class DeviceHub(CoreTurns):
             self._on_busy(session, message.turn)
         elif isinstance(message, Played):
             self._on_played(session, message)
-        elif isinstance(message, UpdateStatus):
-            self._updates.apply(session.device_id, message)
+        else:
+            self._on_extra(session, message)
 
     def _on_wake(self, session: Session, wake: Wake) -> None:
         """Новый ход: прежний заканчивается, звук копится, решает арбитр. При остановке — сразу отмена."""

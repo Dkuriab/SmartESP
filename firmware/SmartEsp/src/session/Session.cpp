@@ -161,6 +161,10 @@ void Session::onServerCommand(const ServerCommand& command) {
       break;
     case ServerCommandType::Update:
       break;  // обновление — не сценарий: его ведёт updater (SmartEsp.ino)
+    case ServerCommandType::StreamStart:
+    case ServerCommandType::StreamStop:
+    case ServerCommandType::StreamVolume:
+      break;  // поток звука — не сценарий: его ведёт stream_player (SmartEsp.ino)
   }
 }
 

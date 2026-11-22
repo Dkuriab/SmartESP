@@ -2,6 +2,7 @@
 
 from .connectors import ConnectorConfig
 from .loader import data_dir, load_config
+from .manifest import wants_core_api
 from .models import (
     ArbitrationConfig,
     Config,
@@ -31,4 +32,5 @@ __all__ = [
     "TtsConfig",
     "data_dir",
     "load_config",
+    "wants_core_api",
 ]

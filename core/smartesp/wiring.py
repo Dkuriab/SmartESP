@@ -15,12 +15,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 
-from smartesp.api import BodyLimit, LogBuffer, add_device_files, create_api, mount_ui
+from smartesp.api import BodyLimit, LogBuffer, add_device_files, add_device_streams, create_api, mount_ui
 from smartesp.config import Config, ConfigFile
 from smartesp.config.connectors import REPO_DIR
 from smartesp.contracts import Analyzer
 from smartesp.conversation import current_person, tool_observer
-from smartesp.devices import DeviceHub, WebSocketConnection
+from smartesp.devices import WebSocketConnection
 from smartesp.events import EventBus
 from smartesp.kinds import Kinds, Ollama, build_answering, connector_specs
 from smartesp.lifecycle import (
@@ -43,11 +43,13 @@ from smartesp.parts import (
     conversation,
     live_answering,
     people_registry,
+    system_snapshot,
     voice_manager,
 )
 from smartesp.sounds import Sounds
-from smartesp.stages import PEOPLE_VOICES, SYSTEM_FACTS, SystemSnapshot
-from smartesp.stt import decode_file
+from smartesp.stages import PEOPLE_VOICES, SYSTEM_FACTS
+from smartesp.streams import Streams, capture_probe, ffmpeg_decoder
+from smartesp.stt import decode_file, find_ffmpeg
 from smartesp.tasks import TaskRegistry
 from smartesp.tools import McpHub, with_person
 from smartesp.training import Training
@@ -89,13 +91,6 @@ async def _build_answering(
     return await live.build(part, WARM_UP_TIMEOUT_S, warm=warm)
 
 
-def _system_snapshot(tasks: TaskRegistry, tools: McpHub, hub: DeviceHub) -> SystemSnapshot:
-    """Снимок для обработчика «система»: идущие задачи, готовые коннекторы, громкость колонок."""
-    running = [(t.title, t.eta) for t in tasks.tasks() if t.status == "running"]
-    skills = [c.name for c in tools.states() if c.state == "ready" and c.kind == "mcp"]
-    return SystemSnapshot(running, skills, [(d.name, d.volume) for d in hub.devices() if d.connected])
-
-
 def assemble(
     store: ConfigFile,
     config: Config,
@@ -126,7 +121,7 @@ def assemble(
         # клиенты ядра (бот) ходят в его API: адрес и токен — им в окружение
         client_env={"SMARTESP_URL": f"http://127.0.0.1:{config.server.port}", "SMARTESP_TOKEN": token},
     )
-    SYSTEM_FACTS.use(functools.partial(_system_snapshot, tasks, tools, hub))  # обработчик «система»
+    SYSTEM_FACTS.use(functools.partial(system_snapshot, tasks, tools, hub))  # обработчик «система»
     voices, voice_ready = voice_manager(home, kinds, orchestrator, bus)
     run_file = RunFile(home / "run" / "core.json")
     parts = Assembly(
@@ -158,6 +153,10 @@ def assemble(
     # свои звуки: в папке данных; колонке — при подключении и после изменений (разбор — ffmpeg)
     parts.sounds = Sounds(home / "sounds", decode_file, hub, parts.updates.install, events=bus)
     hub.add_connect_listener(parts.sounds.device_connected)
+    # поток звука (музыка коннектора): колонка тянет его сама, отчёты — потокам
+    decode, probe = ffmpeg_decoder(find_ffmpeg), capture_probe(find_ffmpeg)  # probe — звук Mac (BlackHole)
+    parts.streams = Streams(hub, hub.devices, hub.last_active_device, decode, events=bus, probe=probe)
+    hub.use_stream_listener(parts.streams.report)
     parts.training = Training(  # наборы — в репозитории, данные — в папке данных
         REPO_DIR / "trainers",
         home / "training",
@@ -200,10 +199,12 @@ def _build_app(parts: Assembly, token: str, ui_dir: Path, version: str, logs: Lo
         updates=parts.updates,
         sounds=parts.sounds,
         people=parts.people,
+        streams=parts.streams,
     )
     app.include_router(api)
     app.add_middleware(BodyLimit, token=token)  # предел тела и токен ходов через API — до чтения тела
     add_device_files(app, parts.updates)  # файлы обновлений для колонок (без токена API)
+    add_device_streams(app, parts.streams)  # звук потоков для колонок (без токена API)
     mount_ui(app, ui_dir)  # последним: монтирование на / перехватывает всё, что объявлено позже
     return app
 
@@ -261,6 +262,7 @@ async def stop(parts: Assembly) -> None:
     parts.orchestrator.stop_accepting()
     parts.live.close()  # освобождения старых моделей больше не ждут ходов: их выгрузит unload_all
     await parts.files.aclose()  # файл на колонке может играть минуты — не ждём его
+    await parts.streams.aclose()  # музыка на колонках останавливается
     await cancel_tasks(parts.warming, parts.retrying, parts.refreshing)  # оркестратор — в finish
     # коннекторы закрываются, пока договариваются ходы (их вызовы инструментов уже не пройдут)
     closing = asyncio.create_task(parts.tools.aclose(TOOLS_CLOSE_S), name="tools-close")
@@ -286,6 +288,7 @@ async def finish(parts: Assembly) -> None:
     await parts.tools.aclose()
     await parts.announcer.aclose()
     await parts.files.aclose()
+    await parts.streams.aclose()
     await parts.voices.aclose()
     await parts.training.aclose()
     await parts.sounds.aclose()

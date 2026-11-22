@@ -12,6 +12,7 @@
     <key>LSUIElement</key><true/>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSMicrophoneUsageDescription</key><string>Ядро берёт звук Mac с виртуального устройства BlackHole и играет его на колонках.</string>
     <key>SmartEspRepoPath</key><string>__REPO_PATH__</string>
 </dict>
 </plist>

@@ -48,7 +48,8 @@ class McpHub:
         tasks — реестр «В работе»: задачи коннекторов; упавший или убранный коннектор — его
         идущие задачи отменяются (запустившись, коннектор сообщит идущие заново);
         on_tools() — изменился список инструментов готовых коннекторов (specs());
-        client_env — окружение клиентов ядра (kind client): адрес и токен API ядра.
+        client_env — окружение клиентов ядра (kind client) и коннекторов с core_api: адрес и токен
+        API ядра.
         """
         self._client_env = dict(client_env or {})
         self._data_dir = data_dir
@@ -187,12 +188,12 @@ class McpHub:
         return Connector(
             spec,
             self._data_dir,
+            core_env=self._client_env if spec.core_api else None,
             on_announce=self._on_announce,
             tasks=self._tasks,
             on_change=self._rebuild,
             start_timeout_s=self._start_timeout_s,
             restart_delays_s=self._restart_delays_s,
-            core_env=self._client_env,  # только если коннектор объявил core_api
         )
 
     async def _wait_started(self, connectors: list[Process]) -> None:

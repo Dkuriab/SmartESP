@@ -62,12 +62,13 @@ describe('useCore', () => {
   it('грузит всё сразу, ещё до подключения событий', async () => {
     const { result } = renderHook(() => useCore())
     expect(result.current[0].connection).toBe('connecting')
-    await waitFor(() => expect(GET).toHaveBeenCalledTimes(7))
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(8))
     expect(paths().sort()).toEqual([
       '/api/v1/config',
       '/api/v1/connectors',
       '/api/v1/models',
       '/api/v1/status',
+      '/api/v1/streams',
       '/api/v1/tasks',
       '/api/v1/turns',
       '/api/v1/voices',
@@ -76,10 +77,10 @@ describe('useCore', () => {
 
   it('при подключении — online и загрузка всех ресурсов ещё раз', async () => {
     const { result } = renderHook(() => useCore())
-    await waitFor(() => expect(GET).toHaveBeenCalledTimes(7))
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(8))
     act(() => socket().onOpen())
     expect(result.current[0].connection).toBe('online')
-    await waitFor(() => expect(GET).toHaveBeenCalledTimes(14))
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(16))
   })
 
   it('обрыв — offline с данными, переподключение — всё заново', async () => {
@@ -88,25 +89,25 @@ describe('useCore', () => {
     act(() => socket().onClose(1006))
     expect(result.current[0].connection).toBe('offline')
     expect(result.current[0].turns).toHaveLength(1)
-    await waitFor(() => expect(GET).toHaveBeenCalledTimes(7))
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(8))
     act(() => socket().onOpen())
-    await waitFor(() => expect(GET).toHaveBeenCalledTimes(14))
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(16))
   })
 
   it('change_applied — перечитывает config, status, voices, connectors', async () => {
     renderHook(() => useCore())
-    await waitFor(() => expect(GET).toHaveBeenCalledTimes(7))
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(8))
     act(() => socket().onEvent({ kind: 'change_applied', data: { change_id: 1, ok: true }, at: 1 }))
-    await waitFor(() => expect(GET).toHaveBeenCalledTimes(11))
-    expect(paths().slice(7).sort()).toEqual(['/api/v1/config', '/api/v1/connectors', '/api/v1/status', '/api/v1/voices'])
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(12))
+    expect(paths().slice(8).sort()).toEqual(['/api/v1/config', '/api/v1/connectors', '/api/v1/status', '/api/v1/voices'])
   })
 
   it('core_state — перечитывает config, status, voices, connectors', async () => {
     renderHook(() => useCore())
-    await waitFor(() => expect(GET).toHaveBeenCalledTimes(7))
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(8))
     act(() => socket().onEvent({ kind: 'core_state', data: { state: 'ready' }, at: 1 }))
-    await waitFor(() => expect(GET).toHaveBeenCalledTimes(11))
-    expect(paths().slice(7).sort()).toEqual(['/api/v1/config', '/api/v1/connectors', '/api/v1/status', '/api/v1/voices'])
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(12))
+    expect(paths().slice(8).sort()).toEqual(['/api/v1/config', '/api/v1/connectors', '/api/v1/status', '/api/v1/voices'])
   })
 
   it('на связи status перечитывается каждые 5 с (модели в памяти Ollama); без связи — нет', async () => {
@@ -118,21 +119,21 @@ describe('useCore', () => {
       await flush()
       act(() => socket().onOpen())
       await flush()
-      expect(GET).toHaveBeenCalledTimes(14)
+      expect(GET).toHaveBeenCalledTimes(16)
       vi.advanceTimersByTime(5_000)
       await flush()
-      expect(paths().slice(14)).toEqual(['/api/v1/status'])
+      expect(paths().slice(16)).toEqual(['/api/v1/status'])
       act(() => socket().onClose(1006))
       vi.advanceTimersByTime(30_000)
-      expect(GET).toHaveBeenCalledTimes(15)
+      expect(GET).toHaveBeenCalledTimes(17)
       act(() => socket().onOpen())
       await flush()
       vi.advanceTimersByTime(5_000)
       await flush()
-      expect(GET).toHaveBeenCalledTimes(23)
+      expect(GET).toHaveBeenCalledTimes(26)
       unmount()
       vi.advanceTimersByTime(30_000)
-      expect(GET).toHaveBeenCalledTimes(23)
+      expect(GET).toHaveBeenCalledTimes(26)
     } finally {
       vi.useRealTimers()
     }
@@ -175,7 +176,7 @@ describe('useCore', () => {
     act(() => socket().onEvent({ kind: 'core_state', data: { state: 'ready' }, at: 1 }))
     await waitFor(() => expect(models()).toBe(2))
     act(() => socket().onEvent({ kind: 'core_state', data: { state: 'ready' }, at: 2 }))
-    await waitFor(() => expect(GET).toHaveBeenCalledTimes(16))
+    await waitFor(() => expect(GET).toHaveBeenCalledTimes(17))
     expect(models()).toBe(2) // доступна и была — не перечитываем
   })
 

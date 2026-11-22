@@ -33,6 +33,8 @@ from smartesp.notify import Announcer
 from smartesp.people import OnnxVoicePrint, People, download_model, model_path
 from smartesp.sections import BuildAnswering, live_sections, speech_settings
 from smartesp.sounds import Sounds
+from smartesp.stages import SystemSnapshot
+from smartesp.streams import Streams
 from smartesp.stt import decode_audio, decode_file
 from smartesp.tasks import TaskRegistry
 from smartesp.tools import McpHub
@@ -69,6 +71,7 @@ class Assembly:
     updates: Updates = field(init=False)  # обновления колонок по воздуху: прошивка и модель слова
     sounds: Sounds = field(init=False)  # свои звуки сигналов колонок: библиотека и доставка
     people: People = field(init=False)  # люди дома и узнавание голоса
+    streams: Streams = field(init=False)  # потоки звука на колонках (музыка коннектора)
     app: FastAPI = field(init=False)
     running: asyncio.Task[None] | None = None  # оркестратор
     warming: asyncio.Task[None] | None = None  # прогрев частей
@@ -188,3 +191,10 @@ def control(
         cloud_models=lambda: catalog.models(store.config.cloud.base_url, store.config.cloud.api_key),
         data_dir=str(home),
     )
+
+
+def system_snapshot(tasks: TaskRegistry, tools: McpHub, hub: DeviceHub) -> SystemSnapshot:
+    """Снимок для обработчика «система»: идущие задачи, готовые коннекторы, громкость колонок."""
+    running = [(t.title, t.eta) for t in tasks.tasks() if t.status == "running"]
+    skills = [c.name for c in tools.states() if c.state == "ready" and c.kind == "mcp"]
+    return SystemSnapshot(running, skills, [(d.name, d.volume) for d in hub.devices() if d.connected])

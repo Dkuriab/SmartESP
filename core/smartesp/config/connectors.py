@@ -35,6 +35,8 @@ DEFAULT_CONNECTORS: tuple[tuple[str, str, dict[str, str], bool], ...] = (
     ("web", "Интернет", {}, True),
     # колонки дома: список и громкость (ходит в API ядра — core_api в smartesp.json)
     ("speakers", "Колонки", {}, True),
+    # музыка, радио и звук Mac на колонках (прошивка 0.6.0+); ходит в API ядра (core_api в smartesp.json)
+    ("music", "Музыка на колонках", {"MUSIC_FOLDERS": "", "MUSIC_RADIO": "", "MUSIC_MAC_DEVICE": ""}, True),
 )
 # наши клиенты ядра (папка clients/<id>): (id, имя, окружение, включён ли, команда). Ядро их запускает
 # и держит; адрес и токен API ядра они получают в окружении. Бот выключен, пока владелец не включит

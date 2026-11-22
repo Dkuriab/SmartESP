@@ -13,6 +13,7 @@
 #include "src/server_link/ServerLink.h"
 #include "src/session/Session.h"
 #include "src/updater/Updater.h"
+#include "src/stream_player/StreamPlayer.h"
 
 constexpr const char* FW_VERSION = "0.6.0";
 constexpr size_t AUDIO_BLOCK = 512;  // 32 мс
@@ -25,6 +26,7 @@ WifiLink wifiLink;
 ServerLink serverLink;
 Session session;
 Updater updater;
+StreamPlayer streamPlayer;
 
 int16_t micBlock[AUDIO_BLOCK];
 int16_t refBlock[AUDIO_BLOCK];
@@ -43,6 +45,8 @@ void setup() {
   Serial.begin(115200);
   Serial.printf("SmartESP %s\n", FW_VERSION);
 
+  // Музыка (поток с ядра) смешивается с голосом в задаче динамика.
+  audioOut.setMusicSource([](int16_t* dst, size_t samples) { return streamPlayer.read(dst, samples); });
   audioOut.begin({.bclkPin = 7, .lrcPin = 6, .dinPin = 8});
   // Образец динамика берёт сам audio_in — сразу после чтения микрофона.
   audioIn.begin({.sckPin = 5, .wsPin = 4, .sdPin = 9},
@@ -68,6 +72,7 @@ void setup() {
   passSounds();  // до первого hello: в нём хэши сохранённых звуков
   wifiLink.begin(WIFI_SSID, WIFI_PASSWORD);
   serverLink.begin(SERVER_HOST, SERVER_PORT, "/device", FW_VERSION);
+  streamPlayer.begin({.host = SERVER_HOST, .port = SERVER_PORT});
   session.begin({});
 }
 
@@ -80,6 +85,11 @@ void loop() {
   session.setPlayedBytes(audioOut.playedBytes());
   session.setPlaybackActive(playing);
   session.loop(millis());
+
+  // Музыка: глохнет, пока сценарий не в покое; без связи с ядром — стоп.
+  streamPlayer.setConnected(serverLink.isConnected());
+  streamPlayer.setVoiceActive(session.state() != SessionState::Idle);
+  streamPlayer.loop(millis());
 
   size_t n;
 
@@ -112,13 +122,15 @@ void loop() {
     audioOut.write(audioBlock, n);
   }
 
-  // Команды сервера → сценарий; обновление по воздуху → updater.
+  // Команды сервера → сценарий; обновление по воздуху → updater; поток звука → stream_player.
   ServerCommand command;
   while (serverLink.pollCommand(command)) {
-    if (command.type == ServerCommandType::Update) {
-      updater.start(command.update);
-    } else {
-      session.onServerCommand(command);
+    switch (command.type) {
+      case ServerCommandType::Update: updater.start(command.update); break;
+      case ServerCommandType::StreamStart: streamPlayer.start(command.stream); break;
+      case ServerCommandType::StreamStop: streamPlayer.stop(command.turn); break;
+      case ServerCommandType::StreamVolume: streamPlayer.setVolume(command.volume); break;
+      default: session.onServerCommand(command); break;
     }
   }
 
@@ -130,6 +142,12 @@ void loop() {
   }
   updater.loop(millis());
   passSounds();
+
+  // Состояние потока звука → сервер.
+  ClientEvent streamEvent;
+  while (streamPlayer.pollStatus(streamEvent)) {
+    serverLink.sendEvent(streamEvent);
+  }
 
   // Действия сценария → модули: каждое действие — один вызов одного модуля.
   Action action;

@@ -47,7 +47,7 @@ TEST(encode_hello) {
   CHECK_EQ(doc["sample_rate"].as<int>(), 16000);
   CHECK_EQ(std::string(doc["format"] | ""), "pcm_s16le");
   CHECK_EQ(doc["channels"].as<int>(), 1);
-  CHECK_EQ(doc["protocol"].as<int>(), 4);  // 4: колонка умеет обновляться по воздуху
+  CHECK_EQ(doc["protocol"].as<int>(), 5);  // 4: обновление по воздуху; 5: потоки звука
 }
 
 TEST(encode_update_status) {
@@ -299,7 +299,7 @@ TEST(hello_has_device_id_and_protocol) {
   CHECK(length > 0);
   const std::string json(buffer, length);
   CHECK(json.find("\"device_id\":\"AA:BB:CC:DD:EE:FF\"") != std::string::npos);
-  CHECK(json.find("\"protocol\":4") != std::string::npos);
+  CHECK(json.find("\"protocol\":5") != std::string::npos);
   JsonDocument doc;
   CHECK(!deserializeJson(doc, buffer, length));
   CHECK_EQ(std::string(doc["type"] | ""), "hello");
@@ -343,13 +343,13 @@ TEST(decode_announce) {
 
 // ---------- протокол v3 ----------
 
-TEST(hello_protocol_4) {
+TEST(hello_protocol_5) {
   char buffer[192];
   const size_t length = encodeHello("0.3.0", "AA:BB", buffer, sizeof(buffer));
   CHECK(length > 0);
   JsonDocument doc;
   CHECK(!deserializeJson(doc, buffer, length));
-  CHECK_EQ(doc["protocol"].as<int>(), 4);
+  CHECK_EQ(doc["protocol"].as<int>(), 5);
 }
 
 TEST(decode_listen) {
@@ -386,7 +386,7 @@ TEST(hello_caps_and_sounds) {
   CHECK(length > 0);
   JsonDocument doc;
   CHECK(!deserializeJson(doc, buffer, length));
-  CHECK_EQ(doc["protocol"].as<int>(), 4);  // номер протокола тот же: звуки — возможность
+  CHECK_EQ(doc["protocol"].as<int>(), 5);  // номер протокола тот же: звуки — возможность
   CHECK_EQ(std::string(doc["caps"][0] | ""), "sounds");
   CHECK_EQ(std::string(doc["sounds"]["attention"] | ""), sha);
   CHECK(doc["sounds"]["wake"].isNull());  // встроенный — не пишется

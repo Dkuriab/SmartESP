@@ -19,6 +19,9 @@ export type ConnectorDetail = Schemas['ConnectorDetailOut']
 export type ConnectorSetting = Schemas['ConnectorSettingOut']
 /** Задача «В работе»: что ядро или коннектор делает в фоне. */
 export type Task = Schemas['TaskOut']
+/** Поток звука на колонке (музыка, радио, звук Mac). */
+export type Stream = Schemas['StreamOut']
+export type StreamAction = Schemas['StreamControlIn']['action']
 
 export type Connection = 'connecting' | 'online' | 'offline' | 'unauthorized'
 
@@ -62,6 +65,8 @@ export type CoreState = {
   tasks: Task[]
   /** Растёт с каждым событием sounds: панель звуков колонки перечитывает обзор. */
   soundsTick: number
+  /** Музыка на колонках: device_id → поток (GET /streams и события stream). */
+  streams: Record<string, Stream>
   // --- служебное, компоненты не читают ---
   /**
    * turn_id ходов, полученных при текущем подключении (событием или загрузкой).
@@ -89,6 +94,7 @@ export type Loaded =
   | { resource: 'turns'; data: Turn[] }
   | { resource: 'connectors'; data: ConnectorDetail[] }
   | { resource: 'tasks'; data: Task[] }
+  | { resource: 'streams'; data: Stream[] }
 
 export type Action =
   /** requestedAt — когда ушёл запрос (мс); нужен для status. */
@@ -111,6 +117,8 @@ export type Action =
   | { type: 'modelUnloaded'; name: string }
   /** Фаза файла на колонке (null — не играет); onlyFrom — менять, только если сейчас эта фаза. */
   | { type: 'filePhase'; deviceId: string; phase: FilePhase | null; onlyFrom?: FilePhase }
+  /** Поток колонки из ответа ядра на управление (событие stream придёт тоже). */
+  | { type: 'stream'; stream: Stream }
 
 export const MAX_TURNS = 100
 /** Сколько последних применённых change_id помнить. */
@@ -136,6 +144,7 @@ export function initialState(connection: Connection = 'connecting'): CoreState {
     files: {},
     tasks: [],
     soundsTick: 0,
+    streams: {},
     currentTurnIds: [],
     pendingSince: {},
     voiceFailures: {},

@@ -1,9 +1,10 @@
 // Настройки колонки: имя (Enter или потеря фокуса — сохранить), сведения, файл, обновление и звуки.
 import { useState } from 'react'
-import type { Device, FilePhase } from '../../state/model'
+import type { Device, FilePhase, Stream, StreamAction } from '../../state/model'
 import type { SoundActions } from '../../state/soundActions'
 import { formatClock } from '../feed/time'
 import DeviceFile, { MIN_SPEECH_PROTOCOL } from './DeviceFile'
+import DeviceMusic from './DeviceMusic'
 import DeviceSounds from './DeviceSounds'
 import DeviceUpdate from './DeviceUpdate'
 import DeviceVolume from './DeviceVolume'
@@ -21,6 +22,9 @@ type Props = {
   onVolume: (volume: number) => void
   /** Свои звуки сигналов: tick растёт с событиями sounds. */
   sounds: { tick: number; actions: SoundActions }
+  /** Музыка на колонке (нет — не играет) и управление ею. */
+  stream?: Stream
+  onStream: (action: StreamAction) => void
 }
 
 /** Адрес без порта: «IP:port» и «[IPv6]:port»; голый IPv6 (много «:») — как есть. */
@@ -37,7 +41,7 @@ function presence(d: Device): string {
 }
 
 export default function DeviceSettings(props: Props) {
-  const { device, onRename, filePhase, onPlayFile, onStopFile, onInstallFirmware, onVolume, sounds } = props
+  const { device, onRename, filePhase, onPlayFile, onStopFile, onInstallFirmware, onVolume, sounds, stream, onStream } = props
   const [draft, setDraft] = useState(device.name)
   const save = () => {
     const name = draft.trim()
@@ -76,6 +80,7 @@ export default function DeviceSettings(props: Props) {
       {device.connected && device.protocol < MIN_SPEECH_PROTOCOL && (
         <div className="set-note">Обновите прошивку, чтобы ассистент мог говорить сам</div>
       )}
+      <DeviceMusic device={device} stream={stream} onControl={onStream} />
       <DeviceFile device={device} phase={filePhase} onPlay={onPlayFile} onStop={onStopFile} />
       <DeviceUpdate device={device} onInstall={onInstallFirmware} />
       <DeviceSounds device={device} tick={sounds.tick} actions={sounds.actions} />

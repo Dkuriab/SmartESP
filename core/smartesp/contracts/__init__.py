@@ -53,6 +53,21 @@ from .sounds import (
     SoundTone,
 )
 from .stage import Analyzer, Annotation, Stage
+from .streams import (
+    STREAM_RATE,
+    SpeakerStreams,
+    StreamAction,
+    StreamCommand,
+    StreamInfo,
+    StreamItem,
+    StreamLink,
+    StreamListener,
+    StreamPhase,
+    StreamRefusal,
+    StreamRefused,
+    StreamReport,
+    StreamReportState,
+)
 from .stt import SpeechToText
 from .tasks import TaskBoard, TaskInfo, TaskReport, TaskStatus
 from .tools import (
@@ -103,6 +118,19 @@ __all__ = [
     "SoundsPort",
     "SoundTargets",
     "SoundTone",
+    "STREAM_RATE",
+    "SpeakerStreams",
+    "StreamAction",
+    "StreamCommand",
+    "StreamInfo",
+    "StreamItem",
+    "StreamLink",
+    "StreamListener",
+    "StreamPhase",
+    "StreamRefusal",
+    "StreamRefused",
+    "StreamReport",
+    "StreamReportState",
     "Analyzer",
     "Announcer",
     "Annotation",

@@ -8,6 +8,7 @@ from contextlib import aclosing
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, WebSocket
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from smartesp.contracts import (
     ChangeResult,
@@ -17,6 +18,7 @@ from smartesp.contracts import (
     FilePlayback,
     PeoplePort,
     SoundsPort,
+    SpeakerStreams,
     Subscription,
     TaskBoard,
     TrainingPort,
@@ -36,7 +38,6 @@ from .redact import declared_secrets, mask_connector_secrets
 from .schemas import (
     AccessOut,
     ChangeOut,
-    CloudModelOut,
     ConfigOut,
     ConnectorDetailOut,
     DownloadIn,
@@ -48,6 +49,7 @@ from .schemas import (
     VoiceOut,
 )
 from .sounds import add_sounds_routes
+from .streams import add_stream_routes
 from .tasks import add_tasks_routes
 from .training import add_training_routes
 from .updates import add_update_routes
@@ -76,6 +78,7 @@ def create_api(
     updates: UpdatePort | None = None,
     sounds: SoundsPort | None = None,
     people: PeoplePort | None = None,
+    streams: SpeakerStreams | None = None,
 ) -> APIRouter:
     """Собирает роутер `/api/v1`; все ресурсы требуют токен.
 
@@ -84,6 +87,7 @@ def create_api(
     `training` — обучение моделей (None — наборов нет); `updates` — обновления колонок по воздуху;
     `sounds` — свои звуки сигналов колонок (None — недоступны).
     `people` — люди и узнавание голоса (None — людей нет).
+    `streams` — потоки звука на колонках (None — нет).
     """
     router = APIRouter(prefix="/api/v1")
     secured = APIRouter(dependencies=[Depends(require_token(token))], responses=_UNAUTHORIZED)
@@ -97,6 +101,7 @@ def create_api(
     add_update_routes(secured, updates)
     add_sounds_routes(secured, sounds)
     add_people_routes(secured, people)
+    add_stream_routes(secured, streams)
     add_core_routes(secured, core, port)
     _add_access_route(secured, token, port)
     router.include_router(secured)
@@ -144,6 +149,16 @@ def _add_resource_routes(secured: APIRouter, core: CorePort) -> None:
     @secured.post("/restart", status_code=202)
     def restart() -> None:
         core.request_restart()
+
+
+class CloudModelOut(BaseModel):
+    """Модель облачного сервиса (цены — доллары за 1 млн токенов; неизвестно — null)."""
+
+    id: str
+    name: str
+    tools: bool  # умеет вызывать инструменты
+    prompt_price: float | None
+    completion_price: float | None
 
 
 def _add_cloud_route(secured: APIRouter, core: CorePort) -> None:

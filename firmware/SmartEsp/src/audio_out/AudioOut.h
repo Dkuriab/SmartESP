@@ -8,11 +8,15 @@
 
 #include <Arduino.h>
 #include <atomic>
+#include <functional>
 #include "ESP_I2S.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/stream_buffer.h"
 #include "../common/Types.h"
+
+// Источник музыки (stream_player): заполнить dst до samples отсчётами, вернуть сколько; 0 — тишина.
+using MusicSource = std::function<size_t(int16_t* dst, size_t samples)>;
 
 struct AudioOutConfig {
   int bclkPin;
@@ -27,6 +31,10 @@ class AudioOut {
  public:
   // Запускает I2S и задачу воспроизведения. false — не удалось (I2S, память).
   bool begin(const AudioOutConfig& config);
+
+  // Музыка под голосом и звуками (необязательно; вызывать до begin()). Звучит с общей
+  // громкостью, попадает в образец эхоподавления; isPlaying() и playedBytes() её не считают.
+  void setMusicSource(MusicSource source);
 
   // Кладёт звук (PCM 16 кГц, 16 бит, моно) в очередь. Не блокирует.
   // Возвращает, сколько отсчётов принято; остальное отброшено (очередь полна).
@@ -67,12 +75,14 @@ class AudioOut {
   size_t renderTone(int16_t* dst, size_t samples);
   void applySounds();
   void pushRefSilence(uint32_t ms);
+  size_t mixMusic(int16_t* mono, size_t n);
 
   AudioOutConfig config_{};
   I2SClass i2s_;
   StreamBufferHandle_t queue_ = nullptr;
   StreamBufferHandle_t reference_ = nullptr;
   QueueHandle_t sounds_ = nullptr;  // подмены звуков: setSound → задача воспроизведения
+  MusicSource music_;
 
   volatile float volume_ = 0.5f;
   volatile int toneRequest_ = -1;   // Tone, который надо начать; -1 — нет

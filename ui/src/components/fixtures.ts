@@ -78,6 +78,7 @@ export function makeActions(): CoreActions {
     renameDevice: vi.fn(),
     playFile: vi.fn(),
     stopFile: vi.fn(),
+    controlStream: vi.fn(),
     setStages: vi.fn(),
     setConnectors: vi.fn(),
     saveConnectorEnv: vi.fn().mockResolvedValue(''),

@@ -8,6 +8,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from smartesp.contracts import StreamReport
+
 MAX_TURN = 0xFFFFFFFF  # ход — uint32
 MAX_BYTES = 0xFFFFFFFF  # счётчик доигранного в played — uint32
 LOWEST_LEVEL = -1000.0  # громкость для NaN/бесконечности/переполнения: слово участвует, но проигрывает
@@ -92,7 +94,11 @@ class UpdateStatus:
     tone: str = ""
 
 
-DeviceMessage = Hello | Wake | UtteranceEnd | BargeIn | PlaybackDone | Busy | Played | UpdateStatus
+STREAM_STATES = ("playing", "ended", "stopped", "failed")  # stream_status (протокол 5)
+
+DeviceMessage = (
+    Hello | Wake | UtteranceEnd | BargeIn | PlaybackDone | Busy | Played | UpdateStatus | StreamReport
+)
 
 
 def _turn(data: dict[str, Any]) -> int | None:
@@ -216,6 +222,21 @@ def _parse_update_status(data: dict[str, Any]) -> UpdateStatus | None:
     )
 
 
+def _parse_stream_status(data: dict[str, Any]) -> StreamReport | None:
+    """stream_status (протокол 5): stream — uint32, state — из STREAM_STATES, played — uint32."""
+    stream, played, state, error = (
+        _turn({"turn": data.get("stream")}),
+        data.get("played"),
+        data.get("state"),
+        data.get("error", ""),
+    )
+    if stream is None or state not in STREAM_STATES:
+        return None
+    if isinstance(played, bool) or not isinstance(played, int) or not 0 <= played <= MAX_BYTES:
+        return None
+    return StreamReport(stream, state, played, error if isinstance(error, str) else "")  # type: ignore[arg-type]
+
+
 _PARSERS = {
     "hello": _parse_hello,
     "wake": _parse_wake,
@@ -225,6 +246,7 @@ _PARSERS = {
     "busy": _parse_busy,
     "played": _parse_played,
     "update_status": _parse_update_status,
+    "stream_status": _parse_stream_status,
 }
 
 
@@ -241,51 +263,29 @@ def parse_message(text: str) -> DeviceMessage | None:
     return parser(data) if parser else None  # pyright: ignore[reportUnknownArgumentType]
 
 
-def _encode(payload: dict[str, Any]) -> str:
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+# Кадры ядра → колонка — в frames.py (здесь — для прежних импортов).
+from .frames import (  # noqa: E402
+    announce,
+    cancel_turn,
+    listen,
+    reply_end,
+    reply_start,
+    stop_playback,
+    stream,
+    tone,
+    update,
+    volume,
+)
 
-
-def reply_start(turn: int) -> str:
-    """Кадр «ответ начинается» для хода turn."""
-    return _encode({"type": "reply_start", "turn": turn})
-
-
-def reply_end(turn: int) -> str:
-    """Кадр «ответ закончен» для хода turn."""
-    return _encode({"type": "reply_end", "turn": turn})
-
-
-def announce(turn: int) -> str:
-    """Кадр «сейчас будет объявление хода ядра turn»: колонка ждёт reply_start."""
-    return _encode({"type": "announce", "turn": turn})
-
-
-def listen(turn: int) -> str:
-    """Кадр «слушай вопрос хода ядра turn»: звук «слушаю» и запись, без wake."""
-    return _encode({"type": "listen", "turn": turn})
-
-
-def cancel_turn(turn: int) -> str:
-    """Кадр «отмени ход turn»."""
-    return _encode({"type": "cancel_turn", "turn": turn})
-
-
-def tone(name: str) -> str:
-    """Кадр «сыграй короткий сигнал name»."""
-    return _encode({"type": "tone", "name": name})
-
-
-def stop_playback() -> str:
-    """Кадр «немедленно остановить воспроизведение»."""
-    return _encode({"type": "stop_playback"})
-
-
-def update(payload: dict[str, Any]) -> str:
-    """Кадр «обнови себя» (протокол 4): what, path, size, sha256 и для модели cutoff, window, arena, word;
-    для звука — tone (size 0 без path и sha256 — вернуть встроенный)."""
-    return _encode({"type": "update", **payload})
-
-
-def volume(percent: int) -> str:
-    """Кадр «громкость» (0–100 % → 0..1)."""
-    return _encode({"type": "volume", "value": round(max(0, min(100, percent)) / 100, 2)})
+__all__ = [
+    "reply_start",
+    "reply_end",
+    "announce",
+    "listen",
+    "cancel_turn",
+    "tone",
+    "stop_playback",
+    "update",
+    "volume",
+    "stream",
+]

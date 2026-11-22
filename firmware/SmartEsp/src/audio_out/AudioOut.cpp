@@ -66,6 +66,27 @@ bool AudioOut::begin(const AudioOutConfig& config) {
   return xTaskCreatePinnedToCore(taskEntry, "audio_out", 4096, this, 6, nullptr, 0) == pdPASS;
 }
 
+void AudioOut::setMusicSource(MusicSource source) {
+  music_ = source;
+}
+
+size_t AudioOut::mixMusic(int16_t* mono, size_t n) {
+  static int16_t music[CHUNK];
+  const size_t m = music_ ? music_(music, CHUNK) : 0;
+  if (m == 0) {
+    return n;
+  }
+  for (size_t i = n; i < m; i++) {
+    mono[i] = 0;  // голос короче музыки — дальше только музыка
+  }
+  const float volume = volume_;
+  for (size_t i = 0; i < m; i++) {
+    const int32_t mixed = mono[i] + static_cast<int32_t>(music[i] * volume);
+    mono[i] = static_cast<int16_t>(mixed > 32767 ? 32767 : (mixed < -32768 ? -32768 : mixed));
+  }
+  return m > n ? m : n;
+}
+
 size_t AudioOut::write(const int16_t* pcm, size_t samples) {
   const size_t accepted = xStreamBufferSend(queue_, pcm, samples * sizeof(int16_t), 0) / sizeof(int16_t);
   lastWriteMs_ = millis();
@@ -211,6 +232,8 @@ void AudioOut::run() {
         }
       }
     }
+
+    n = mixMusic(mono, n);  // музыка — под голосом; образец ниже — уже смесь
 
     if (n == 0) {
       // Играть нечего: пишем тишину. И в I2S, и в образец — так образец не

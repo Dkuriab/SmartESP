@@ -6,7 +6,7 @@ import asyncio
 import os
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Protocol, TextIO, cast
@@ -50,20 +50,20 @@ class Connector:
         spec: ConnectorSpec,
         data_dir: Path,
         *,
+        core_env: Mapping[str, str] | None = None,
         on_announce: AnnounceHandler | None,
         tasks: TaskBoard | None = None,
         on_change: Callable[[], None],
         start_timeout_s: float,
         restart_delays_s: tuple[float, ...],
-        core_env: dict[str, str] | None = None,
     ) -> None:
         self.spec = spec
-        self._core_env = dict(core_env or {}) if spec.core_api else {}  # адрес и токен API ядра
         self.state: StateName = "starting" if spec.enabled else "disabled"
         self.error = ""
         self.tools: tuple[types.Tool, ...] = ()  # последний полученный список (держится и при падении)
         self._data_dir = data_dir / "connectors" / spec.id
         self._pid_file = data_dir / "run" / "connectors" / f"{spec.id}.pid"
+        self._core_env = dict(core_env or {})  # адрес и токен API ядра (флаг core_api)
         self._on_announce = on_announce
         self._tasks = tasks
         self._on_change = on_change
@@ -211,7 +211,7 @@ class Connector:
         return session, lost
 
     def _env(self) -> dict[str, str]:
-        """Окружение подпроцесса: окружение ядра + env из настроек + папка данных."""
+        """Окружение подпроцесса: окружение ядра + env из настроек + API ядра (core_api) + папка данных."""
         return {**os.environ, **self.spec.env, **self._core_env, DATA_ENV: str(self._data_dir)}
 
     async def _log(self, params: types.LoggingMessageNotificationParams) -> None:

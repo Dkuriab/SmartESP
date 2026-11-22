@@ -25,6 +25,7 @@ def test_defaults_are_our_connectors() -> None:
         "claude_tasks",
         "web",
         "speakers",
+        "music",
         "telegram",
     ]
     assert [c.id for c in connectors] == ids
@@ -48,7 +49,11 @@ def test_defaults_are_our_connectors() -> None:
         assert project == REPO / "connectors" / c.id
         assert f"{script} = " in (project / "pyproject.toml").read_text(encoding="utf-8")
     env = {c.id: c.env for c in connectors if c.env}
-    assert env == {"weather": {"WEATHER_PLACE": ""}, "claude_tasks": {"CLAUDE_TASK_FOLDERS": ""}}
+    assert env == {
+        "weather": {"WEATHER_PLACE": ""},
+        "claude_tasks": {"CLAUDE_TASK_FOLDERS": ""},
+        "music": {"MUSIC_FOLDERS": "", "MUSIC_RADIO": "", "MUSIC_MAC_DEVICE": ""},
+    }
 
 
 def test_defaults_file_keeps_repo_placeholder(tmp_path: Path) -> None:
