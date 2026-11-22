@@ -9,8 +9,6 @@ from smartesp.contracts import STREAM_RATE, StreamInfo, StreamItem, StreamPhase
 
 from .sources import is_live, title_of
 
-BYTES_PER_S = STREAM_RATE * 2  # PCM s16le моно
-
 
 @dataclass
 class Ticket:
@@ -21,6 +19,7 @@ class Ticket:
     source: str
     start_s: float
     until: float
+    rate: int = STREAM_RATE  # частота PCM для колонки
 
 
 @dataclass
@@ -41,6 +40,7 @@ class SpeakerQueue:
     failures: int = 0  # сломанных элементов подряд
     error: str = ""
     stopped: asyncio.Event | None = None  # ждём отчёт stopped (пауза: точная позиция)
+    rate: int = STREAM_RATE  # частота текущего потока (played — байт s16le моно на ней)
 
     @property
     def item(self) -> StreamItem | None:
@@ -56,7 +56,7 @@ class SpeakerQueue:
         if self.state == "paused":
             return self.resume_s
         if self.state == "playing":
-            return self.offset_s + self.played / BYTES_PER_S
+            return self.offset_s + self.played / (self.rate * 2)
         return 0.0
 
     def info(self, name: str, available: bool) -> StreamInfo:

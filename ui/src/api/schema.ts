@@ -693,6 +693,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/devices/{device_id}/echo/calibrate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Calibrate Echo */
+        post: operations["calibrate_echo_api_v1_devices__device_id__echo_calibrate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{device_id}/echo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Echo Delay */
+        put: operations["set_echo_delay_api_v1_devices__device_id__echo_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/core": {
         parameters: {
             query?: never;
@@ -1091,6 +1125,7 @@ export interface components {
              * @default 50
              */
             volume: number;
+            echo?: components["schemas"]["EchoOut"] | null;
         };
         /**
          * DeviceSoundOut
@@ -1137,6 +1172,37 @@ export interface components {
             kind: string;
             /** Voice */
             voice: string;
+        };
+        /**
+         * EchoDelayIn
+         * @description Сдвиг образца эхоподавления вручную, мс.
+         */
+        EchoDelayIn: {
+            /** Delay Ms */
+            delay_ms: number;
+        };
+        /**
+         * EchoOut
+         * @description Сдвиг образца эхоподавления колонки (прошивка 0.7.0): state — current (сдвиг сейчас) | sent
+         *     (калибровка попрошена) | running | done | failed; delay_ms — сдвиг сейчас, previous_ms — до
+         *     калибровки; confidence — уверенность 0..1; error — busy | quiet | weak | "".
+         */
+        EchoOut: {
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "current" | "sent" | "running" | "done" | "failed";
+            /** Delay Ms */
+            delay_ms: number;
+            /** Previous Ms */
+            previous_ms: number;
+            /** Confidence */
+            confidence: number;
+            /** Error */
+            error: string;
+            /** At */
+            at: number;
         };
         /**
          * ErrorOut
@@ -4465,6 +4531,108 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    calibrate_echo_api_v1_devices__device_id__echo_calibrate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_echo_delay_api_v1_devices__device_id__echo_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EchoDelayIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

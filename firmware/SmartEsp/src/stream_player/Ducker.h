@@ -2,8 +2,8 @@
 
 // Внутренний файл модуля stream_player: когда глушить музыку и плавное усиление.
 // Сценарий ушёл из покоя (слово, вопрос, ответ, объявление) — музыка глохнет сразу
-// (затухание fadeOutSamples); вернулся в покой и пробыл в нём resumeDelayMs — возвращается
-// (нарастание fadeInSamples). Чистая логика без Arduino — тестируется на ноутбуке.
+// (затухание fadeOutMs); вернулся в покой и пробыл в нём resumeDelayMs — возвращается
+// (нарастание fadeInMs). Шаг усиления — на отсчёт частоты потока (setSampleRate). Чистая логика без Arduino — тестируется на ноутбуке.
 // update() — из loop(), next()/silent()/restart() — из задачи звука.
 
 #include <stddef.h>
@@ -11,7 +11,8 @@
 
 class Ducker {
  public:
-  Ducker(uint32_t resumeDelayMs = 1500, uint32_t fadeOutSamples = 480, uint32_t fadeInSamples = 4800);
+  Ducker(uint32_t resumeDelayMs = 1500, uint32_t fadeOutMs = 30, uint32_t fadeInMs = 300,
+         uint32_t sampleRate = 16000);
 
   // Сценарий не в покое (voiceActive) или в покое; nowMs — millis().
   void update(bool voiceActive, uint32_t nowMs);
@@ -31,8 +32,13 @@ class Ducker {
   // Сколько покоя ждать перед возвратом музыки (до начала работы).
   void setResumeDelay(uint32_t resumeDelayMs);
 
+  // Частота потока: шаги затухания и нарастания пересчитываются (из задачи звука).
+  void setSampleRate(uint32_t sampleRate);
+
  private:
   uint32_t resumeDelayMs_;
+  uint32_t fadeOutMs_;
+  uint32_t fadeInMs_;
   float down_;  // шаг затухания на отсчёт
   float up_;    // шаг нарастания на отсчёт
   volatile bool muted_ = false;

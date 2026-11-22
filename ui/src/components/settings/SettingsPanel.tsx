@@ -34,6 +34,7 @@ export default function SettingsPanel({ state, actions }: Props) {
         sounds={{ tick: state.soundsTick, actions }}
         stream={state.streams[id]}
         onStream={(action) => void actions.controlStream(id, action)}
+        onCalibrateEcho={() => void actions.calibrateEcho(id)}
       />
     )
   }

@@ -88,7 +88,7 @@ TEST(encode_stream_status) {
 }
 
 TEST(ducker_mutes_at_once_and_resumes_after_quiet) {
-  Ducker ducker(1500, 4, 8);
+  Ducker ducker(1500, 4, 8, 1000);  // 1000 Гц: мс = отсчёты
   ducker.update(false, 0);
   CHECK(!ducker.muted());
   for (int i = 0; i < 8; i++) ducker.next();
@@ -112,7 +112,7 @@ TEST(ducker_mutes_at_once_and_resumes_after_quiet) {
 }
 
 TEST(ducker_restart_fades_in) {
-  Ducker ducker(1500, 4, 4);
+  Ducker ducker(1500, 4, 4, 1000);
   for (int i = 0; i < 4; i++) ducker.next();
   ducker.restart();
   CHECK(ducker.next() < 0.3f);

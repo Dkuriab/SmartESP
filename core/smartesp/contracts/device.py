@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from .audio import Utterance
+from .echo import EchoCalibration
 
 # Итог объявления: доиграно; перебито словом или отменено (считаем услышанным);
 # колонка занята; обрыв связи или нет playback_done за срок воспроизведения + 15 с.
@@ -39,6 +40,7 @@ class DeviceInfo:
     protocol: int = 0  # версия протокола последней сессии; 0 — колонка не подключалась
     update: UpdateProgress | None = None  # последнее обновление по воздуху; None — не было
     volume: int = 50  # громкость из настроек, % (её ядро шлёт колонке при подключении и при правке)
+    echo: EchoCalibration | None = None  # сдвиг образца эха (прошивка 0.7.0); None — не сообщала
 
 
 class DevicePort(Protocol):

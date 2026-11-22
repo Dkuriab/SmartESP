@@ -27,12 +27,12 @@ AUDIO_SUFFIXES = frozenset(
 FILE_FORMATS = "mp3,mov,aac,flac,wav,ogg,aiff"  # mov — разборщик M4A
 LIVE_FORMATS = "mp3,aac,ogg,hls,mpegts,mov,flac,wav"
 LIVE_PROTOCOLS = "http,https,tcp,tls,crypto"
-CHUNK_BYTES = 8 * 1024  # кусок PCM (0,25 с при 16 кГц)
+CHUNK_BYTES = 8 * 1024  # кусок PCM (0,25 с при 16 кГц, 0,08 с при 48 кГц)
 FIRST_CHUNK_S = 12.0  # дольше первый звук не ждём (радио подключается секунды); колонка ждёт 20 с
 MAX_SOURCE = 2048
 MAX_DEVICE_NAME = 100
 
-type Decode = Callable[[str, float], AsyncGenerator[bytes]]  # (источник, с какой секунды) → PCM
+type Decode = Callable[[str, float, int], AsyncGenerator[bytes]]  # (источник, с секунды, частота) → PCM
 
 
 def is_url(source: str) -> bool:
@@ -96,7 +96,7 @@ def arguments(program: str, source: str, start_s: float, rate: int = STREAM_RATE
 def ffmpeg_decoder(find: Callable[[], str | None]) -> Decode:
     """Разбор через ffmpeg (find() — путь к программе или None: тогда поток сразу кончается)."""
 
-    async def decode(source: str, start_s: float) -> AsyncGenerator[bytes]:
+    async def decode(source: str, start_s: float, rate: int = STREAM_RATE) -> AsyncGenerator[bytes]:
         program = find()
         if program is None:
             _log.warning("Поток: нет ffmpeg (brew install ffmpeg)")
@@ -108,7 +108,7 @@ def ffmpeg_decoder(find: Callable[[], str | None]) -> Decode:
                 return
             source = f"{CAPTURE_PREFIX}{found[0]}"
         process = await asyncio.create_subprocess_exec(
-            *arguments(program, source, start_s),
+            *arguments(program, source, start_s, rate),
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

@@ -15,7 +15,6 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from smartesp.contracts import (
-    STREAM_RATE,
     StreamAction,
     StreamCommand,
     StreamItem,
@@ -99,9 +98,11 @@ class Runner:
         queue.stream = next(self._ids)
         token = secrets.token_urlsafe(24)
         until = self._clock() + TICKET_TTL_S
-        self._tickets[token] = Ticket(queue.device_id, queue.stream, item.source, queue.offset_s, until)
+        queue.rate = self._link.stream_rate(queue.device_id)
+        ticket = Ticket(queue.device_id, queue.stream, item.source, queue.offset_s, until, queue.rate)
+        self._tickets[token] = ticket
         live = is_live(item.source)
-        command = StreamCommand("start", queue.stream, PATH + token, STREAM_RATE, queue.volume, live)
+        command = StreamCommand("start", queue.stream, PATH + token, queue.rate, queue.volume, live)
         queue.state = "playing"
         if not await self._link.send_stream(queue.device_id, command):
             self._tickets.pop(token, None)

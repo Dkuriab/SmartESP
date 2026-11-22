@@ -7,11 +7,14 @@ import asyncio
 import itertools
 import logging
 from collections.abc import AsyncIterator, Callable, Coroutine
+from dataclasses import replace
 from typing import Any
 
-from smartesp.contracts import Delivery, StreamCommand, StreamListener, StreamReport
+from smartesp.contracts import Delivery, DeviceInfo, StreamCommand, StreamListener, StreamReport
 
 from .arbiter import Arbiter
+from .echo import EchoStates
+from .echo_status import EchoStatus
 from .messages import DeviceMessage, Played, UpdateStatus, cancel_turn
 from .messages import announce as announce_frame
 from .messages import listen as listen_frame
@@ -56,6 +59,10 @@ class CoreTurns(SpeakerSettings):
         self._last_active: str | None = None
         self._background: set[asyncio.Task[object]] = set()  # отправки, которых никто не ждёт
         self._streams = StreamRelay(self._sessions.get)  # потоки звука (протокол 5)
+        self._echo = EchoStates(self._sessions.get)  # сдвиг образца эха (прошивка 0.7.0)
+        self._echo.on_change = lambda device, echo: self._publish(
+            "device_echo", {"device_id": device, **vars(echo)}
+        )
 
     def supports_proactive(self, device_id: str) -> bool:
         """True, если колонка подключена и её протокол ≥ 3."""
@@ -149,6 +156,22 @@ class CoreTurns(SpeakerSettings):
         """Команда потока колонке; False — не умеет или не подключена."""
         return await self._streams.send(device_id, command)
 
+    def stream_rate(self, device_id: str) -> int:
+        """Частота потоков колонки: наибольшая общая с ядром (16 или 48 кГц)."""
+        return self._streams.rate(device_id)
+
+    async def calibrate_echo(self, device_id: str) -> None:
+        """Калибровка эха на свободной колонке 0.7.0+ (см. EchoPort)."""
+        await self._echo.calibrate(device_id)
+
+    async def set_echo_delay(self, device_id: str, delay_ms: int) -> None:
+        """Сдвиг образца вручную (см. EchoPort)."""
+        await self._echo.set_delay(device_id, delay_ms)
+
+    def _with_state(self, devices: list[DeviceInfo]) -> list[DeviceInfo]:
+        """Сведения о колонках ещё и со сдвигом образца эха."""
+        return [replace(d, echo=self._echo.get(d.device_id)) for d in super()._with_state(devices)]
+
     def use_stream_listener(self, listener: StreamListener) -> None:
         """Куда отдавать отчёты stream_status и отключения колонок (None в отчёте)."""
         self._streams.use_listener(listener)
@@ -159,6 +182,8 @@ class CoreTurns(SpeakerSettings):
             self._updates.apply(session.device_id, message)
         elif isinstance(message, StreamReport):
             self._streams.report(session.device_id, message)
+        elif isinstance(message, EchoStatus):
+            self._echo.apply(session.device_id, message)
 
     async def record(self, device_id: str, timeout_s: float = RECORD_TIMEOUT_S) -> bytes | None:
         """Пишет одну фразу с колонки мимо разговора (для обучения): listen новым ходом ядра, колонка

@@ -4,6 +4,7 @@ from .ask import Answer, AskUnavailable, AudioUndecodable, Question
 from .audio import SAMPLE_RATE, Utterance
 from .control import ChangeResult, ConfigStore, CorePort, Section, VoicePort
 from .device import Delivery, DeviceInfo, DevicePort, UpdateProgress
+from .echo import ECHO_CAP, MAX_ECHO_DELAY_MS, EchoCalibration, EchoPort, EchoRefusedError, EchoState
 from .events import CoreEvent, EventFeed, EventSink, Subscription
 from .executor import (
     CLOUD_MODEL_PREFIX,
@@ -54,6 +55,7 @@ from .sounds import (
 )
 from .stage import Analyzer, Annotation, Stage
 from .streams import (
+    HIFI_RATE,
     STREAM_RATE,
     SpeakerStreams,
     StreamAction,
@@ -101,6 +103,12 @@ from .tts import TextToSpeech, VoiceInfo, VoiceNotDownloadedError
 from .updates import UpdatePort, UpdateRefusedError, UpdateWhat
 
 __all__ = [
+    "ECHO_CAP",
+    "MAX_ECHO_DELAY_MS",
+    "EchoCalibration",
+    "EchoPort",
+    "EchoRefusedError",
+    "EchoState",
     "CLOUD_MODEL_PREFIX",
     "DELEGATE_TOOL",
     "SAMPLE_RATE",
@@ -117,6 +125,7 @@ __all__ = [
     "SoundsPort",
     "SoundTargets",
     "SoundTone",
+    "HIFI_RATE",
     "STREAM_RATE",
     "SpeakerStreams",
     "StreamAction",

@@ -11,7 +11,8 @@ from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-STREAM_RATE = 16000  # частота PCM потока (s16le, моно): прошивка 0.6.0 умеет только её
+STREAM_RATE = 16000  # частота PCM потока (s16le, моно) по умолчанию: прошивка 0.6.0 умеет только её
+HIFI_RATE = 48000  # прошивка 0.7.0 (hello stream_rates) играет и 48 кГц
 
 # Состояние на колонке: ничего; играет (колонка может приглушить его на время разговора);
 # на паузе (позиция запомнена).
@@ -105,6 +106,10 @@ class StreamLink(Protocol):
 
     def supports_stream(self, device_id: str) -> bool:
         """True, если колонка подключена и её протокол ≥ 5."""
+        ...
+
+    def stream_rate(self, device_id: str) -> int:
+        """Частота PCM потока для колонки: наибольшая общая (hello stream_rates); нет поля — 16000."""
         ...
 
     async def send_stream(self, device_id: str, command: StreamCommand) -> bool:

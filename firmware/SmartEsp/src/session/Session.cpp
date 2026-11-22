@@ -165,6 +165,9 @@ void Session::onServerCommand(const ServerCommand& command) {
     case ServerCommandType::StreamStop:
     case ServerCommandType::StreamVolume:
       break;  // поток звука — не сценарий: его ведёт stream_player (SmartEsp.ino)
+    case ServerCommandType::EchoCalibrate:
+    case ServerCommandType::EchoDelay:
+      break;  // калибровка эха — не сценарий: её ведёт echo_calibrator (SmartEsp.ino)
   }
 }
 

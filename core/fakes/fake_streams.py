@@ -22,9 +22,13 @@ class FakeStreamLink:
         self.online = True
         self.sent: list[tuple[str, StreamCommand]] = []
         self.listener: StreamListener | None = None
+        self.rates: dict[str, int] = {}  # частота потоков колонки; нет — 16000
 
     def supports_stream(self, device_id: str) -> bool:
         return device_id in self.supported
+
+    def stream_rate(self, device_id: str) -> int:
+        return self.rates.get(device_id, 16000)
 
     async def send_stream(self, device_id: str, command: StreamCommand) -> bool:
         if not self.online or device_id not in self.supported:

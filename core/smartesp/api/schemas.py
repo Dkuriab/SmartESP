@@ -6,24 +6,14 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from .device_schemas import EchoOut, UpdateOut
+
 
 class OllamaOut(BaseModel):
     """Состояние Ollama: доступна ли и какие модели загружены."""
 
     reachable: bool
     loaded: list[str]
-
-
-class UpdateOut(BaseModel):
-    """Обновление колонки по воздуху: what — firmware | model; state — sent (команда ушла) | progress |
-    done (записано, колонка перезагружается) | failed; error — busy, download, size, hash, write, storage."""
-
-    what: str
-    state: str
-    done: int
-    total: int
-    error: str
-    at: float  # секунды Unix последнего изменения
 
 
 class DeviceOut(BaseModel):
@@ -38,6 +28,7 @@ class DeviceOut(BaseModel):
     protocol: int = 0  # версия протокола последней сессии; 0 — колонку ещё не видели
     update: UpdateOut | None = None  # последнее обновление по воздуху (протокол 4, прошивка 0.5.0+)
     volume: int = 50  # громкость из настроек, %
+    echo: EchoOut | None = None  # сдвиг образца эха и калибровка (прошивка 0.7.0); старой — null
 
 
 class VoiceStateOut(BaseModel):

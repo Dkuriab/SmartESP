@@ -1,7 +1,7 @@
 #pragma once
 
 // stream_player — поток звука с ядра (протокол 5): музыка, радио, звук Mac.
-// Команда stream_start даёт ссылку; модуль сам качает PCM (16 кГц, 16 бит, моно) по HTTP/1.0
+// Команда stream_start даёт ссылку; модуль сам качает PCM (16 или 48 кГц, 16 бит, моно) по HTTP/1.0
 // в своей задаче FreeRTOS в буфер PSRAM и отдаёт его audio_out через read() (её задача
 // смешивает музыку с голосом). Темп задаёт TCP: читаем ровно столько, сколько играет.
 // Разговор (сценарий не в покое) — музыка глохнет сразу и возвращается через resumeDelayMs
@@ -21,7 +21,7 @@
 struct StreamPlayerConfig {
   const char* host;  // сервер ядра (тот же, что у server_link)
   uint16_t port;
-  uint32_t bufferMs = 3000;      // ёмкость буфера (PSRAM)
+  uint32_t bufferMs = 3000;      // ёмкость буфера при 48 кГц (PSRAM, 288 КБ)
   uint32_t prebufferMs = 500;    // сколько накопить перед звуком (и после опустошения)
   uint32_t resumeDelayMs = 1500; // музыка возвращается через столько покоя после разговора
   uint32_t reportMs = 1000;      // как часто слать playing
@@ -53,9 +53,10 @@ class StreamPlayer {
   // Следующее событие stream_status для сервера.
   bool pollStatus(ClientEvent& event);
 
-  // Звук музыки для audio_out (из её задачи): до samples отсчётов с громкостью и приглушением.
-  // 0 — играть нечего. Безопасно вызывать до begin().
-  size_t read(int16_t* dst, size_t samples);
+  // Звук музыки для audio_out (из её задачи): dst вмещает samples отсчётов 48 кГц; в rate —
+  // частота потока, отдаётся не больше samples · rate / 48000 отсчётов с громкостью и
+  // приглушением. 0 — играть нечего. Безопасно вызывать до begin().
+  size_t read(int16_t* dst, size_t samples, uint32_t& rate);
 
  private:
   enum Phase : uint8_t { Idle, Connecting, Playing, Ended, Stopped, Failed };
@@ -87,6 +88,7 @@ class StreamPlayer {
   std::atomic<bool> eof_{false};          // ядро закрыло поток (пишет задача скачивания)
   std::atomic<bool> flushRequest_{false}; // задача скачивания просит задачу звука очистить буфер
   volatile bool live_ = false;
+  volatile uint32_t rate_ = 16000;  // частота текущего потока (пишет задача скачивания)
   volatile float volume_ = 1.0f;
   bool prebuffered_ = false;  // только задача звука
 

@@ -3151,6 +3151,130 @@
         }
       }
     },
+    "/api/v1/devices/{device_id}/echo/calibrate": {
+      "post": {
+        "summary": "Calibrate Echo",
+        "operationId": "calibrate_echo_api_v1_devices__device_id__echo_calibrate_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/devices/{device_id}/echo": {
+      "put": {
+        "summary": "Set Echo Delay",
+        "operationId": "set_echo_delay_api_v1_devices__device_id__echo_put",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EchoDelayIn"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/core": {
       "get": {
         "summary": "Get Core",
@@ -3901,6 +4025,16 @@
             "type": "integer",
             "title": "Volume",
             "default": 50
+          },
+          "echo": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EchoOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object",
@@ -4016,6 +4150,68 @@
         ],
         "title": "DownloadIn",
         "description": "Тело запроса на скачивание голоса."
+      },
+      "EchoDelayIn": {
+        "properties": {
+          "delay_ms": {
+            "type": "integer",
+            "maximum": 300.0,
+            "minimum": 0.0,
+            "title": "Delay Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "delay_ms"
+        ],
+        "title": "EchoDelayIn",
+        "description": "Сдвиг образца эхоподавления вручную, мс."
+      },
+      "EchoOut": {
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "current",
+              "sent",
+              "running",
+              "done",
+              "failed"
+            ],
+            "title": "State"
+          },
+          "delay_ms": {
+            "type": "integer",
+            "title": "Delay Ms"
+          },
+          "previous_ms": {
+            "type": "integer",
+            "title": "Previous Ms"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence"
+          },
+          "error": {
+            "type": "string",
+            "title": "Error"
+          },
+          "at": {
+            "type": "number",
+            "title": "At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "delay_ms",
+          "previous_ms",
+          "confidence",
+          "error",
+          "at"
+        ],
+        "title": "EchoOut",
+        "description": "Сдвиг образца эхоподавления колонки (прошивка 0.7.0): state — current (сдвиг сейчас) | sent\n(калибровка попрошена) | running | done | failed; delay_ms — сдвиг сейчас, previous_ms — до\nкалибровки; confidence — уверенность 0..1; error — busy | quiet | weak | \"\"."
       },
       "ErrorOut": {
         "properties": {

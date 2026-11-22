@@ -29,6 +29,7 @@ class Env:
         self.last: str | None = "d1"
         self.events = RecordingSink()
         self.decoded: list[tuple[str, float]] = []
+        self.rates: list[int] = []
         self.probe_error = ""
         self.files = [tmp / f"{n}.mp3" for n in ("one", "two", "three")]
         for file in self.files:
@@ -44,8 +45,9 @@ class Env:
             stop_wait_s=stop_wait_s,
         )
 
-    async def _decode(self, source: str, start_s: float) -> AsyncGenerator[bytes]:
+    async def _decode(self, source: str, start_s: float, rate: int) -> AsyncGenerator[bytes]:
         self.decoded.append((source, start_s))
+        self.rates.append(rate)
         if source.endswith("broken.mp3"):
             raise ValueError("не разобрать")
         yield b"\x01\x00" * 4
@@ -269,3 +271,13 @@ async def test_status_lists_capable_and_closing_stops(env: Env) -> None:
     assert env.link.last() == StreamCommand("stop", stream)
     with pytest.raises(StreamRefused):
         await env.streams.play("d1", env.items())
+
+
+async def test_hifi_speaker_gets_48k_and_position_counts_its_bytes(env: Env) -> None:
+    env.link.rates["d1"] = 48000
+    await env.streams.play("d1", env.items(), start_s=2.0)
+    assert env.start().rate == 48000
+    assert await env.streams.open(env.token()) is not None
+    assert env.rates[-1] == 48000
+    env.report("playing", 96000 * 3)  # 3 с при 48 кГц
+    assert env.streams.status()[0].position_s == 5.0

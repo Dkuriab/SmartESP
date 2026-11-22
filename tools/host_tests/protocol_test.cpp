@@ -294,8 +294,8 @@ TEST(gate_busy_speaker_drops_announce_audio) {
 // ---------- протокол v2 ----------
 
 TEST(hello_has_device_id_and_protocol) {
-  char buffer[192];
-  const size_t length = encodeHello("0.2.0", "AA:BB:CC:DD:EE:FF", buffer, 192);
+  char buffer[256];
+  const size_t length = encodeHello("0.2.0", "AA:BB:CC:DD:EE:FF", buffer, sizeof(buffer));
   CHECK(length > 0);
   const std::string json(buffer, length);
   CHECK(json.find("\"device_id\":\"AA:BB:CC:DD:EE:FF\"") != std::string::npos);
@@ -396,7 +396,7 @@ TEST(hello_caps_and_sounds) {
 TEST(hello_all_sounds_fit) {
   char sounds[TONE_COUNT][65];
   for (auto& sha : sounds) std::strcpy(sha, std::string(64, 'c').c_str());
-  char buffer[640];  // HELLO_BUFFER в ServerLink.cpp
+  char buffer[768];  // HELLO_BUFFER в ServerLink.cpp
   CHECK(encodeHello("0.6.0", "AA:BB:CC:DD:EE:FF", buffer, sizeof(buffer), sounds) > 0);
 }
 
