@@ -70,6 +70,7 @@ class SoundDeliveries:
             self._publish(device_id)
             return
         self._actual[device_id] = {tone: reported.get(tone) for tone in SOUND_TONES}
+        self._publish(device_id)  # состояние известно, даже если досылать нечего
         self.start(device_id)
 
     def start_all(self, *, retry: bool = False) -> None:
