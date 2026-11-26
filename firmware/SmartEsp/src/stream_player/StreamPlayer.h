@@ -19,8 +19,6 @@
 #include "Ducker.h"
 
 struct StreamPlayerConfig {
-  const char* host;  // сервер ядра (тот же, что у server_link)
-  uint16_t port;
   uint32_t bufferMs = 3000;      // ёмкость буфера при 48 кГц (PSRAM, 288 КБ)
   uint32_t prebufferMs = 500;    // сколько накопить перед звуком (и после опустошения)
   uint32_t resumeDelayMs = 1500; // музыка возвращается через столько покоя после разговора
@@ -31,6 +29,9 @@ class StreamPlayer {
  public:
   // Буфер, очереди и задача скачивания. false — нет памяти.
   bool begin(const StreamPlayerConfig& config);
+
+  // Адрес ядра (тот же, что у server_link; от core_finder). Не блокирует. Из loop().
+  void setServer(const char* host, uint16_t port);
 
   // Новый поток (прежний останавливается без отчёта). Не блокирует. Из loop().
   void start(const StreamRequest& request);
@@ -76,6 +77,9 @@ class StreamPlayer {
   void finishDrained();
 
   StreamPlayerConfig config_{};
+  char host_[16] = {};  // адрес ядра; доступ — под serverLock_ (loop() и задача скачивания)
+  uint16_t port_ = 0;
+  portMUX_TYPE serverLock_ = portMUX_INITIALIZER_UNLOCKED;
   StreamBufferHandle_t buffer_ = nullptr;
   QueueHandle_t commands_ = nullptr;  // loop() → задача
   QueueHandle_t events_ = nullptr;    // задача, звук, loop() → pollStatus

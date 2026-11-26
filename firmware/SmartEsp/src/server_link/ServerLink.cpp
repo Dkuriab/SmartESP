@@ -23,7 +23,7 @@ constexpr uint32_t LOG_PERIOD_MS = 1000;
 
 }  // namespace
 
-bool ServerLink::begin(const char* host, uint16_t port, const char* path, const char* fwVersion) {
+bool ServerLink::begin(const char* fwVersion) {
   fwVersion_ = fwVersion;
   outgoing_ = xQueueCreateWithCaps(OUTGOING_LENGTH, sizeof(Outgoing), MALLOC_CAP_SPIRAM);
   commands_ = xQueueCreate(COMMAND_LENGTH, sizeof(ServerCommand));
@@ -32,15 +32,49 @@ bool ServerLink::begin(const char* host, uint16_t port, const char* path, const 
     Serial.println("server_link: нет памяти под очереди");
     return false;
   }
-  if (!host || host[0] == '\0') {
-    Serial.println("server_link: SERVER_HOST не задан в secrets.h — связи не будет");
-    return true;
-  }
-  socket_.begin(host, port, path);
-  socket_.setReconnectInterval(RECONNECT_MS);
-  socket_.enableHeartbeat(PING_INTERVAL_MS, PONG_TIMEOUT_MS, MISSED_PONGS);
   socket_.onEvent([this](WStype_t type, uint8_t* payload, size_t length) { onSocketEvent(type, payload, length); });
   return xTaskCreatePinnedToCore(taskEntry, "server_link", 8192, this, 4, nullptr, 1) == pdPASS;
+}
+
+void ServerLink::setServer(const char* host, uint16_t port, const char* path) {
+  if (!host || !path) {
+    return;
+  }
+  taskENTER_CRITICAL(&serverLock_);
+  if (strcmp(serverHost_, host) != 0 || serverPort_ != port || strcmp(serverPath_, path) != 0) {
+    strncpy(serverHost_, host, sizeof(serverHost_) - 1);
+    strncpy(serverPath_, path, sizeof(serverPath_) - 1);
+    serverPort_ = port;
+    serverChanged_ = true;
+  }
+  taskEXIT_CRITICAL(&serverLock_);
+}
+
+// Задача связи: новый адрес ядра → socket_ на него. false — адреса ещё нет.
+bool ServerLink::applyServer() {
+  char host[sizeof(serverHost_)];
+  char path[sizeof(serverPath_)];
+  uint16_t port;
+  taskENTER_CRITICAL(&serverLock_);
+  const bool changed = serverChanged_;
+  serverChanged_ = false;
+  memcpy(host, serverHost_, sizeof(host));
+  memcpy(path, serverPath_, sizeof(path));
+  port = serverPort_;
+  taskEXIT_CRITICAL(&serverLock_);
+  if (!changed) {
+    return hasServer_;
+  }
+  if (hasServer_) {
+    socket_.disconnect();  // прежнее ядро; событие DISCONNECTED сбросит connected_
+    connected_ = false;
+  }
+  Serial.printf("server_link: ядро ws://%s:%u%s\n", host, (unsigned)port, path);
+  socket_.begin(host, port, path);  // строки копируются внутрь библиотеки
+  socket_.setReconnectInterval(RECONNECT_MS);
+  socket_.enableHeartbeat(PING_INTERVAL_MS, PONG_TIMEOUT_MS, MISSED_PONGS);
+  hasServer_ = true;
+  return true;
 }
 
 void ServerLink::setSoundHash(Tone tone, const char* sha256) {
@@ -125,9 +159,10 @@ void ServerLink::taskEntry(void* self) {
 
 void ServerLink::run() {
   for (;;) {
-    if (!WiFi.isConnected()) {
+    if (!WiFi.isConnected() || !applyServer()) {
       // Без Wi-Fi библиотека сама не заметит обрыв — закрываем соединение явно.
-      if (connected_ || socket_.isConnected()) {
+      // Адреса ядра ещё не было — socket_ не настроен, закрывать нечего.
+      if (hasServer_ && (connected_ || socket_.isConnected())) {
         socket_.disconnect();
         connected_ = false;
         Serial.println("server_link: disconnected (нет Wi-Fi)");

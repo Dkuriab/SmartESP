@@ -19,7 +19,7 @@ void LinkPlan::begin(uint32_t nowMs, bool hasNetwork) {
 
 void LinkPlan::setNetwork(uint32_t nowMs) {
   hasNetwork_ = true;
-  attemptNow_ = true;
+  attemptNow_ = false;
   retryMs_ = firstRetryMs_;
   lastAttemptMs_ = nowMs;
 }

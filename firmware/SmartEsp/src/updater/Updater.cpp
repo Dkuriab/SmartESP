@@ -46,8 +46,7 @@ void toHex(const uint8_t* digest, char* out) {
 
 }  // namespace
 
-bool Updater::begin(const UpdaterConfig& config) {
-  config_ = config;
+bool Updater::begin() {
   events_ = xQueueCreate(8, sizeof(ClientEvent));
   sounds_ = xQueueCreate(SOUND_QUEUE, sizeof(StoredSound));
   storage_ = LittleFS.begin(true, "/littlefs", 10, PARTITION);
@@ -63,6 +62,13 @@ bool Updater::begin(const UpdaterConfig& config) {
     }
   }
   return events_ != nullptr && sounds_ != nullptr;
+}
+
+void Updater::setServer(const char* host, uint16_t port) {
+  taskENTER_CRITICAL(&serverLock_);
+  strncpy(host_, host ? host : "", sizeof(host_) - 1);
+  port_ = port;
+  taskEXIT_CRITICAL(&serverLock_);
 }
 
 bool Updater::loadModel(StoredModel& out) {
@@ -188,10 +194,15 @@ bool Updater::download(UpdateError& error) {
     return false;
   }
   const char* tempPath = sound ? soundTempPath(request_.tone) : MODEL_TEMP;
+  char host[sizeof(host_)];
+  taskENTER_CRITICAL(&serverLock_);
+  memcpy(host, host_, sizeof(host));
+  const uint16_t port = port_;
+  taskEXIT_CRITICAL(&serverLock_);
   WiFiClient client;
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
-  if (!http.begin(client, config_.host, config_.port, request_.path) || http.GET() != HTTP_CODE_OK) {
+  if (host[0] == '\0' || !http.begin(client, host, port, request_.path) || http.GET() != HTTP_CODE_OK) {
     error = UpdateError::Download;
     http.end();
     return false;
