@@ -15,7 +15,7 @@ import yaml
 from pydantic import ValidationError
 
 from ._files import owner_changes, read_yaml, write_overrides
-from .models import CONFIG_VERSION, DEFAULT_SYSTEM_PROMPT, Config
+from .models import BIG_DESCRIPTION, BIG_WHEN, CONFIG_VERSION, DEFAULT_SYSTEM_PROMPT, Config
 
 DEFAULTS_HEADER = """# Значения по умолчанию — ТОЛЬКО ДЛЯ СПРАВКИ, ядро перезаписывает этот файл при старте.
 # Чтобы поменять настройку, перенесите ключ в config.yaml.
@@ -62,10 +62,36 @@ _RULES_PROMPT = (
     "7. Разговор, шутки и общие знания — не действия: на них отвечай сам.\n"
     "8. Человек прощается или говорит, что больше ничего не нужно, — ответь одним словом: «Пока!»"
 )
+# умолчание версии 6: общие знания — «отвечай сам», о поиске фактов ничего (до 2026-11-26)
+_KNOWLEDGE_PROMPT = (
+    "Твой ответ звучит голосом в доме. Правила:\n"
+    "1. Отвечай по-русски и коротко: обычно одно предложение, не больше трёх. Без разметки, списков"
+    " и эмодзи.\n"
+    "2. Заметки, списки, таймеры, погода, расчёты, музыка, громкость колонок, поиск в интернете: если"
+    " для этого есть инструмент — сначала вызови его, потом отвечай по его ответу. Про заметки и списки"
+    " не отвечай по памяти: каждый раз смотри инструментом и называй, что там есть.\n"
+    "3. Говори, что сделано («записано», «поставлено», «включено»), только если инструмент это сделал;"
+    " ответил ошибкой — так и скажи. Просят что-то сделать (свет, техника, покупки), а инструмента для"
+    " этого нет — скажи: «Этого я пока не умею». Никогда не говори, что это уже сделано.\n"
+    "4. Время, погоду, числа, новости и состояние дома бери только из инструментов и справки."
+    " Не знаешь — так и скажи, не выдумывай.\n"
+    "5. В справке есть время, колонка, через которую с тобой говорят, что сейчас в работе и твои"
+    " навыки. Говори о них, только когда об этом спросили.\n"
+    "6. Не задавай вопросов в конце ответа и не предлагай помощь. Спрашивай, только если без уточнения"
+    " просьбу не выполнить. Пример: «Привет, как дела?» — «Привет! Всё хорошо.»\n"
+    "7. Разговор, шутки и общие знания — не действия: на них отвечай сам.\n"
+    "8. Человек прощается или говорит, что больше ничего не нужно, — ответь одним словом: «Пока!»"
+)
+# условие и описание большой модели версии 6: «знания» уводили вопросы о фактах от поиска к ней
+_KNOWLEDGE_WHEN = (
+    "сложные вопросы: рассуждения, расчёты, подробные объяснения, знания, которых может не быть у тебя"
+)
+_KNOWLEDGE_DESCRIPTION = "большая модель: рассуждения, расчёты, подробные объяснения, знания"
 # модель диспетчера по умолчанию прежних версий (до волны 3): в старом файле значит «не меняли»
 _LEGACY_MODEL = "fredrezones55/Gemma-4-Uncensored-HauhauCS-Aggressive"
 _LEGACY_PROMPTS = (
     DEFAULT_SYSTEM_PROMPT,
+    _KNOWLEDGE_PROMPT,
     _RULES_PROMPT,
     _WAVE3_PROMPT,
     _NO_ACCESS_PROMPT,
@@ -106,7 +132,7 @@ def load_with_overrides(path: Path) -> tuple[Config, dict[str, Any]]:
         return Config(), {}
     raw = read_yaml(path)
     version = raw.get("version")
-    if version is not None and (isinstance(version, bool) or version not in (2, 3, 4, 5, CONFIG_VERSION)):
+    if version is not None and (isinstance(version, bool) or version not in (2, 3, 4, 5, 6, CONFIG_VERSION)):
         raise ValueError(f"файл настроек от более новой версии ядра: {path} (version: {version!r})")
     if version != CONFIG_VERSION:
         shutil.copyfile(path, path.with_name(path.name + ".bak"))
@@ -115,10 +141,12 @@ def load_with_overrides(path: Path) -> tuple[Config, dict[str, Any]]:
         if version in (None, 2):
             raw = _migrate_v2(raw)
         if version in (None, 2, 3):
-            raw = _add_stage(raw, "clock")  # версии идут цепочкой: 2 → 3 → 4 → 5 → 6
+            raw = _add_stage(raw, "clock")  # версии идут цепочкой: 2 → 3 → … → 7
         if version in (None, 2, 3, 4):
             raw = _add_stage(raw, "system")
-        raw = _add_stage(raw, "people")
+        if version in (None, 2, 3, 4, 5):
+            raw = _add_stage(raw, "people")
+        raw = _refresh_knowledge(raw)
         write_overrides(path, raw)
     try:
         config = Config.model_validate(raw)
@@ -139,6 +167,42 @@ def _add_stage(raw: dict[str, Any], kind: str) -> dict[str, Any]:
         raw["stages"] = [*stages, {"kind": kind}]
         raw = owner_changes(raw, effective=False)
     return raw
+
+
+def _refresh_knowledge(raw: dict[str, Any]) -> dict[str, Any]:
+    """Версия 6 → 7: прежние тексты по умолчанию в сохранённых исполнителях → новые.
+
+    Промпт, условие связи и описание, совпадающие с прежним умолчанием дословно, значат «не меняли»;
+    свои тексты владельца остаются как есть. Список, ставший равным умолчанию, из файла убирается.
+    """
+    raw = {k: v for k, v in raw.items() if k != "version"}
+    executors = raw.get("executors")
+    if not isinstance(executors, list):
+        return raw
+    raw["executors"] = [_refresh_executor(item) for item in executors]
+    return owner_changes(raw, effective=False)
+
+
+def _refresh_executor(item: object) -> object:
+    """Один сохранённый исполнитель с новыми текстами вместо прежних умолчаний."""
+    if not isinstance(item, dict):
+        return item
+    item = dict(item)
+    if item.get("system_prompt") == _KNOWLEDGE_PROMPT:
+        item["system_prompt"] = DEFAULT_SYSTEM_PROMPT
+    if item.get("description") == _KNOWLEDGE_DESCRIPTION:
+        item["description"] = BIG_DESCRIPTION
+    links = item.get("delegates")
+    if isinstance(links, list):
+        item["delegates"] = [_refresh_link(link) for link in links]
+    return item
+
+
+def _refresh_link(link: object) -> object:
+    """Связь с прежним условием по умолчанию → с новым."""
+    if isinstance(link, dict) and link.get("when") == _KNOWLEDGE_WHEN:
+        return {**link, "when": BIG_WHEN}
+    return link
 
 
 def _migrate_v2(raw: dict[str, Any]) -> dict[str, Any]:
