@@ -38,6 +38,7 @@ class HideToken(logging.Filter):
 # то же правило — config/manifest.py (SECRET_NAME, MASK); равенство проверяет тест
 SECRET_KEY = re.compile(r"TOKEN|KEY|SECRET|PASSWORD", re.IGNORECASE)
 MASKED = "•••"
+SERVICE_SECTIONS = ("cloud", "lmstudio")  # разделы настроек с ключом сервиса моделей
 
 
 def declared_secrets(connectors: Sequence[Mapping[str, Any]]) -> dict[str, set[str]]:
@@ -55,10 +56,10 @@ def mask_connector_secrets(
     """Копия ответа GET /config, где непустые значения env-секретов коннекторов — «•••».
 
     Секрет — ключ, в имени которого есть TOKEN, KEY, SECRET или PASSWORD (без учёта регистра),
-    или объявленный коннектором секретом: declared — {id: {ключ}}. Ключ облачного сервиса
-    (cloud.api_key) — тоже «•••». Назад «•••» значит «не менять».
+    или объявленный коннектором секретом: declared — {id: {ключ}}. Ключи сервисов моделей
+    (cloud.api_key, lmstudio.api_key) — тоже «•••». Назад «•••» значит «не менять».
     """
-    config = _mask_cloud_key(config)
+    config = _mask_service_keys(config)
     effective = config.get("effective")
     connectors = effective.get("connectors") if isinstance(effective, dict) else None
     if not isinstance(connectors, list):
@@ -68,14 +69,17 @@ def mask_connector_secrets(
     return {**config, "effective": {**cast(dict[str, Any], effective), "connectors": masked}}
 
 
-def _mask_cloud_key(config: dict[str, Any]) -> dict[str, Any]:
-    """Копия, где непустой ключ облачного сервиса (effective.cloud.api_key) — «•••»."""
+def _mask_service_keys(config: dict[str, Any]) -> dict[str, Any]:
+    """Копия, где непустые ключи сервисов моделей (effective.cloud.api_key, …lmstudio.api_key) — «•••»."""
     effective = config.get("effective")
-    cloud = effective.get("cloud") if isinstance(effective, dict) else None
-    if not isinstance(cloud, dict) or not cast(dict[str, object], cloud).get("api_key"):
+    if not isinstance(effective, dict):
         return config
-    hidden = {**cast(dict[str, object], cloud), "api_key": MASKED}
-    return {**config, "effective": {**cast(dict[str, Any], effective), "cloud": hidden}}
+    hidden = dict(cast(dict[str, Any], effective))
+    for name in SERVICE_SECTIONS:
+        section = hidden.get(name)
+        if isinstance(section, dict) and cast(dict[str, object], section).get("api_key"):
+            hidden[name] = {**cast(dict[str, object], section), "api_key": MASKED}
+    return {**config, "effective": hidden}
 
 
 def _masked(item: object, declared: Mapping[str, Set[str]]) -> object:

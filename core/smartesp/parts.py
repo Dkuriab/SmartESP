@@ -18,7 +18,7 @@ from smartesp.control import Core
 from smartesp.conversation import History, Orchestrator
 from smartesp.devices import DeviceHub
 from smartesp.events import EventBus
-from smartesp.executors import CloudCatalog
+from smartesp.executors import CloudCatalog, fetch_lmstudio_models
 from smartesp.fileplay import FilePlayer
 from smartesp.kinds import Kinds, Ollama, kinds_validator, member_specs, prompt_stages
 from smartesp.lifecycle import (
@@ -190,6 +190,9 @@ def control(
         decode=decode_audio,  # голосовое (OGG/Opus, WAV) → PCM для распознавания
         unload=ollama.unload,  # «Выгрузить» в интерфейсе: только модель, что сейчас в памяти
         cloud_models=lambda: catalog.models(store.config.cloud.base_url, store.config.cloud.api_key),
+        lmstudio_models=lambda: fetch_lmstudio_models(
+            store.config.lmstudio.base_url, store.config.lmstudio.api_key
+        ),
         data_dir=str(home),
     )
 

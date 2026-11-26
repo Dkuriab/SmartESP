@@ -250,7 +250,7 @@ async def warm_tolerant(executor: Executor, timeout_s: float) -> None:
             await executor.warm_up()
         _log.info("Исполнитель прогрет за %.1f с", time.monotonic() - started)
     except ExecutorError as error:
-        _log.warning("Ollama недоступна: %s. Ходы будут заканчиваться сигналом ошибки.", error)
+        _log.warning("Исполнитель не прогрелся: %s. Ходы будут заканчиваться сигналом ошибки.", error)
     except TimeoutError:
         _log.warning("Исполнитель не прогрелся за %g с; работаю без прогрева.", timeout_s)
 

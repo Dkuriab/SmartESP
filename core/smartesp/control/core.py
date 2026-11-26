@@ -12,7 +12,6 @@ from typing import Any
 
 from smartesp.contracts import (
     Answer,
-    AskUnavailable,
     ChangeResult,
     ConfigStore,
     ConnectorState,
@@ -25,30 +24,12 @@ from smartesp.contracts import (
 )
 
 from .changes import RESTART_SECTIONS, STOPPING, ChangeQueue
+from .defaults import no_asking, no_decoding, no_models, no_tools
 from .ollama import model_list, no_unload, ollama_state, unload_loaded
 
 _log = logging.getLogger(__name__)
 
 STATES = ("warming", "ready", "stopping")
-
-
-async def _no_cloud() -> list[dict[str, Any]]:
-    return []
-
-
-async def _no_tools(model: str) -> bool:
-    """По умолчанию модели считаются не умеющими инструменты."""
-    return False
-
-
-async def _no_asking(question: Question) -> Answer:
-    """По умолчанию ходов через API нет."""
-    raise AskUnavailable("ходы через API не подключены")
-
-
-async def _no_decoding(audio: bytes) -> bytes:
-    """По умолчанию звук не разбирается."""
-    raise AskUnavailable("разбор звука не подключён")
 
 
 class Core:
@@ -74,13 +55,14 @@ class Core:
         validate: Callable[[Any], None] | None = None,
         dispatcher_prompt: Callable[[], str] = str,
         executor_prompts: Callable[[], Mapping[str, str]] = dict,
-        supports_tools: Callable[[str], Awaitable[bool]] = _no_tools,
+        supports_tools: Callable[[str], Awaitable[bool]] = no_tools,
         executor_states: Callable[[], Mapping[str, str | None]] = dict,
         connectors: Callable[[], Sequence[ConnectorState]] = list,
-        ask: Callable[[Question], Awaitable[Answer]] = _no_asking,
-        decode: Callable[[bytes], Awaitable[bytes]] = _no_decoding,
+        ask: Callable[[Question], Awaitable[Answer]] = no_asking,
+        decode: Callable[[bytes], Awaitable[bytes]] = no_decoding,
         unload: Callable[[str], Awaitable[None]] = no_unload,
-        cloud_models: Callable[[], Awaitable[list[dict[str, Any]]]] = _no_cloud,
+        cloud_models: Callable[[], Awaitable[list[dict[str, Any]]]] = no_models,
+        lmstudio_models: Callable[[], Awaitable[list[dict[str, Any]]]] = no_models,
         data_dir: str = "",
     ) -> None:
         """validate(настройки) — проверка правки целиком; ValueError — status invalid.
@@ -92,7 +74,7 @@ class Core:
         connectors() — состояния MCP-коннекторов в порядке настроек;
         ask(вопрос) — ход через API; decode(звук) — OGG/Opus или WAV в PCM 16 кГц моно;
         unload(модель) — выгрузить модель из памяти Ollama; data_dir — папка данных (для info);
-        cloud_models() — модели облачного сервиса (сбой — ExecutorError).
+        cloud_models(), lmstudio_models() — модели облачного сервиса и LM Studio (сбой — ExecutorError).
         """
         self._store = store
         self._events = events
@@ -111,6 +93,7 @@ class Core:
         self._decode = decode
         self._unload = unload
         self.cloud_models = cloud_models  # GET /cloud/models: [{id, name, tools, prompt_price, …}]
+        self.lmstudio_models = lmstudio_models  # GET /lmstudio/models: [{id, name, loaded, tools}]
         self._data_dir = data_dir
         self._clock = clock
         self._started = clock()

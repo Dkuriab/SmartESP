@@ -8,7 +8,7 @@ from typing import Any, get_args, get_origin
 from pydantic import BaseModel, ValidationError
 
 from ._files import owner_changes, write_overrides
-from .api_patch import check_api_entries, check_cloud_patch
+from .api_patch import check_api_entries, check_cloud_patch, check_lmstudio_patch
 from .connectors import merge_connector_entries
 from .loader import load_with_overrides
 from .manifest import manifest_note, settings_view
@@ -61,8 +61,8 @@ class ConfigFile:
         Словари сливаются вглубь, списки заменяются целиком (кроме connectors: те
         сливаются по id, см. config/connectors.py), null сбрасывает ключ к умолчанию.
         Правка идёт из API, поэтому в connectors — только [{id, enabled, env}] уже известных
-        коннекторов, а в env — только ключи, объявленные коннектором; в cloud — только api_key
-        (config/api_patch.py).
+        коннекторов, а в env — только ключи, объявленные коннектором; в cloud — только api_key,
+        в lmstudio — base_url и api_key (config/api_patch.py).
         Неизвестный ключ в правке или неверный результат — ValueError с понятным текстом;
         неизвестные ключи, уже лежащие в файле, правке не мешают.
         """
@@ -79,8 +79,11 @@ class ConfigFile:
                 "connectors": check_api_entries(patch["connectors"], self._current().connectors),
             }
         if "cloud" in patch:
-            cloud = check_cloud_patch(patch["cloud"])
-            patch = {**patch, "cloud": cloud} if cloud else {k: v for k, v in patch.items() if k != "cloud"}
+            patch = _section(patch, "cloud", check_cloud_patch(patch["cloud"]))
+        if "lmstudio" in patch:
+            current = self._current().lmstudio
+            checked = check_lmstudio_patch(patch["lmstudio"], current.base_url, bool(current.api_key))
+            patch = _section(patch, "lmstudio", checked)
         merged = _merge(self._overrides, _by_id(self._overrides, patch))
         try:
             return Config.model_validate(merged)
@@ -111,6 +114,13 @@ class ConfigFile:
     def section(config: Config, name: str) -> object:
         """Значение одного раздела верхнего уровня — для сравнения до и после правки."""
         return config.model_dump(mode="json")[name]
+
+
+def _section(patch: dict[str, Any], name: str, checked: dict[str, object]) -> dict[str, Any]:
+    """Правка с проверенным разделом name; в разделе нечего менять — раздел убирается."""
+    if checked:
+        return {**patch, name: checked}
+    return {k: v for k, v in patch.items() if k != name}
 
 
 def _by_id(overrides: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:

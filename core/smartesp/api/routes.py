@@ -95,7 +95,7 @@ def create_api(
     router = APIRouter(prefix="/api/v1")
     secured = APIRouter(dependencies=[Depends(require_token(token))], responses=_UNAUTHORIZED)
     _add_resource_routes(secured, core)
-    _add_cloud_route(secured, core)
+    _add_model_routes(secured, core)
     _add_voice_routes(secured, core)
     add_ask_routes(secured, core)
     add_play_routes(secured, files)
@@ -165,8 +165,17 @@ class CloudModelOut(BaseModel):
     completion_price: float | None
 
 
-def _add_cloud_route(secured: APIRouter, core: CorePort) -> None:
-    """Модели облачного сервиса для выбора в настройках исполнителя."""
+class LmStudioModelOut(BaseModel):
+    """Модель LM Studio (неизвестное — null)."""
+
+    id: str
+    name: str
+    loaded: bool | None  # загружена ли в память LM Studio
+    tools: bool | None  # умеет ли инструменты родно (без этого LM Studio даёт их общим форматом)
+
+
+def _add_model_routes(secured: APIRouter, core: CorePort) -> None:
+    """Модели облачного сервиса и LM Studio для выбора в настройках исполнителя."""
 
     @secured.get("/cloud/models", responses={502: {"model": ErrorOut}})
     async def get_cloud_models() -> list[CloudModelOut]:
@@ -175,6 +184,14 @@ def _add_cloud_route(secured: APIRouter, core: CorePort) -> None:
         except ExecutorError as error:
             raise HTTPException(status_code=502, detail=str(error)) from error
         return [CloudModelOut.model_validate(item) for item in items]
+
+    @secured.get("/lmstudio/models", responses={502: {"model": ErrorOut}})
+    async def get_lmstudio_models() -> list[LmStudioModelOut]:
+        try:
+            items = await core.lmstudio_models()
+        except ExecutorError as error:
+            raise HTTPException(status_code=502, detail=str(error)) from error
+        return [LmStudioModelOut.model_validate(item) for item in items]
 
 
 def _add_access_route(secured: APIRouter, token: str, port: int) -> None:
