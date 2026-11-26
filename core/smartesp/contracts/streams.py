@@ -157,6 +157,10 @@ class SpeakerStreams(Protocol):
         """Громкость музыки: volume (0..1) или сдвиг delta. Нет потока — StreamRefused."""
         ...
 
+    async def inputs(self) -> list[str]:
+        """Имена устройств ввода Mac для «звука Mac» (BlackHole и т. п.); не узнать — пусто."""
+        ...
+
     async def open(self, token: str) -> AsyncIterator[bytes] | None:
         """Звук по одноразовой ссылке колонки: PCM s16le моно; None — ссылки нет или не разобрать."""
         ...

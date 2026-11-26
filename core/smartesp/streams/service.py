@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import AsyncGenerator, AsyncIterator, Callable, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import asdict
 
 from smartesp.contracts import (
@@ -58,10 +58,12 @@ class Streams:
         stop_wait_s: float = STOP_WAIT_S,
         first_chunk_s: float = FIRST_CHUNK_S,
         probe: Probe | None = None,
+        inputs: Callable[[], Awaitable[list[str]]] | None = None,
     ) -> None:
         """link — колонки; devices() — известные колонки; last_active() — колонка последнего
         разговора; decode(источник, с секунды) — PCM; events — приёмник событий stream;
-        probe(источник) — почему его не играть ("" — можно; звук Mac: есть ли устройство ввода)."""
+        probe(источник) — почему его не играть ("" — можно; звук Mac: есть ли устройство ввода);
+        inputs() — имена устройств ввода Mac (для выбора в настройках)."""
         self._link = link
         self._devices = devices
         self._last_active = last_active
@@ -69,6 +71,7 @@ class Streams:
         self._events = events
         self._first_chunk_s = first_chunk_s
         self._probe = probe
+        self._inputs = inputs
         self._queues: dict[str, SpeakerQueue] = {}
         self._volumes: dict[str, float] = {}  # громкость колонки переживает смену очереди
         self._closed = False
@@ -138,6 +141,10 @@ class Streams:
                 await self._link.send_stream(queue.device_id, StreamCommand("volume", volume=queue.volume))
             self._publish(queue)
         return self._info(queue.device_id)
+
+    async def inputs(self) -> list[str]:
+        """Устройства ввода Mac, с которых можно играть «звук Mac»; не умеем узнать — пусто."""
+        return await self._inputs() if self._inputs is not None else []
 
     async def open(self, token: str) -> AsyncIterator[bytes] | None:
         """Звук по ссылке колонки (одноразовой); первый кусок уже готов. None — нет ссылки или

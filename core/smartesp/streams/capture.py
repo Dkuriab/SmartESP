@@ -83,6 +83,16 @@ async def find_input(program: str, name: str) -> tuple[int, str] | None:
     return match(await list_inputs(program), name)
 
 
+def input_names(find: Callable[[], str | None]) -> Callable[[], Awaitable[list[str]]]:
+    """Имена устройств ввода Mac — для выбора «звука Mac» в настройках; нет ffmpeg — пусто."""
+
+    async def names() -> list[str]:
+        program = find()
+        return [name for _, name in await list_inputs(program)] if program is not None else []
+
+    return names
+
+
 def capture_probe(find: Callable[[], str | None]) -> Probe:
     """Проверка источника перед игрой: для звука Mac — есть ли ffmpeg и устройство; прочее — можно."""
 

@@ -2929,6 +2929,38 @@
         }
       }
     },
+    "/api/v1/streams/inputs": {
+      "get": {
+        "summary": "Stream Inputs",
+        "operationId": "stream_inputs_api_v1_streams_inputs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "title": "Response Stream Inputs Api V1 Streams Inputs Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/streams": {
       "get": {
         "summary": "Get Streams",
@@ -3923,7 +3955,8 @@
               "list",
               "secret",
               "flag",
-              "pairs"
+              "pairs",
+              "audio_input"
             ],
             "title": "Type"
           },
@@ -3945,7 +3978,7 @@
           "type"
         ],
         "title": "ConnectorSettingOut",
-        "description": "Настройка, объявленная коннектором (smartesp.json): ключ env, подпись, тип, значение.\n\ntype: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», pairs — «ключ=значение;…»,\nsecret — скрытое (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто."
+        "description": "Настройка, объявленная коннектором (smartesp.json): ключ env, подпись, тип, значение.\n\ntype: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», pairs — «ключ=значение;…»,\nsecret — скрытое (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто,\naudio_input — имя устройства ввода Mac (выбор из GET /streams/inputs; пусто — умолчание коннектора)."
       },
       "CoreInfoOut": {
         "properties": {

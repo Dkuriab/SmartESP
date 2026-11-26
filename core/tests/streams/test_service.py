@@ -41,6 +41,7 @@ class Env:
             self._decode,
             events=self.events,
             probe=self._probe,
+            inputs=self._inputs,
             start_timeout_s=start_timeout_s,
             stop_wait_s=stop_wait_s,
         )
@@ -52,6 +53,9 @@ class Env:
             raise ValueError("не разобрать")
         yield b"\x01\x00" * 4
         yield b"\x02\x00" * 4
+
+    async def _inputs(self) -> list[str]:
+        return ["MacBook Pro Microphone", "BlackHole 2ch"]
 
     async def _probe(self, source: str) -> str:
         return self.probe_error if source.startswith("capture:") else ""
@@ -281,3 +285,7 @@ async def test_hifi_speaker_gets_48k_and_position_counts_its_bytes(env: Env) -> 
     assert env.rates[-1] == 48000
     env.report("playing", 96000 * 3)  # 3 с при 48 кГц
     assert env.streams.status()[0].position_s == 5.0
+
+
+async def test_mac_audio_inputs_for_the_settings_choice(env: Env) -> None:
+    assert await env.streams.inputs() == ["MacBook Pro Microphone", "BlackHole 2ch"]

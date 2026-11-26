@@ -1,6 +1,7 @@
 // Настройки коннектора (MCP): включить или выключить, состояние, инструменты, ошибка,
 // объявленные им настройки (форма) и остальное окружение (только показ).
 import type { ReactElement } from 'react'
+import { useEffect, useState } from 'react'
 import { isApplying } from '../../schema/blocks'
 import type { ConnectorItem } from '../../schema/connectors'
 import { CONNECTOR_STATES, connectorToggle, connectorsLocked, listConnectors, withPair } from '../../schema/connectors'
@@ -22,6 +23,8 @@ type Props = {
   onSave?: (env: Record<string, string>) => Promise<string>
   /** Пояснение коннектора и пример для config.yaml (только показ). */
   note?: { text: string; example: string }
+  /** Устройства ввода Mac — для настроек audio_input (запрашиваются при открытии панели). */
+  loadInputs?: () => Promise<string[]>
 }
 
 const NO_SETTINGS: ConnectorSetting[] = []
@@ -79,8 +82,26 @@ function ClientParts({ connector, settings, locked, onSave }: ClientProps) {
   )
 }
 
+const NO_INPUTS: string[] = []
+
+/** Устройства ввода Mac, если среди настроек есть выбор устройства; иначе ничего не запрашиваем. */
+function useInputs(settings: ConnectorSetting[], load?: () => Promise<string[]>): string[] {
+  const [inputs, setInputs] = useState(NO_INPUTS)
+  const wanted = settings.some((s) => s.type === 'audio_input')
+  useEffect(() => {
+    if (!wanted || !load) return
+    let alive = true
+    void load().then((list) => alive && setInputs(list))
+    return () => {
+      alive = false
+    }
+  }, [wanted, load])
+  return inputs
+}
+
 export default function ConnectorSettings(props: Props) {
   const { connector, applying, locked, liveTool, onToggle, settings = NO_SETTINGS, onSave = noSave, note } = props
+  const inputs = useInputs(settings, props.loadInputs)
   const declared = new Set(settings.map((s) => s.key))
   const client = connector.kind === 'client'
   return (
@@ -117,7 +138,7 @@ export default function ConnectorSettings(props: Props) {
       )}
       {settings.length > 0 && (
         // новые значения из ядра (после применения) — форма заново
-        <ConnectorForm key={JSON.stringify(settings)} settings={settings} disabled={locked} onSave={onSave} />
+        <ConnectorForm key={JSON.stringify(settings)} settings={settings} disabled={locked} onSave={onSave} inputs={inputs} />
       )}
       {note && <Note text={note.text} example={note.example} />}
       <Env env={connector.env.filter((e) => !declared.has(e.key))} />
@@ -145,6 +166,7 @@ export function ConnectorPanel({ state, actions, id, hint }: PanelProps) {
       settings={detail?.settings}
       onSave={onSave}
       note={detail && { text: detail.note ?? '', example: detail.example ?? '' }}
+      loadInputs={actions.loadAudioInputs}
     />
   )
 }

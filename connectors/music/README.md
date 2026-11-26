@@ -16,7 +16,7 @@ MCP-коннектор: музыка из папок Mac, интернет-ра�
 |---|---|---|
 | `MUSIC_FOLDERS` | папки, откуда Кузя берёт файлы (только отсюда) | `Музыка=~/Music;Аудиокниги=~/Books` |
 | `MUSIC_RADIO` | станции «имя=ссылка» через «;» (поток, `.m3u`, `.pls` или HLS `.m3u8`) | `Джаз=https://…/jazz.mp3` |
-| `MUSIC_MAC_DEVICE` | часть имени устройства ввода для «звука Mac»; пусто — `BlackHole` | `Loopback` |
+| `MUSIC_MAC_DEVICE` | устройство ввода для «звука Mac» — выбор из устройств Mac в приложении (можно и часть имени в config.yaml); пусто — `BlackHole` | `BlackHole 2ch` |
 
 Файлы: MP3, M4A, AAC, FLAC, WAV, OGG/Opus, AIFF. В `smartesp.json` стоит `"core_api": true`:
 ядро даёт коннектору адрес и токен своего API (`SMARTESP_URL`, `SMARTESP_TOKEN`).

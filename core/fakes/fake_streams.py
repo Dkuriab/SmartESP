@@ -51,9 +51,13 @@ class FakeSpeakerStreams:
         self.calls: list[tuple[str, object]] = []
         self.error: StreamRefused | None = None
         self.audio: list[bytes] | None = None  # звук ссылки; None — ссылки нет
+        self.input_list: list[str] = []  # устройства ввода Mac
 
     def status(self) -> list[StreamInfo]:
         return self.infos
+
+    async def inputs(self) -> list[str]:
+        return self.input_list
 
     def _answer(self, call: str, args: object) -> StreamInfo:
         self.calls.append((call, args))

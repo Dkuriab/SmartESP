@@ -81,6 +81,7 @@ export function makeActions(): CoreActions {
     stopFile: vi.fn(),
     controlStream: vi.fn(),
     setStreamVolume: vi.fn(),
+    loadAudioInputs: vi.fn().mockResolvedValue([]),
     calibrateEcho: vi.fn(),
     setStages: vi.fn(),
     setConnectors: vi.fn(),

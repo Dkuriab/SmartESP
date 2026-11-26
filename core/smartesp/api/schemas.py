@@ -77,12 +77,13 @@ class ConnectorSettingOut(BaseModel):
     """Настройка, объявленная коннектором (smartesp.json): ключ env, подпись, тип, значение.
 
     type: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», pairs — «ключ=значение;…»,
-    secret — скрытое (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто.
+    secret — скрытое (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто,
+    audio_input — имя устройства ввода Mac (выбор из GET /streams/inputs; пусто — умолчание коннектора).
     """
 
     key: str
     title: str
-    type: Literal["text", "path", "list", "secret", "flag", "pairs"]
+    type: Literal["text", "path", "list", "secret", "flag", "pairs", "audio_input"]
     hint: str = ""
     value: str = ""
 

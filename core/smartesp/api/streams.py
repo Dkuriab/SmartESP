@@ -86,8 +86,17 @@ def _refused(error: StreamRefused) -> HTTPException:
     return HTTPException(status_code=CODES[error.reason], detail=str(error))
 
 
+def _add_inputs_route(secured: APIRouter, streams: SpeakerStreams | None) -> None:
+    """GET /streams/inputs: устройства ввода Mac для «звука Mac» — выбор в настройках коннектора."""
+
+    @secured.get("/streams/inputs")
+    async def stream_inputs() -> list[str]:  # pyright: ignore[reportUnusedFunction]
+        return await streams.inputs() if streams is not None else []
+
+
 def add_stream_routes(secured: APIRouter, streams: SpeakerStreams | None) -> None:
-    """GET и POST /streams, POST /streams/control и /streams/volume."""
+    """GET и POST /streams, GET /streams/inputs, POST /streams/control и /streams/volume."""
+    _add_inputs_route(secured, streams)
 
     def need() -> SpeakerStreams:
         if streams is None:

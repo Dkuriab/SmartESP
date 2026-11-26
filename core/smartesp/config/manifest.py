@@ -2,7 +2,8 @@
 
 Формат: `{"settings": [{"key", "title", "type", "hint"}], "note": "…", "example": "…",
 "core_api": false}`, type —
-text, path, list, secret или flag; note и example (необязательны) — пояснение для панели
+text, path, list, secret, flag, pairs или audio_input (выбор устройства ввода Mac); note и example
+(необязательны) — пояснение для панели
 коннектора и пример для config.yaml (например, почему настроек в приложении нет); core_api —
 коннектору нужен API ядра (адрес и токен в окружении, как клиенту: SMARTESP_URL, SMARTESP_TOKEN).
 Через API у коннектора можно менять только объявленные ключи env (см. api_patch.py).
@@ -27,7 +28,8 @@ _log = logging.getLogger(__name__)
 
 MANIFEST_NAME = "smartesp.json"
 MASK = "•••"  # значение секрета в ответах API; оно же назад — «не менять»
-SettingType = Literal["text", "path", "list", "secret", "flag", "pairs"]
+# audio_input — устройство ввода Mac: приложение предлагает выбор из GET /streams/inputs
+SettingType = Literal["text", "path", "list", "secret", "flag", "pairs", "audio_input"]
 # Главная граница — свой префикс коннектора (settable_key). Это — вторая линия: окружение,
 # которое меняет, что и как запускается (sh -c — это bash на macOS, uv, node, perl, ruby, pip,
 # git), куда идёт трафик (прокси, CA) или как читаются файлы: через API не меняется никогда.
