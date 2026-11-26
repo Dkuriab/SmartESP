@@ -658,6 +658,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/streams/inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stream Inputs */
+        get: operations["stream_inputs_api_v1_streams_inputs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/streams": {
         parameters: {
             query?: never;
@@ -1055,7 +1072,8 @@ export interface components {
          * @description Настройка, объявленная коннектором (smartesp.json): ключ env, подпись, тип, значение.
          *
          *     type: text — строка, path — путь (/ или ~/), list — папки «имя=путь;…», pairs — «ключ=значение;…»,
-         *     secret — скрытое (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто.
+         *     secret — скрытое (значение «•••», если задано; назад «•••» — не менять), flag — «1» или пусто,
+         *     audio_input — имя устройства ввода Mac (выбор из GET /streams/inputs; пусто — умолчание коннектора).
          */
         ConnectorSettingOut: {
             /** Key */
@@ -1066,7 +1084,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "text" | "path" | "list" | "secret" | "flag" | "pairs";
+            type: "text" | "path" | "list" | "secret" | "flag" | "pairs" | "audio_input";
             /**
              * Hint
              * @default
@@ -4359,6 +4377,35 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    stream_inputs_api_v1_streams_inputs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

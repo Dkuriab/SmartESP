@@ -84,3 +84,9 @@ async def test_device_link(api: httpx.AsyncClient, streams: FakeSpeakerStreams) 
     response = await api.get("/device/stream/abc")
     assert response.status_code == 200 and response.content == b"\x01\x00\x02\x00"
     assert response.headers["content-type"].startswith("audio/L16")
+
+
+async def test_mac_audio_inputs(api: httpx.AsyncClient, streams: FakeSpeakerStreams) -> None:
+    streams.input_list = ["BlackHole 2ch"]
+    response = await api.get("/api/v1/streams/inputs", headers=HEADERS)
+    assert response.status_code == 200 and response.json() == ["BlackHole 2ch"]

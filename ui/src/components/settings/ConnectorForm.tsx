@@ -11,9 +11,17 @@ type Props = {
   disabled: boolean
   /** Сохранить изменённые значения; ответ — текст ошибки ('' — принято). */
   onSave: (env: Record<string, string>) => Promise<string>
+  /** Устройства ввода Mac для настроек audio_input. */
+  inputs?: string[]
 }
 
-type FieldProps = { setting: ConnectorSetting; value: string; disabled: boolean; onChange: (v: string) => void }
+type FieldProps = {
+  setting: ConnectorSetting
+  value: string
+  disabled: boolean
+  onChange: (v: string) => void
+  inputs: string[]
+}
 
 /** Подсказка в пустом поле: заданный секрет не показывается — вводят новый. */
 function placeholderOf(setting: ConnectorSetting): string {
@@ -21,8 +29,29 @@ function placeholderOf(setting: ConnectorSetting): string {
   return setting.type === 'path' ? '/Users/…' : ''
 }
 
-/** Поле одной настройки: флаг — переключатель, секрет — скрытый ввод, остальное — строка. */
-function SettingField({ setting, value, disabled, onChange }: FieldProps) {
+/** Выбор устройства ввода Mac; выбранное, которого сейчас нет, остаётся с пометкой. */
+function InputChoice({ setting, value, disabled, onChange, inputs }: FieldProps) {
+  const missing = value !== '' && !inputs.includes(value)
+  return (
+    <label className="field field-block">
+      <span className="lbl">{setting.title}</span>
+      <select className="val wide" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Не выбрано</option>
+        {missing && <option value={value}>{`${value} (сейчас нет)`}</option>}
+        {inputs.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
+/** Поле одной настройки: флаг — переключатель, секрет — скрытый ввод, устройство — выбор, остальное — строка. */
+function SettingField(props: FieldProps) {
+  const { setting, value, disabled, onChange } = props
+  if (setting.type === 'audio_input') return <InputChoice {...props} />
   if (setting.type === 'flag') {
     return (
       <label className="field">
@@ -62,10 +91,11 @@ type RowProps = {
   disabled: boolean
   onValue: (key: string, value: string) => void
   onRows: (key: string, rows: FolderRow[]) => void
+  inputs: string[]
 }
 
 /** Строка формы: поле по типу настройки и подсказка под ним. */
-function SettingRow({ setting: s, values, lists, disabled, onValue, onRows }: RowProps) {
+function SettingRow({ setting: s, values, lists, disabled, onValue, onRows, inputs }: RowProps) {
   return (
     <div className="setting">
       {s.type === 'list' ? (
@@ -74,7 +104,13 @@ function SettingRow({ setting: s, values, lists, disabled, onValue, onRows }: Ro
           <FolderList title={s.title} rows={lists[s.key] ?? []} disabled={disabled} onChange={(r) => onRows(s.key, r)} />
         </div>
       ) : (
-        <SettingField setting={s} value={values[s.key] ?? ''} disabled={disabled} onChange={(v) => onValue(s.key, v)} />
+        <SettingField
+          setting={s}
+          value={values[s.key] ?? ''}
+          disabled={disabled}
+          onChange={(v) => onValue(s.key, v)}
+          inputs={inputs}
+        />
       )}
       {s.hint && <div className="set-fine setting-hint">{s.hint}</div>}
     </div>
@@ -93,7 +129,9 @@ function firstError(settings: ConnectorSetting[], env: Record<string, string>): 
   return ''
 }
 
-export default function ConnectorForm({ settings, disabled, onSave }: Props) {
+const NO_INPUTS: string[] = []
+
+export default function ConnectorForm({ settings, disabled, onSave, inputs = NO_INPUTS }: Props) {
   const [values, setValues] = useState(() => Object.fromEntries(settings.map((s) => [s.key, initialValue(s)])))
   const [lists, setLists] = useState<Record<string, FolderRow[]>>(() => listsOf(settings))
   const [error, setError] = useState('')
@@ -122,6 +160,7 @@ export default function ConnectorForm({ settings, disabled, onSave }: Props) {
           disabled={locked}
           onValue={(key, value) => setValues({ ...values, [key]: value })}
           onRows={(key, rows) => setLists({ ...lists, [key]: rows })}
+          inputs={inputs}
         />
       ))}
       {error && <div className="set-note bad" role="alert">{error}</div>}

@@ -399,3 +399,20 @@ def test_telegram_client_settings_are_declared_and_pairs_are_checked() -> None:
     for bad in ("Аня", "1=Аня;1=Борис", "1="):
         with pytest.raises(ValueError):
             check_api_entries([{"id": "telegram", "env": {"TELEGRAM_USERS": bad}}], Config().connectors)
+
+
+def test_audio_input_type_is_declared(tmp_path: Path) -> None:
+    folder = project(tmp_path, [{"key": "MY_DEVICE", "title": "Устройство", "type": "audio_input"}])
+    assert [s.type for s in declared_settings(connector(folder))] == ["audio_input"]
+
+
+def test_repo_manifests_fit_the_api_schema() -> None:
+    """Каждый тип настройки наших коннекторов проходит в ответ API (иначе GET /connectors — 500)."""
+    import json
+
+    from smartesp.api.schemas import ConnectorSettingOut
+
+    repo = Path(__file__).resolve().parents[3]
+    for manifest in sorted(repo.glob("connectors/*/smartesp.json")):
+        for setting in json.loads(manifest.read_text(encoding="utf-8")).get("settings", []):
+            ConnectorSettingOut(key=setting["key"], title=setting["title"], type=setting.get("type", "text"))

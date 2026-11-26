@@ -5,12 +5,30 @@ import { makeActions, makeConfig, makeState, makeStatus } from '../fixtures'
 import SettingsPanel from './SettingsPanel'
 
 const connectors = [
+  { id: 'music', name: 'Музыка', command: 'uv', env: {}, enabled: true },
   { id: 'calc', name: 'Калькулятор', command: 'uv', env: {}, enabled: true },
   { id: 'weather', name: 'Погода', command: 'uv', env: { WEATHER_PLACE: '', API_TOKEN: 'abc' }, enabled: true },
   { id: 'claude_tasks', name: 'Задачи Клоду', command: 'uv', env: { CLAUDE_TASK_FOLDERS: '' }, enabled: false },
 ]
 
 const text = (key: string, title: string, value: string, hint = '') => ({ key, title, type: 'text' as const, hint, value })
+const device = (value: string) => ({
+  key: 'MUSIC_MAC_DEVICE',
+  title: 'Устройство «звук Mac»',
+  type: 'audio_input' as const,
+  hint: 'не выбрано — BlackHole',
+  value,
+})
+const musicDetail = (value: string) => ({
+  id: 'music',
+  name: 'Музыка',
+  state: 'ready' as const,
+  tools: [],
+  error: '', kind: 'mcp' as const,
+  settings: [device(value)],
+  note: '',
+  example: '',
+})
 const details = [
   {
     id: 'weather',
@@ -48,10 +66,12 @@ const details = [
   },
 ]
 
-function setup(id: string, over: Partial<CoreState> = {}) {
+function setup(id: string, over: Partial<CoreState> = {}, inputs: string[] = []) {
   const actions = makeActions()
+  vi.mocked(actions.loadAudioInputs).mockResolvedValue(inputs)
   const status = makeStatus({
     connectors: [
+      { id: 'music', name: 'Музыка', state: 'ready', tools: [], error: '', kind: 'mcp' as const },
       { id: 'calc', name: 'Калькулятор', state: 'ready', tools: ['calc_add', 'calc_mul'], error: '', kind: 'mcp' as const },
       { id: 'weather', name: 'Погода', state: 'failed', tools: [], error: 'Коннектор упал', kind: 'mcp' as const },
       { id: 'claude_tasks', name: 'Задачи Клоду', state: 'disabled', tools: [], error: '', kind: 'mcp' as const },
@@ -161,5 +181,22 @@ describe('ConnectorSettings', () => {
     expect(screen.getByText('Папки и инструменты Клода настраиваются только в config.yaml')).toBeInTheDocument()
     expect(screen.getByText(/id: claude_tasks/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Сохранить' })).not.toBeInTheDocument()
+  })
+
+  it('устройство «звук Mac» — выбор из устройств ввода Mac; сохраняется имя', async () => {
+    const { actions } = setup('music', { connectors: [musicDetail('')] }, ['MacBook Pro Microphone', 'BlackHole 2ch'])
+    const select = await screen.findByRole('combobox', { name: 'Устройство «звук Mac»' })
+    await screen.findByRole('option', { name: 'BlackHole 2ch' })
+    expect(screen.getByRole('option', { name: 'Не выбрано' })).toBeInTheDocument()
+    await userEvent.selectOptions(select, 'BlackHole 2ch')
+    await userEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    expect(actions.saveConnectorEnv).toHaveBeenCalledWith('music', { MUSIC_MAC_DEVICE: 'BlackHole 2ch' }, 'Музыка: настройки')
+  })
+
+  it('выбранного устройства сейчас нет — оно остаётся в списке с пометкой', async () => {
+    setup('music', { connectors: [musicDetail('Loopback')] }, ['BlackHole 2ch'])
+    await screen.findByRole('option', { name: 'BlackHole 2ch' })
+    expect(screen.getByRole('combobox', { name: 'Устройство «звук Mac»' })).toHaveValue('Loopback')
+    expect(screen.getByRole('option', { name: 'Loopback (сейчас нет)' })).toBeInTheDocument()
   })
 })

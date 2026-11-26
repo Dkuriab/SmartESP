@@ -49,7 +49,7 @@ from smartesp.parts import (
 )
 from smartesp.sounds import Sounds
 from smartesp.stages import PEOPLE_VOICES, SYSTEM_FACTS
-from smartesp.streams import Streams, capture_probe, ffmpeg_decoder
+from smartesp.streams import Streams, capture_probe, ffmpeg_decoder, input_names
 from smartesp.stt import decode_file, find_ffmpeg
 from smartesp.tasks import TaskRegistry
 from smartesp.tools import McpHub
@@ -154,7 +154,10 @@ def assemble(
     hub.add_connect_listener(parts.sounds.device_connected)
     # поток звука (музыка коннектора): колонка тянет его сама, отчёты — потокам
     decode, probe = ffmpeg_decoder(find_ffmpeg), capture_probe(find_ffmpeg)  # probe — звук Mac (BlackHole)
-    parts.streams = Streams(hub, hub.devices, hub.last_active_device, decode, events=bus, probe=probe)
+    inputs = input_names(find_ffmpeg)  # выбор устройства «звука Mac» в настройках
+    parts.streams = Streams(
+        hub, hub.devices, hub.last_active_device, decode, events=bus, probe=probe, inputs=inputs
+    )
     hub.use_stream_listener(parts.streams.report)
     parts.training = Training(  # наборы — в репозитории, данные — в папке данных
         REPO_DIR / "trainers",

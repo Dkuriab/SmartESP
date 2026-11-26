@@ -4,6 +4,6 @@
   "settings": [
     {"key": "MUSIC_FOLDERS", "title": "Папки с музыкой", "type": "list", "hint": "только отсюда Кузя берёт файлы: имя=путь, например Музыка=~/Music"},
     {"key": "MUSIC_RADIO", "title": "Радиостанции", "type": "pairs", "hint": "имя=ссылка через «;», например Джаз=https://…/jazz.mp3"},
-    {"key": "MUSIC_MAC_DEVICE", "title": "Устройство «звук Mac»", "type": "text", "hint": "часть имени устройства ввода; пусто — BlackHole"}
+    {"key": "MUSIC_MAC_DEVICE", "title": "Устройство «звук Mac»", "type": "audio_input", "hint": "устройство ввода, куда Mac выводит звук (BlackHole); не выбрано — BlackHole"}
   ]
 }

@@ -6,7 +6,7 @@ import stat
 from pathlib import Path
 
 from smartesp.streams import capture_probe, ffmpeg_decoder
-from smartesp.streams.capture import NO_FFMPEG, NO_INPUTS, match, parse_inputs
+from smartesp.streams.capture import NO_FFMPEG, NO_INPUTS, input_names, match, parse_inputs
 from smartesp.streams.sources import arguments, check_source, is_live, title_of
 
 LISTING = """\
@@ -88,6 +88,12 @@ async def test_probe_explains_missing_parts(tmp_path: Path) -> None:
     assert await capture_probe(lambda: full)("capture:BlackHole") == ""
     missing = await capture_probe(lambda: full)("capture:Loopback")
     assert "brew install --cask blackhole-2ch" in missing and "MacBook Pro Microphone" in missing
+
+
+async def test_input_names_for_the_settings_choice(tmp_path: Path) -> None:
+    full = fake_ffmpeg(tmp_path, LISTING)
+    assert await input_names(lambda: full)() == ["MacBook Pro Microphone", "BlackHole 2ch"]
+    assert await input_names(lambda: None)() == []  # нет ffmpeg — выбора нет
 
 
 async def test_decoder_streams_whole_samples(tmp_path: Path) -> None:
