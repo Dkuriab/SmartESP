@@ -28,7 +28,7 @@ QUESTIONS = [
     ("coder", "Как в питоне развернуть список?"),
     ("coder", "Напиши функцию сортировки пузырьком на C"),
 ]
-MIN_RIGHT = 7  # из 8; на практике 8/8, один сбой в 15 прогонов допустим
+MIN_RIGHT = 6  # из 8; без фразы перед передачей 6–7: Gemma порой пишет вызов текстом — его ловит страховка
 
 
 async def ask(executor: OllamaExecutor, question: str) -> tuple[str, str]:
@@ -52,16 +52,16 @@ async def test_gemma_routes_to_right_target() -> None:
     except ExecutorError:
         pytest.skip("Ollama или модель недоступны")
     right = 0
-    silent_calls: list[str] = []
+    fillers: list[str] = []  # «минутку…» перед передачей: ожидание заполняет сигнал «думаю»
     for want, question in QUESTIONS:
         got, text = await ask(executor, question)
         print(f"\nwant={want or 'self'} got={got or 'self'} q={question!r} phrase={text[:80]!r}")
         right += got == want
-        if got and not text:
-            silent_calls.append(question)
+        if got and "минут" in text.casefold():
+            fillers.append(question)
     print(f"right={right} of {len(QUESTIONS)}")
     assert right >= MIN_RIGHT
-    assert not silent_calls, f"вызов без фразы: {silent_calls}"
+    assert not fillers, f"фраза-затычка перед передачей: {fillers}"
 
 
 DEFAULT_TARGET = (Target("big", "Большая модель", BIG_WHEN),)

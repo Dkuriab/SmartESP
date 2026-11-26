@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator, Sequence
 
 import pytest
 from conversation_helpers import Setup
-from handoff_helpers import CANNED, HANDOFF, PHRASE, SILENT, THINKING, FakeNetwork, run_turn
+from handoff_helpers import HANDOFF, PHRASE, SILENT, THINKING, FakeNetwork, run_turn
 
 from fakes.fake_events import RecordingSink
 from smartesp.contracts import ChatMessage, ReplyPart, ToolSpec
@@ -44,14 +44,14 @@ async def test_silent_target_speaks_phrase(target: list[str]) -> None:
     assert finished["answer"] == f"{PHRASE} {SILENT}"
 
 
-async def test_silent_call_to_unavailable_target_speaks_canned_and_failure() -> None:
+async def test_silent_call_to_unavailable_target_speaks_failure() -> None:
     sink = RecordingSink()
     setup = Setup(FakeNetwork([], []), events=sink)
     finished = await run_turn(setup, sink)
-    assert setup.tts.texts == [CANNED, SILENT]
-    assert setup.port.tones == []
+    assert setup.tts.texts == [SILENT]
+    assert setup.port.tones == [THINKING]  # передача без фразы: «думаю» сразу
     assert finished["status"] == "error"
-    assert finished["answer"] == f"{CANNED} {SILENT}"
+    assert finished["answer"] == SILENT
     assert setup.history.messages() == []
 
 
