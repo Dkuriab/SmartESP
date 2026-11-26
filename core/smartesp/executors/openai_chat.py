@@ -148,7 +148,7 @@ class OpenAIChatExecutor:
                     yield part
         except ReasoningRejectedError:
             self._send_reasoning = False
-            _log.warning("%s: модель «%s» не приняла рассуждение, дальше без", self._service, self._model)
+            _log.warning("%s: «%s» не приняла рассуждение — дальше без него", self._service, self._model)
             async with aclosing(self._stream(self._body(messages, tools))) as parts:
                 async for part in parts:
                     yield part
