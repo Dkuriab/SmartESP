@@ -51,6 +51,7 @@ class OpenAIChatExecutor:
     """Отвечает моделью OpenAI-совместимого сервиса потоком chat/completions (SSE)."""
 
     model_prefix = ""  # приставка имени модели в сети исполнителей («@cloud/» и т. п.)
+    inner_system_as_user = False  # system посреди диалога — сообщением user (см. messages_payload)
 
     def __init__(
         self,
@@ -123,7 +124,9 @@ class OpenAIChatExecutor:
     def _body(self, messages: list[ChatMessage], tools: Sequence[ToolSpec]) -> dict[str, Any]:
         body: dict[str, Any] = {
             "model": self._model,
-            "messages": messages_payload(self._system_prompt, messages),
+            "messages": messages_payload(
+                self._system_prompt, messages, inner_system_as_user=self.inner_system_as_user
+            ),
             "stream": True,
             **self._extra_fields(),
         }

@@ -23,8 +23,15 @@ def _take_call(pending: list[tuple[str, str]], name: str) -> str | None:
     return pending.pop(0)[0] if pending else None
 
 
-def messages_payload(system_prompt: str, messages: Sequence[ChatMessage]) -> list[dict[str, Any]]:
+def messages_payload(
+    system_prompt: str, messages: Sequence[ChatMessage], *, inner_system_as_user: bool = False
+) -> list[dict[str, Any]]:
     """Диалог в формате OpenAI: вызовам инструментов даются id, ответы инструментов ссылаются на них.
+
+    inner_system_as_user — system посреди диалога (справка, пометки, напоминание) уходит
+    сообщением user с тем же текстом: шаблоны чата иных моделей (Qwen3.x) принимают system
+    только первым. Наверх не переносится: справка меняется каждый ход, и сервер заново
+    считал бы весь промпт вместо продолжения кэша.
 
     Ответ инструмента без вызова перед ним (так история не бывает, но вдруг) — сообщение user
     с текстом ответа: API отклонил бы tool без tool_call_id.
@@ -53,7 +60,8 @@ def messages_payload(system_prompt: str, messages: Sequence[ChatMessage]) -> lis
             else:
                 payload.append({"role": "tool", "tool_call_id": call_id, "content": message.content})
         else:
-            payload.append({"role": message.role, "content": message.content})
+            role = "user" if inner_system_as_user and message.role == "system" else message.role
+            payload.append({"role": role, "content": message.content})
     return payload
 
 
