@@ -18,8 +18,12 @@ python3 server.py --long     # ответ — 60 с тона в 4× темпе (
 python3 server.py --odd      # звук кусками по 4095 байт (нечётные куски)
 ```
 
-В `secrets.h` прошивки: `SERVER_HOST` — IP ноутбука в локальной сети,
-`SERVER_PORT` — 8765 (или свой `--port`).
+Прошивка 0.8.0 ищет ядро по Bonjour (`_smartesp._tcp`), а тестовый сервер себя не объявляет —
+объявите его вручную на время проверки (порт — 8765 или свой `--port`):
+
+```bash
+dns-sd -R smartesp-test _smartesp._tcp local 8765 id=test path=/device
+```
 
 ## Команды в консоли
 
