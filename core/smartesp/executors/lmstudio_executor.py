@@ -55,6 +55,8 @@ class LmStudioExecutor(OpenAIChatExecutor):
     """Отвечает моделью LM Studio потоком chat/completions (SSE) с инструментами."""
 
     model_prefix = LMSTUDIO_MODEL_PREFIX
+    # шаблоны Qwen3.x в LM Studio: «System message must be at the beginning»
+    inner_system_as_user = True
 
     def __init__(
         self,

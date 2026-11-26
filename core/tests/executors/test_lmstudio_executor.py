@@ -178,3 +178,27 @@ def test_think_filter_keeps_plain_text_and_drops_unclosed_think() -> None:
     assert plain.feed("a < b, ") + plain.feed("<b>жирный</b>") + plain.end() == "a < b, <b>жирный</b>"
     unclosed = ThinkFilter()
     assert unclosed.feed("Начало <think>и рассуждение") + unclosed.end() == "Начало "
+
+
+async def test_only_first_message_is_system() -> None:
+    # шаблоны Qwen3.x в LM Studio падают на system не в начале («System message must be at the
+    # beginning»): справка и пометки посреди диалога идут сообщением user с тем же текстом
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, content=_sse(_delta(content="Да")))
+
+    history = [
+        ChatMessage("user", "Привет"),
+        ChatMessage("assistant", "Привет!"),
+        ChatMessage("system", "Справочные данные: колонка — Кухня."),
+        ChatMessage("user", "Который час?"),
+        ChatMessage("system", "Напоминание."),
+    ]
+    _ = [p async for p in _executor(handler).run(history)]
+    messages = json.loads(seen[0].content)["messages"]
+    assert [m["role"] for m in messages] == ["system", "user", "assistant", "user", "user", "user"]
+    assert messages[0]["content"] == "Ты Кузя."
+    assert messages[3]["content"] == "Справочные данные: колонка — Кухня."
+    assert messages[5]["content"] == "Напоминание."
