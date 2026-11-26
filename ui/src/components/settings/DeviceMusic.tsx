@@ -1,10 +1,18 @@
-// Музыка на колонке: что играет и кнопки пауза/продолжить, дальше, стоп. Колонке нужен протокол ≥ 5.
+// Музыка на колонке: что играет, кнопки пауза/продолжить, дальше, стоп и громкость музыки.
+// Колонке нужен протокол ≥ 5.
 import type { Device, Stream, StreamAction } from '../../state/model'
+import DeviceVolume from './DeviceVolume'
 
 /** С этой версии протокола колонка играет поток звука с ядра (прошивка 0.6.0). */
 export const MIN_STREAM_PROTOCOL = 5
 
-type Props = { device: Device; stream?: Stream; onControl: (action: StreamAction) => void }
+type Props = {
+  device: Device
+  stream?: Stream
+  onControl: (action: StreamAction) => void
+  /** Громкость музыки, % («Кузя, тише» меняет её; общая громкость колонки — отдельно). */
+  onVolume: (percent: number) => void
+}
 
 function stateText(stream?: Stream): string {
   if (!stream || stream.state === 'idle') return stream?.error || 'Не играет'
@@ -13,7 +21,7 @@ function stateText(stream?: Stream): string {
   return stream.state === 'playing' ? `Играет ${what}` : `Пауза: ${what}`
 }
 
-export default function DeviceMusic({ device, stream, onControl }: Props) {
+export default function DeviceMusic({ device, stream, onControl, onVolume }: Props) {
   if (device.connected && device.protocol < MIN_STREAM_PROTOCOL && !stream) {
     return (
       <div className="field-block device-music">
@@ -45,6 +53,13 @@ export default function DeviceMusic({ device, stream, onControl }: Props) {
           </button>
         </div>
       )}
+      {active && <MusicVolume volume={stream.volume} onSave={onVolume} />}
     </div>
   )
+}
+
+/** Ползунок громкости музыки: значение приходит событием stream, поэтому key — от него. */
+function MusicVolume({ volume, onSave }: { volume: number; onSave: (percent: number) => void }) {
+  const percent = Math.round(volume * 100)
+  return <DeviceVolume key={percent} label="Громкость музыки" volume={percent} disabled={false} onSave={onSave} />
 }

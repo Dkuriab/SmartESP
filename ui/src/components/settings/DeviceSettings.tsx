@@ -26,6 +26,8 @@ type Props = {
   /** Музыка на колонке (нет — не играет) и управление ею. */
   stream?: Stream
   onStream: (action: StreamAction) => void
+  /** Громкость музыки на колонке, %. */
+  onStreamVolume: (percent: number) => void
   /** Калибровка эха (прошивка 0.7.0). */
   onCalibrateEcho: () => void
 }
@@ -45,7 +47,7 @@ function presence(d: Device): string {
 
 export default function DeviceSettings(props: Props) {
   const { device, onRename, filePhase, onPlayFile, onStopFile, onInstallFirmware, onVolume, sounds, stream, onStream } = props
-  const { onCalibrateEcho } = props
+  const { onCalibrateEcho, onStreamVolume } = props
   const [draft, setDraft] = useState(device.name)
   const save = () => {
     const name = draft.trim()
@@ -84,7 +86,7 @@ export default function DeviceSettings(props: Props) {
       {device.connected && device.protocol < MIN_SPEECH_PROTOCOL && (
         <div className="set-note">Обновите прошивку, чтобы ассистент мог говорить сам</div>
       )}
-      <DeviceMusic device={device} stream={stream} onControl={onStream} />
+      <DeviceMusic device={device} stream={stream} onControl={onStream} onVolume={onStreamVolume} />
       <DeviceFile device={device} phase={filePhase} onPlay={onPlayFile} onStop={onStopFile} />
       <DeviceUpdate device={device} onInstall={onInstallFirmware} />
       <DeviceEcho device={device} onCalibrate={onCalibrateEcho} />
