@@ -77,3 +77,15 @@ async def test_unknown_or_ambiguous_speaker() -> None:
 async def test_without_core_env_is_clear_error() -> None:
     error, text = await call(CoreApi("", ""), "speakers_list", {})
     assert error and "нет адреса или токена ядра" in text
+
+
+async def test_change_wins_over_zero_percent() -> None:
+    patches: list[dict[str, object]] = []
+    text = await call(fake_core(patches), "speaker_volume", {"percent": 0, "change": -20}, device="AA")
+    assert text == (False, "Громкость «Кухня»: 30 % (было 50 %).")
+
+
+async def test_negative_percent_is_refused() -> None:
+    patches: list[dict[str, object]] = []
+    error, text = await call(fake_core(patches), "speaker_volume", {"percent": -10}, device="AA")
+    assert error and "от 0 до 100" in text and patches == []

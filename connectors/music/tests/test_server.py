@@ -112,10 +112,28 @@ async def test_controls_and_volume() -> None:
     error, text = await call(core, "speaker_music_volume", {"percent": 30})
     assert core.requests[-1][2] == {"device_id": None, "volume": 0.3, "delta": 0.0}
     assert not error and text.startswith("Громкость музыки на колонке «Кухня»")
-    await call(core, "speaker_music_volume", {})
-    assert core.requests[-1][2]["delta"] == 0.1
     await call(core, "speaker_music_volume", {"delta": -20, "speaker": "кухня"})
     assert core.requests[-1][2] == {"device_id": "aa:01", "volume": None, "delta": -0.2}
+
+
+async def test_volume_without_numbers_only_tells() -> None:
+    core = FakeCore()
+    error, text = await call(core, "speaker_music_volume", {})
+    assert not error and text.startswith("Громкость музыки на колонке «Кухня»")
+    assert core.requests[-1][2] == {"device_id": None, "volume": None, "delta": 0.0}  # не громче
+
+
+async def test_volume_delta_wins_over_zero_percent() -> None:
+    core = FakeCore()
+    await call(core, "speaker_music_volume", {"percent": 0, "delta": -20})  # «тише», а не «выключи»
+    assert core.requests[-1][2] == {"device_id": None, "volume": None, "delta": -0.2}
+
+
+async def test_volume_negative_percent_is_refused() -> None:
+    core = FakeCore()
+    error, text = await call(core, "speaker_music_volume", {"percent": -10})
+    assert error and "от 0 до 100" in text
+    assert not [r for r in core.requests if r[1] == "/api/v1/streams/volume"]
 
 
 async def test_core_refusal_and_missing_api(tmp_path: Path) -> None:

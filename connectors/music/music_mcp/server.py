@@ -85,11 +85,15 @@ def _add_control_tools(server: MCPServer, music: Music) -> None:
     @server.tool(
         name="speaker_music_volume",
         description=(
-            "Громкость музыки на колонке Кузи: percent — от 0 до 100 («громкость 30» — 30), или "
-            "delta — на сколько процентов громче/тише («громче» — 10, «тише» — -10)." + SPEAKER + ONLY_ASKED
+            "Громкость музыки, радио или звука Mac, которые играют на колонке Кузи (голос Кузи не "
+            "меняет). Когда на колонке играет музыка, «громче», «тише», «потише» — это сюда. delta — "
+            "на сколько процентов громче или тише («громче» — 20, «тише» — -20); percent — сколько "
+            "поставить, от 0 до 100 («громкость музыки 30» — 30); оба пусты — только узнать."
+            + SPEAKER
+            + ONLY_ASKED
         ),
     )
-    async def volume(delta: int = 0, percent: int = -1, speaker: str = "") -> str:
+    async def volume(delta: int | None = None, percent: int | None = None, speaker: str = "") -> str:
         return await _answer(music.volume(delta, percent, speaker))
 
 

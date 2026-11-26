@@ -10,8 +10,6 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from speakers_mcp.core_api import CoreApi, CoreUnavailableError, Speaker
 
-STEP = 10  # «погромче» без числа — на столько процентов
-
 
 def pick_speaker(speakers: list[Speaker], name: str, current: str | None) -> Speaker:
     """Колонка по названию (без учёта регистра, можно начало), иначе текущая, иначе единственная в сети."""
@@ -57,9 +55,11 @@ def build_server(api: CoreApi | None = None) -> MCPServer:
     @server.tool(
         name="speaker_volume",
         description=(
-            "Громкость колонки: узнать или изменить. percent — сколько поставить (0–100); change — на "
-            "сколько изменить (+10 «погромче», -10 «потише»); оба пусты — только узнать. speaker — название "
-            "колонки; пусто — та, с которой сейчас говорят."
+            "Общая громкость колонки — и голоса Кузи, и музыки на ней: узнать или изменить. Если на "
+            "колонке играет музыка и просят сделать её тише или громче, — это громкость музыки, а не "
+            "эта. change — на сколько изменить (+20 «погромче», -20 «потише»); percent — сколько "
+            "поставить (0–100); оба пусты — только узнать. speaker — название колонки; пусто — та, с "
+            "которой сейчас говорят."
         ),
     )
     async def speaker_volume(
@@ -67,9 +67,12 @@ def build_server(api: CoreApi | None = None) -> MCPServer:
     ) -> str:
         try:
             target = pick_speaker(await core.speakers(), speaker, _current(ctx))
-            if percent is None and change is None:
+            if not change and percent is None:
                 return f"Громкость «{target.name}»: {target.volume} %."
-            value = max(0, min(100, percent if percent is not None else target.volume + (change or 0)))
+            if not change and percent is not None and percent < 0:
+                raise ToolError("Громкость — от 0 до 100 процентов; «тише на 20» — change -20.")
+            # сдвиг важнее percent: модели шлют «percent: 0» рядом со сдвигом, это не «выключи»
+            value = max(0, min(100, target.volume + change if change else (percent or 0)))
             await core.set_volume(target.id, value)
         except CoreUnavailableError as error:
             raise ToolError(str(error)) from None
