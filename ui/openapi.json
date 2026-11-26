@@ -317,6 +317,48 @@
         }
       }
     },
+    "/api/v1/lmstudio/models": {
+      "get": {
+        "summary": "Get Lmstudio Models",
+        "operationId": "get_lmstudio_models_api_v1_lmstudio_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LmStudioModelOut"
+                  },
+                  "type": "array",
+                  "title": "Response Get Lmstudio Models Api V1 Lmstudio Models Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Bad Gateway",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/voices": {
       "get": {
         "summary": "Get Voices",
@@ -4450,6 +4492,49 @@
         ],
         "title": "LinkIO",
         "description": "Связь с аккаунтом канала: channel — как source хода (\"telegram\"), account — id в канале."
+      },
+      "LmStudioModelOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "loaded": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loaded"
+          },
+          "tools": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tools"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "loaded",
+          "tools"
+        ],
+        "title": "LmStudioModelOut",
+        "description": "Модель LM Studio (неизвестное — null)."
       },
       "ModelOut": {
         "properties": {

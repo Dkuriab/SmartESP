@@ -158,6 +158,14 @@ class FakeCore:
             },
         ]
 
+    async def lmstudio_models(self) -> list[dict[str, Any]]:
+        if self.models_error:
+            raise self.models_error
+        return [
+            {"id": "qwen/qwen3-8b", "name": "Qwen3 8B", "loaded": True, "tools": True},
+            {"id": "plain", "name": "plain", "loaded": None, "tools": None},
+        ]
+
     def voices(self) -> list[dict[str, Any]]:
         return [
             {

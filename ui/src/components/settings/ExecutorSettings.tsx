@@ -6,9 +6,10 @@ import { executorUnavailable, isApplying, listExecutors, modelWithoutTools } fro
 import type { CoreActions } from '../../state/actions'
 import type { ExecutorPatch } from '../../state/executors'
 import type { CoreState } from '../../state/model'
-import { CLOUD, CloudKeyField, CloudModelField, KindField, modelForKind } from './CloudFields'
+import { CLOUD, CloudKeyField, CloudModelField, KindField, LMSTUDIO, modelForKind } from './CloudFields'
 import { APPLYING, CommitField, FinalPrompt, ModelField, PromptField, ReasoningField } from './ExecutorFields'
 import LinkRows from './LinkRows'
+import { LmStudioBlock, pickLmStudioModel } from './LmStudioFields'
 import SpeechSettings from './SpeechSettings'
 
 type Props = { state: CoreState; actions: CoreActions; executor: ExecutorItem }
@@ -63,27 +64,29 @@ function warmError(state: CoreState, id: string): string {
 
 type ModelProps = Props & { applying: boolean }
 
-/** Где работает, модель и (для облака) ключ сервиса; предупреждения о недоступности. */
+/** Где работает, модель и (для облака и LM Studio) настройки сервиса; предупреждения о недоступности. */
 function ModelBlock({ state, actions, executor: e, applying }: ModelProps) {
   const reachable = state.status?.ollama.reachable ?? true
-  const cloud = e.kind === CLOUD
+  const ollama = e.kind !== CLOUD && e.kind !== LMSTUDIO
   const settings = (state.config?.effective.cloud ?? {}) as { name?: unknown; api_key?: unknown }
   const service = typeof settings.name === 'string' && settings.name ? settings.name : 'OpenRouter'
   const update = (patch: ExecutorPatch) => void actions.updateExecutor(e.id, patch)
-  const pickKind = (kind: string) => update({ kind, model: modelForKind(kind, state.models ?? []) })
+  const pickKind = (kind: string) => {
+    if (kind !== LMSTUDIO) return update({ kind, model: modelForKind(kind, state.models ?? []) })
+    void actions.loadLmStudioModels().then((list) => update({ kind, model: pickLmStudioModel(list.models, e.model) }))
+  }
   const unavailable = executorUnavailable(state, e.id)
+  const pick = (model: string) => update({ model })
   return (
     <>
       <KindField kind={e.kind} service={service} disabled={applying} onPick={pickKind} />
-      {cloud ? (
-        <CloudModelField key={e.model} current={e.model} disabled={applying} load={actions.loadCloudModels} onPick={(model) => update({ model })} />
-      ) : (
-        <ModelField current={e.model} models={state.models ?? []} disabled={!reachable || applying} onPick={(model) => update({ model })} />
-      )}
-      {!cloud && !reachable && <div className="set-note warn">Ollama недоступна</div>}
-      {!cloud && reachable && unavailable && <div className="set-note warn">модель недоступна</div>}
-      {cloud && unavailable && <div className="set-note warn">{warmError(state, e.id) || 'модель недоступна'}</div>}
-      {cloud && <CloudKeyField service={service} isSet={Boolean(settings.api_key)} disabled={applying} onSave={(key) => void actions.setCloudKey(key)} />}
+      {e.kind === CLOUD && <CloudModelField key={e.model} current={e.model} disabled={applying} load={actions.loadCloudModels} onPick={pick} />}
+      {e.kind === LMSTUDIO && <LmStudioBlock state={state} actions={actions} current={e.model} applying={applying} onPick={pick} />}
+      {ollama && <ModelField current={e.model} models={state.models ?? []} disabled={!reachable || applying} onPick={pick} />}
+      {ollama && !reachable && <div className="set-note warn">Ollama недоступна</div>}
+      {ollama && reachable && unavailable && <div className="set-note warn">модель недоступна</div>}
+      {!ollama && unavailable && <div className="set-note warn">{warmError(state, e.id) || 'модель недоступна'}</div>}
+      {e.kind === CLOUD && <CloudKeyField service={service} isSet={Boolean(settings.api_key)} disabled={applying} onSave={(key) => void actions.setCloudKey(key)} />}
     </>
   )
 }

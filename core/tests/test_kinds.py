@@ -150,3 +150,18 @@ def test_identity_follows_assistant_name_and_gender() -> None:
     assert identity_rule("", "?", True).startswith(
         "Тебя зовут Кузя. Ты домовой"
     )  # неизвестное — по умолчанию
+
+
+def test_lmstudio_executor_gets_server_settings_and_model_key() -> None:
+    from smartesp.executors import LmStudioExecutor
+    from smartesp.main import EXECUTOR_KINDS
+
+    big = ExecutorConfig(id="big", name="Б", kind="lmstudio", model="qwen/qwen3-8b", keep_alive="5m")
+    lmstudio = Config().lmstudio.model_copy(update={"base_url": "http://mac.local:1234", "api_key": "k"})
+    config = Config(executors=[*Config().executors[:1], big]).model_copy(update={"lmstudio": lmstudio})
+    assert [s.model for s in member_specs(config)] == ["gpt-oss:20b", "@lmstudio/qwen/qwen3-8b"]
+    executor = EXECUTOR_KINDS["lmstudio"](big, config)
+    assert isinstance(executor, LmStudioExecutor)
+    assert executor.models() == frozenset({"@lmstudio/qwen/qwen3-8b"})
+    assert vars(executor)["_key"] == "k" and vars(executor)["_ttl"] == 300
+    assert vars(executor)["_url"] == "http://mac.local:1234/v1/chat/completions"

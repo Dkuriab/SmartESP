@@ -208,3 +208,39 @@ def test_api_sets_only_cloud_key_and_mask_keeps_it(tmp_path: Path) -> None:
 def test_api_cannot_move_cloud_key_elsewhere(tmp_path: Path, cloud: object) -> None:
     with pytest.raises(ValueError):
         _store(tmp_path).merge({"cloud": cloud})
+
+
+def test_api_sets_lmstudio_address_and_key_mask_keeps_key(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    assert store.config.lmstudio.base_url == "http://localhost:1234" and store.config.lmstudio.api_key == ""
+    config = store.merge({"lmstudio": {"base_url": " http://mac.local:1234/ ", "api_key": " lm-1 "}})
+    assert config.lmstudio.base_url == "http://mac.local:1234/" and config.lmstudio.api_key == "lm-1"
+    store.save(config)
+    kept = store.merge({"lmstudio": {"api_key": "•••", "base_url": "http://mac.local:1234"}})
+    assert kept.lmstudio.api_key == "lm-1"
+    assert store.merge({"lmstudio": {"base_url": None}}).lmstudio.base_url == "http://localhost:1234"
+
+
+def test_moving_lmstudio_address_without_new_key_drops_key(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    store.save(store.merge({"lmstudio": {"api_key": "lm-1"}}))
+    assert store.merge({"lmstudio": {"base_url": "http://evil.test:1234"}}).lmstudio.api_key == ""
+    moved = store.merge({"lmstudio": {"base_url": "http://other.local:1234", "api_key": "lm-2"}})
+    assert moved.lmstudio.api_key == "lm-2"
+
+
+@pytest.mark.parametrize(
+    "lmstudio",
+    [
+        {"base_url": "localhost:1234"},
+        {"base_url": "ftp://x"},
+        {"base_url": "http://a\nb"},
+        {"base_url": 5},
+        {"api_key": "a\nb"},
+        {"name": "X"},
+        "адрес",
+    ],
+)
+def test_bad_lmstudio_patch_is_rejected(tmp_path: Path, lmstudio: object) -> None:
+    with pytest.raises(ValueError):
+        _store(tmp_path).merge({"lmstudio": lmstudio})

@@ -121,6 +121,8 @@ export function makeActions(): CoreActions {
     copySounds: vi.fn().mockResolvedValue(true),
     loadCloudModels: vi.fn().mockResolvedValue([]),
     setCloudKey: vi.fn(),
+    loadLmStudioModels: vi.fn().mockResolvedValue({ models: [], error: '' }),
+    setLmStudio: vi.fn(),
     setToken: vi.fn(),
     select: vi.fn(),
     selectTurn: vi.fn(),

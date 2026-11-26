@@ -15,6 +15,7 @@ from typing import cast
 
 from .connectors import ConnectorConfig
 from .manifest import MASK, ConnectorSetting, declared_settings, settable_key
+from .models import LMSTUDIO_URL
 
 API_FIELDS = frozenset({"id", "enabled", "env"})
 API_ONLY_TEXT = "Команду коннектора и необъявленные настройки меняют только в config.yaml"
@@ -25,22 +26,60 @@ _BAD_CATEGORIES = ("Cc", "Zl", "Zp")
 
 CLOUD_API_FIELDS = frozenset({"api_key"})
 CLOUD_ONLY_TEXT = "Адрес и имя облачного сервиса меняют только в config.yaml; через API — только ключ"
+LMSTUDIO_API_FIELDS = frozenset({"base_url", "api_key"})
+LMSTUDIO_ONLY_TEXT = "В настройках LM Studio через API меняются только адрес (base_url) и ключ (api_key)"
+
+
+def _one_line(value: str) -> bool:
+    """Строка в одну строку и не длиннее MAX_VALUE."""
+    return len(value) <= MAX_VALUE and not any(unicodedata.category(c) in _BAD_CATEGORIES for c in value)
+
+
+def _checked_key(section: dict[str, object]) -> dict[str, object]:
+    """{api_key} из правки раздела; нет ключа или «•••» (не менять) — пусто; неверный — ValueError."""
+    key = section.get("api_key")
+    if key is None or key == MASK:
+        return {}
+    if not isinstance(key, str) or not _one_line(key):
+        raise ValueError(f"api_key: строка в одну строку, не длиннее {MAX_VALUE} символов")
+    return {"api_key": key.strip()}
 
 
 def check_cloud_patch(cloud: object) -> dict[str, object]:
     """Правка cloud из API: только api_key (строка в одну строку); «•••» — не менять, убирается."""
     if not isinstance(cloud, dict) or not set(cast(dict[str, object], cloud)) <= CLOUD_API_FIELDS:
         raise ValueError(CLOUD_ONLY_TEXT)
-    key = cast(dict[str, object], cloud).get("api_key")
-    if key is None or key == MASK:
-        return {}
-    if (
-        not isinstance(key, str)
-        or len(key) > MAX_VALUE
-        or any(unicodedata.category(c) in _BAD_CATEGORIES for c in key)
-    ):
-        raise ValueError(f"api_key: строка в одну строку, не длиннее {MAX_VALUE} символов")
-    return {"api_key": key.strip()}
+    return _checked_key(cast(dict[str, object], cloud))
+
+
+def _checked_url(url: object) -> str | None:
+    """Адрес сервера из правки: http(s)://… в одну строку; None — сброс к умолчанию."""
+    if url is None:
+        return None
+    if not isinstance(url, str) or not _one_line(url) or not url.strip().startswith(("http://", "https://")):
+        raise ValueError("base_url: адрес сервера вида http://localhost:1234")
+    if len(url.strip().split("://", 1)[1].strip("/")) == 0:
+        raise ValueError("base_url: в адресе нет сервера")
+    return url.strip()
+
+
+def check_lmstudio_patch(lmstudio: object, base_url: str, has_key: bool) -> dict[str, object]:
+    """Правка lmstudio из API: base_url и api_key; «•••» в ключе — не менять.
+
+    base_url, has_key — текущие адрес и есть ли ключ. Смена адреса без нового ключа в той же правке
+    сбрасывает ключ: токен API не может увести ключ на чужой сервер.
+    """
+    if not isinstance(lmstudio, dict) or not set(cast(dict[str, object], lmstudio)) <= LMSTUDIO_API_FIELDS:
+        raise ValueError(LMSTUDIO_ONLY_TEXT)
+    section = cast(dict[str, object], lmstudio)
+    result = _checked_key(section)
+    if "base_url" in section:
+        url = _checked_url(section["base_url"])
+        result["base_url"] = url
+        moved = (url or LMSTUDIO_URL).rstrip("/") != base_url.rstrip("/")
+        if moved and has_key and "api_key" not in result:
+            result["api_key"] = ""
+    return result
 
 
 def check_api_entries(entries: object, connectors: Sequence[ConnectorConfig]) -> list[object]:

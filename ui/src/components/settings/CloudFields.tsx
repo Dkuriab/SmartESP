@@ -1,8 +1,9 @@
-// Где работает исполнитель (Ollama на Mac или облачный сервис), облачная модель и ключ сервиса.
+// Где работает исполнитель (Ollama, LM Studio или облачный сервис), облачная модель и ключ сервиса.
 import { useEffect, useState } from 'react'
 import type { CloudModel, Model } from '../../state/model'
 
 export const CLOUD = 'cloud'
+export const LMSTUDIO = 'lmstudio'
 /** Модель по умолчанию при переходе в облако: быстрая, недорогая, умеет инструменты. */
 export const DEFAULT_CLOUD_MODEL = 'google/gemini-2.5-flash'
 const DEFAULT_LOCAL_MODEL = 'gpt-oss:20b'
@@ -19,8 +20,9 @@ export function KindField({ kind, service, disabled, onPick }: KindProps) {
   return (
     <label className="field">
       <span className="lbl">Где работает</span>
-      <select className="val" value={kind === CLOUD ? CLOUD : 'ollama'} disabled={disabled} onChange={(e) => onPick(e.target.value)}>
+      <select className="val" value={kind === CLOUD || kind === LMSTUDIO ? kind : 'ollama'} disabled={disabled} onChange={(e) => onPick(e.target.value)}>
         <option value="ollama">На Mac (Ollama)</option>
+        <option value={LMSTUDIO}>LM Studio</option>
         <option value={CLOUD}>{`В облаке (${service})`}</option>
       </select>
     </label>
@@ -84,23 +86,34 @@ export function CloudModelField({ current, disabled, load, onPick }: ModelProps)
   )
 }
 
-type KeyProps = { service: string; isSet: boolean; disabled: boolean; onSave: (key: string) => void }
+type SecretProps = { label: string; isSet: boolean; disabled: boolean; placeholder?: string; onSave: (key: string) => void }
 
-/** Ключ сервиса: задан — «•••» и «Заменить»; поле пароля, «Сохранить ключ»; предупреждение про облако. */
-export function CloudKeyField({ service, isSet, disabled, onSave }: KeyProps) {
+/** Ключ: поле пароля (заданный ключ не показывается) и «Сохранить ключ»; после сохранения поле пустеет. */
+export function SecretField({ label, isSet, disabled, placeholder = 'не задан', onSave }: SecretProps) {
   const [draft, setDraft] = useState('')
   const save = () => {
     onSave(draft.trim())
     setDraft('')
   }
   return (
-    <div className="field field-block">
+    <>
       <label className="field">
-        <span className="lbl">{`Ключ ${service}`}</span>
+        <span className="lbl">{label}</span>
         <input className="val" type="password" autoComplete="off" value={draft} disabled={disabled}
-          placeholder={isSet ? 'задан — введите новый, чтобы заменить' : 'не задан'} onChange={(e) => setDraft(e.target.value)} />
+          placeholder={isSet ? 'задан — введите новый, чтобы заменить' : placeholder} onChange={(e) => setDraft(e.target.value)} />
       </label>
       <button type="button" className="btn" disabled={disabled || !draft.trim()} onClick={save}>Сохранить ключ</button>
+    </>
+  )
+}
+
+type KeyProps = { service: string; isSet: boolean; disabled: boolean; onSave: (key: string) => void }
+
+/** Ключ сервиса: поле ключа; не задан — подсказка, где его взять; предупреждение про облако. */
+export function CloudKeyField({ service, isSet, disabled, onSave }: KeyProps) {
+  return (
+    <div className="field field-block">
+      <SecretField label={`Ключ ${service}`} isSet={isSet} disabled={disabled} onSave={onSave} />
       {!isSet && <div className="set-note warn">{`Без ключа модель не ответит: ключ — на сайте ${service} в разделе Keys`}</div>}
       <div className="set-note">Текст разговоров с этой моделью уходит в облако.</div>
     </div>

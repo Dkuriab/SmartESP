@@ -265,3 +265,24 @@ async def test_config_masks_cloud_key_and_lists_cloud_models(
     assert shown == {**cloud, "api_key": "•••"} and cloud["api_key"] == "sk-or-1"
     models = (await client.get(f"{P}/cloud/models", headers=HEADERS)).json()
     assert models[0]["id"] == "google/gemini-2.5-flash" and models[0]["tools"] is True
+
+
+async def test_config_masks_lmstudio_key_and_lists_lmstudio_models(
+    client: httpx.AsyncClient, core: FakeCore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lmstudio = {"base_url": "http://localhost:1234", "api_key": "lm-1"}
+    full = {**core.config(), "effective": {"lmstudio": lmstudio}}
+    monkeypatch.setattr(core, "config", lambda: full)
+    shown = (await client.get(f"{P}/config", headers=HEADERS)).json()["effective"]["lmstudio"]
+    assert shown == {**lmstudio, "api_key": "•••"} and lmstudio["api_key"] == "lm-1"
+    models = (await client.get(f"{P}/lmstudio/models", headers=HEADERS)).json()
+    assert models == [
+        {"id": "qwen/qwen3-8b", "name": "Qwen3 8B", "loaded": True, "tools": True},
+        {"id": "plain", "name": "plain", "loaded": None, "tools": None},
+    ]
+
+
+async def test_lmstudio_models_failure_is_502(client: httpx.AsyncClient, core: FakeCore) -> None:
+    core.models_error = ExecutorError("Сервер LM Studio не запущен по адресу http://localhost:1234")
+    response = await client.get(f"{P}/lmstudio/models", headers=HEADERS)
+    assert response.status_code == 502 and "не запущен" in response.json()["detail"]

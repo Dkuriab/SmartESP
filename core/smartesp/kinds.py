@@ -15,6 +15,7 @@ from typing import cast
 from smartesp.config import Config, ExecutorConfig, StageConfig, SttConfig, wants_core_api
 from smartesp.contracts import (
     CLOUD_MODEL_PREFIX,
+    LMSTUDIO_MODEL_PREFIX,
     Analyzer,
     Executor,
     SpeechToText,
@@ -28,6 +29,9 @@ from smartesp.stages import run_stages
 from smartesp.tools import ConnectorSpec
 
 CLOUD_KIND = "cloud"  # вид исполнителя на модели облачного сервиса (раздел cloud)
+LMSTUDIO_KIND = "lmstudio"  # вид исполнителя на модели LM Studio (раздел lmstudio)
+# приставка имени модели в сети по виду исполнителя: возможности таких моделей не спрашивают у Ollama
+MODEL_PREFIXES = {CLOUD_KIND: CLOUD_MODEL_PREFIX, LMSTUDIO_KIND: LMSTUDIO_MODEL_PREFIX}
 
 
 class StartupError(Exception):
@@ -40,7 +44,7 @@ class Kinds:
 
     stt: Mapping[str, Callable[[SttConfig], SpeechToText]]
     tts: Mapping[str, Callable[[Path, str], TextToSpeech]]  # (путь голоса, голос)
-    # (настройки исполнителя, настройки целиком — для общих разделов вроде cloud) → исполнитель
+    # (настройки исполнителя, настройки целиком — для общих разделов cloud, lmstudio) → исполнитель
     executors: Mapping[str, Callable[[ExecutorConfig, Config], Executor]]
     stages: Mapping[str, Callable[[StageConfig], Stage]]
 
@@ -86,8 +90,8 @@ def kinds_validator(kinds: Kinds) -> Callable[[object], None]:
 
 
 def model_key(executor: ExecutorConfig) -> str:
-    """Имя модели в сети: облачная — «@cloud/<id>» (её возможности не спрашивают у Ollama)."""
-    return CLOUD_MODEL_PREFIX + executor.model if executor.kind == CLOUD_KIND else executor.model
+    """Имя модели в сети: облачная — «@cloud/<id>», LM Studio — «@lmstudio/<id>», Ollama — как есть."""
+    return MODEL_PREFIXES.get(executor.kind, "") + executor.model
 
 
 def member_specs(config: Config) -> list[MemberSpec]:

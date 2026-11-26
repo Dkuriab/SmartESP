@@ -82,6 +82,7 @@ def live_sections(
         "executors": answering,
         "stages": answering,  # правила обработчиков в промптах: пересобираем и сеть
         "cloud": answering,  # ключ облачного сервиса: исполнители kind cloud собираются заново
+        "lmstudio": answering,  # адрес и ключ LM Studio: исполнители kind lmstudio — заново, с прогревом
         "speech": Section(_speech, lambda speech: use_speech(cast(SpeechConfig, speech))),
         "connectors": Section(_connectors, lambda specs: tools.apply_soon(cast(list[ConnectorSpec], specs))),
     }

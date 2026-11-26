@@ -104,7 +104,7 @@ export type LinkItem = { to: string; when: string; active: boolean }
 export type ExecutorItem = {
   id: string
   name: string
-  /** ollama — модель на Mac; cloud — облачный сервис. */
+  /** ollama — модель Ollama; lmstudio — LM Studio; cloud — облачный сервис. */
   kind: string
   model: string
   description: string

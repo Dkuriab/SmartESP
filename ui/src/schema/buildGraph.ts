@@ -149,6 +149,12 @@ function buildEdges(state: CoreState, configured: string[], executors: ExecutorI
   return [...edges, ...executorEdges(executors, path, noTools)]
 }
 
+/** Модель на узле: облачная — с ☁️, LM Studio — с приставкой «LM Studio ·», Ollama — как есть. */
+function modelLabel(e: ExecutorItem): string {
+  if (e.kind === 'cloud') return `☁️ ${e.model}`
+  return e.kind === 'lmstudio' ? `LM Studio · ${e.model}` : e.model
+}
+
 /**
  * Узлы исполнителей: имя, модель, «не умеет передавать» без supports_tools, «модель недоступна»
  * после прогрева, «в памяти» — модель загружена в Ollama; live — подпись, если работает сейчас.
@@ -158,7 +164,7 @@ function executorNodes(state: CoreState, executors: ExecutorItem[], path: string
     const now = state.live.executors[e.id]
     const data = {
       label: e.name || e.id,
-      model: e.kind === 'cloud' ? `☁️ ${e.model}` : e.model,
+      model: modelLabel(e),
       noTools: modelWithoutTools(state, e.model),
       unavailable: executorUnavailable(state, e.id),
       inMemory: modelInMemory(state, e.model),

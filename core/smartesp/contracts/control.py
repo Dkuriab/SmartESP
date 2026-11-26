@@ -131,6 +131,11 @@ class CorePort(Protocol):
         1 млн токенов или None); сервис недоступен — ExecutorError."""
         ...
 
+    def lmstudio_models(self) -> Awaitable[list[dict[str, Any]]]:
+        """Модели LM Studio: [{id, name, loaded, tools}] (загружена ли и умеет ли инструменты родно;
+        неизвестно — None); сервер не запущен — ExecutorError."""
+        ...
+
     def voices(self) -> list[dict[str, Any]]:
         """Возвращает каталог голосов в форме API."""
         ...

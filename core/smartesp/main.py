@@ -32,14 +32,16 @@ from smartesp.config import (
 from smartesp.contracts import Executor, SpeechToText, Stage, TextToSpeech
 from smartesp.executors import (
     CloudExecutor,
+    LmStudioExecutor,
     OllamaExecutor,
     list_models,
     loaded_models,
     model_capabilities,
     unload_model,
     with_cloud,
+    with_lmstudio,
 )
-from smartesp.kinds import CLOUD_KIND, Kinds, StartupError, check_kinds
+from smartesp.kinds import CLOUD_KIND, LMSTUDIO_KIND, Kinds, StartupError, check_kinds
 from smartesp.lifecycle import GracefulServer, exit_code, run_loop, watch_parent
 from smartesp.stages import Clock, PeopleStage, SystemState, WhisperDetect
 from smartesp.stt import MlxWhisperSTT
@@ -77,6 +79,15 @@ EXECUTOR_KINDS: dict[str, Callable[[ExecutorConfig, Config], Executor]] = {
         reasoning=c.reasoning,
         service=config.cloud.name,
     ),
+    LMSTUDIO_KIND: lambda c, config: LmStudioExecutor(
+        c.model,
+        c.system_prompt,
+        config.lmstudio.base_url,
+        config.lmstudio.api_key,
+        id=c.id,
+        reasoning=c.reasoning,
+        keep_alive=c.keep_alive,
+    ),
 }
 STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
     "whisper_detect": lambda c: WhisperDetect(c.quiet_reply),
@@ -85,7 +96,7 @@ STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
     "people": lambda c: PeopleStage(),
 }
 KINDS = Kinds(STT_KINDS, TTS_KINDS, EXECUTOR_KINDS, STAGE_KINDS)
-OLLAMA = Ollama(list_models, loaded_models, with_cloud(model_capabilities), unload_model)
+OLLAMA = Ollama(list_models, loaded_models, with_lmstudio(with_cloud(model_capabilities)), unload_model)
 
 
 def _setup_logging(logs: Path, *, quiet_console: bool = False) -> LogBuffer:

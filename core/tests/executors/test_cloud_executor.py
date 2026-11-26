@@ -8,7 +8,7 @@ import pytest
 
 from smartesp.contracts import ChatMessage, ExecutorError, Reasoning, ReplyPart, ToolCall, ToolSpec
 from smartesp.executors import CloudExecutor
-from smartesp.executors.cloud_executor import messages_payload
+from smartesp.executors.openai_format import messages_payload
 
 KEY = "sk-or-test-key"
 TOOL = ToolSpec("notes_list", "Список заметок", {"type": "object", "properties": {}})

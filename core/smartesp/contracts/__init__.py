@@ -9,6 +9,7 @@ from .events import CoreEvent, EventFeed, EventSink, Subscription
 from .executor import (
     CLOUD_MODEL_PREFIX,
     DELEGATE_TOOL,
+    LMSTUDIO_MODEL_PREFIX,
     ChatMessage,
     ChoosesThinking,
     Executor,
@@ -110,6 +111,7 @@ __all__ = [
     "EchoRefusedError",
     "EchoState",
     "CLOUD_MODEL_PREFIX",
+    "LMSTUDIO_MODEL_PREFIX",
     "DELEGATE_TOOL",
     "SAMPLE_RATE",
     "SOUNDS_CAP",
