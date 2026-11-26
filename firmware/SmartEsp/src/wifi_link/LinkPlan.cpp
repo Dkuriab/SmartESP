@@ -19,7 +19,7 @@ void LinkPlan::begin(uint32_t nowMs, bool hasNetwork) {
 
 void LinkPlan::setNetwork(uint32_t nowMs) {
   hasNetwork_ = true;
-  attemptNow_ = false;
+  attemptNow_ = true;
   retryMs_ = firstRetryMs_;
   lastAttemptMs_ = nowMs;
 }
@@ -31,7 +31,6 @@ bool LinkPlan::update(uint32_t nowMs, bool connected) {
       connectedSinceMs_ = nowMs;
     }
     retryMs_ = firstRetryMs_;
-    attemptNow_ = false;
     if (portal_ && nowMs - connectedSinceMs_ >= lingerMs_) {
       portal_ = false;
     }

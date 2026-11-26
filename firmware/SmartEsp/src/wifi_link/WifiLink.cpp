@@ -114,10 +114,12 @@ bool WifiLink::pollJoined(WifiCredentials& out) {
 }
 
 void WifiLink::connect() {
-  if (scanRunning_) {
-    return;  // сканирование и подключение мешают друг другу; следующая попытка — по плану
+  // Сканирование и подключение мешают друг другу; связь с точкой уже есть и ждёт адреса (DHCP) —
+  // библиотека разорвала бы её с ожиданием до 1 с. Следующая попытка — по плану.
+  if (scanRunning_ || WiFi.STA.connected()) {
+    return;
   }
-  WiFi.disconnect();
+  WiFi.disconnect(false, false, 0);  // без ожидания
   WiFi.begin(network_.ssid, network_.password[0] ? network_.password : nullptr);
 }
 
@@ -171,6 +173,14 @@ void WifiLink::pollScan() {
     return;
   }
   scanRunning_ = false;
+  if (found < 0) {  // не вышло — прежний список остаётся, следующая страница попросит снова
+    WiFi.scanDelete();
+    taskENTER_CRITICAL(&lock_);
+    scanning_ = false;
+    scannedMs_ = millis() - RESCAN_MS;
+    taskEXIT_CRITICAL(&lock_);
+    return;
+  }
   ScanEntry nets[MAX_NETS] = {};
   size_t count = 0;
   for (int16_t i = 0; i < found && count < MAX_NETS; i++) {
@@ -189,7 +199,7 @@ void WifiLink::pollScan() {
   taskEXIT_CRITICAL(&lock_);
 }
 
-// Сеть с телефона: пробовать сразу (прежняя связь рвётся), паузы — с начала.
+// Сеть с телефона: прежняя связь рвётся, попытка — сразу без связи, паузы — с начала.
 void WifiLink::takeSubmitted() {
   WifiCredentials submitted;
   taskENTER_CRITICAL(&lock_);
@@ -212,7 +222,9 @@ void WifiLink::takeSubmitted() {
     scanning_ = false;
     taskEXIT_CRITICAL(&lock_);
   }
-  connect();
+  if (WiFi.STA.connected()) {  // связь (или ожидание адреса) с прежней сетью
+    WiFi.disconnect(false, false, 0);  // без ожидания; попытка — как только связь оборвётся
+  }
   plan_.setNetwork(submittedMs_);
 }
 

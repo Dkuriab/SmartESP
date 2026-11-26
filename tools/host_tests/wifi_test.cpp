@@ -64,15 +64,26 @@ TEST(plan_closes_portal_after_linger_when_connected) {
   LinkPlan plan;
   plan.begin(0, false);
   plan.update(0, false);
-  plan.setNetwork(1000);              // первую попытку wifi_link делает сам
-  CHECK(!plan.update(1000, false));
-  CHECK(plan.update(6000, false));    // следующая — через 5 с
+  plan.setNetwork(1000);
+  CHECK(plan.update(1000, false));  // новая сеть с портала — пробуем сразу
+  CHECK(!plan.update(5999, false));
+  CHECK(plan.update(6000, false));  // следующая — через 5 с
   plan.update(3000, true);
   CHECK(plan.portalOpen());          // телефону видно «Подключено»
   plan.update(3000 + LINGER - 1, true);
   CHECK(plan.portalOpen());
   plan.update(3000 + LINGER, true);
   CHECK(!plan.portalOpen());
+}
+
+TEST(plan_new_network_while_connected_is_tried_right_after_disconnect) {
+  LinkPlan plan;
+  plan.begin(0, true);
+  plan.update(0, false);
+  plan.update(1000, true);
+  plan.setNetwork(2000);             // wifi_link рвёт прежнюю связь
+  CHECK(!plan.update(2000, true));   // разрыв ещё не дошёл
+  CHECK(plan.update(2050, false));   // связи нет — сразу новая сеть, без паузы
 }
 
 TEST(plan_short_connection_does_not_close_portal) {
