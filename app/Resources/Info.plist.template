@@ -13,6 +13,8 @@
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSMicrophoneUsageDescription</key><string>Ядро берёт звук Mac с виртуального устройства BlackHole и играет его на колонках.</string>
+    <key>NSLocalNetworkUsageDescription</key><string>Ядро объявляет себя в домашней сети, чтобы колонки находили его сами.</string>
+    <key>NSBonjourServices</key><array><string>_smartesp._tcp</string></array>
     <key>SmartEspRepoPath</key><string>__REPO_PATH__</string>
 </dict>
 </plist>
