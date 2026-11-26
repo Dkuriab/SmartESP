@@ -315,6 +315,9 @@ uv run --project core pytest tools/test_make_sounds.py            # длина, 
   играет встроенный.
 - Встроенные звуки для «Прослушать» — `ui/public/sounds/*.wav`; их пишет
   `tools/make_sounds.py` вместе с `SoundData.cpp`.
+- Варианты мелодии «думаю» (`thinking`) — `tools/sounds/thinking/thinking-*.wav`: калимба,
+  музыкальная шкатулка, тёплый аккорд, «хм?», капли, маримба (0,8–1,5 с). Пишет их
+  `tools/make_thinking_variants.py`; выбранный ставится через «Звуки» → «thinking» → «Заменить…».
 - Дизайн — `docs/superpowers/specs/2026-11-22-sounds-design.md`.
 
 **Проверка на плате:**
