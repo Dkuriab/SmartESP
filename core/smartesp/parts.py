@@ -13,10 +13,11 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from smartesp.config import Config, ConfigFile, SpeechConfig
-from smartesp.contracts import Analyzer, Executor, TextToSpeech
+from smartesp.contracts import Analyzer, Executor, Registrar, ServiceRecord, TextToSpeech
 from smartesp.control import Core
 from smartesp.conversation import History, Orchestrator
 from smartesp.devices import DeviceHub
+from smartesp.discovery import Advertiser, load_or_create_core_id, local_ipv4
 from smartesp.events import EventBus
 from smartesp.executors import CloudCatalog
 from smartesp.fileplay import FilePlayer
@@ -72,6 +73,7 @@ class Assembly:
     sounds: Sounds = field(init=False)  # свои звуки сигналов колонок: библиотека и доставка
     people: People = field(init=False)  # люди дома и узнавание голоса
     streams: Streams = field(init=False)  # потоки звука на колонках (музыка коннектора)
+    discovery: Advertiser = field(init=False)  # объявление ядра в сети: колонки находят его сами
     app: FastAPI = field(init=False)
     running: asyncio.Task[None] | None = None  # оркестратор
     warming: asyncio.Task[None] | None = None  # прогрев частей
@@ -99,6 +101,14 @@ def conversation(
     use_speech = speech_settings(orchestrator, announcer)
     use_speech(config.speech)
     return hub, history, orchestrator, announcer, files, use_speech
+
+
+def discovery(home: Path, port: int, version: str, registrar: Callable[[], Registrar]) -> Advertiser:
+    """Объявление `_smartesp._tcp` на порту ядра; id ядра — в <home>/core_id (создаётся при публикации,
+    не при сборке: схема API папку данных не трогает)."""
+    return Advertiser(
+        registrar, lambda ips: ServiceRecord(load_or_create_core_id(home), port, version, ips), local_ipv4
+    )
 
 
 def people_registry(home: Path, hub: DeviceHub) -> People:

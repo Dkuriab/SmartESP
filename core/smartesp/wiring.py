@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -18,7 +18,7 @@ from fastapi import FastAPI, WebSocket
 from smartesp.api import BodyLimit, LogBuffer, add_device_files, add_device_streams, create_api, mount_ui
 from smartesp.config import Config, ConfigFile
 from smartesp.config.connectors import REPO_DIR
-from smartesp.contracts import Analyzer
+from smartesp.contracts import Analyzer, Registrar
 from smartesp.conversation import tool_observer
 from smartesp.devices import WebSocketConnection
 from smartesp.events import EventBus
@@ -41,6 +41,7 @@ from smartesp.parts import (
     Assembly,
     control,
     conversation,
+    discovery,
     live_answering,
     people_registry,
     system_snapshot,
@@ -101,11 +102,9 @@ def assemble(
     token: str,
     ui_dir: Path,
     logs: LogBuffer,
+    registrar: Callable[[], Registrar],
 ) -> Assembly:
-    """Создаёт части без моделей (их греет start) и приложение: /device, /api/v1, интерфейс.
-
-    logs — журнал процесса для WebSocket /api/v1/logs.
-    """
+    """Части без моделей (их греет start) и приложение; logs — для /api/v1/logs, registrar — для Bonjour."""
     bus = EventBus()
     hub, history, orchestrator, announcer, files, use_speech = conversation(config, bus)
     live = live_answering(orchestrator, turn_wait_s=TURN_WAIT_S, unload_s=UNLOAD_S, warm_s=WARM_UP_TIMEOUT_S)
@@ -166,6 +165,7 @@ def assemble(
     )
     parts.people = people_registry(home, hub)  # люди дома: образцы голоса — с колонки
     PEOPLE_VOICES.use(parts.people.recognize)  # обработчик «люди»
+    parts.discovery = discovery(home, config.server.port, version, registrar)  # колонки находят ядро
     parts.app = _build_app(parts, token, ui_dir, version, logs)
     return parts
 
@@ -220,6 +220,7 @@ def start(parts: Assembly) -> None:
     parts.retrying = asyncio.create_task(parts.retry.run(), name="capabilities-retry")
     parts.refreshing = asyncio.create_task(parts.refresh.run(), name="tools-refresh")
     parts.tools.apply_soon(connector_specs(parts.config))
+    parts.discovery.start()  # объявление в сети (Bonjour): ошибки — в журнал, ядро работает дальше
     for task in (parts.running, parts.warming, parts.retrying, parts.refreshing):
         task.add_done_callback(log_crash)
 
@@ -286,6 +287,7 @@ async def stop(parts: Assembly) -> None:
 async def finish(parts: Assembly) -> None:
     """Снимает фоновые задачи и таймеры хаба (после остановки сервера)."""
     await cancel_tasks(parts.running, parts.warming, parts.retrying, parts.refreshing)
+    await parts.discovery.aclose()
     await parts.tools.aclose()
     await parts.announcer.aclose()
     await parts.files.aclose()

@@ -10,6 +10,7 @@ import httpx
 
 from fakes.fake_connection import FakeConnection
 from fakes.fake_executor import FakeOllama
+from fakes.fake_registrar import FakeRegistrars
 from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
 from fakes.no_connectors import NO_CONNECTORS_YAML
@@ -101,6 +102,7 @@ def make_core(
         token=TOKEN,
         ui_dir=home / "no-ui",
         logs=LogBuffer(),
+        registrar=FakeRegistrars(),  # объявление в сети — без настоящей сети
     )
 
 
