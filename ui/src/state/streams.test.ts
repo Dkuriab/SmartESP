@@ -45,4 +45,12 @@ describe('streams', () => {
     expect(POST).toHaveBeenCalledWith('/api/v1/streams/control', { body: { device_id: 'aa:bb', action: 'pause' } })
     expect(dispatch).toHaveBeenCalledWith({ type: 'stream', stream: stream({ state: 'paused' }) })
   })
+
+  it('громкость музыки шлёт долю 0..1 и кладёт ответ ядра', async () => {
+    const dispatch = vi.fn()
+    const POST = vi.fn().mockResolvedValue({ data: stream({ volume: 0.4 }), response: { status: 200 } })
+    await createStreamActions({ POST } as unknown as Client, dispatch).setStreamVolume('aa:bb', 40)
+    expect(POST).toHaveBeenCalledWith('/api/v1/streams/volume', { body: { device_id: 'aa:bb', volume: 0.4, delta: 0 } })
+    expect(dispatch).toHaveBeenCalledWith({ type: 'stream', stream: stream({ volume: 0.4 }) })
+  })
 })

@@ -1,16 +1,16 @@
 // Громкость колонки: ползунок, сохраняется, когда отпустили (ядро сразу шлёт её колонке).
 import { useState } from 'react'
 
-type Props = { volume: number; disabled: boolean; onSave: (volume: number) => void }
+type Props = { volume: number; disabled: boolean; onSave: (volume: number) => void; label?: string }
 
-export default function DeviceVolume({ volume, disabled, onSave }: Props) {
+export default function DeviceVolume({ volume, disabled, onSave, label = 'Громкость' }: Props) {
   const [draft, setDraft] = useState(volume)
   const save = () => {
     if (draft !== volume) onSave(draft)
   }
   return (
     <label className="field">
-      <span className="lbl">Громкость</span>
+      <span className="lbl">{label}</span>
       <input
         type="range"
         className="val"
@@ -19,7 +19,7 @@ export default function DeviceVolume({ volume, disabled, onSave }: Props) {
         step={5}
         value={draft}
         disabled={disabled}
-        aria-label="Громкость"
+        aria-label={label}
         onChange={(e) => setDraft(Number(e.target.value))}
         onPointerUp={save}
         onKeyUp={save}

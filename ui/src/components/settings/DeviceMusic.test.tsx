@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { CoreState, Stream } from '../../state/model'
 import { makeActions, makeState, makeStatus } from '../fixtures'
@@ -21,9 +21,11 @@ const playing: Stream = {
 
 function setup(device = v5, over: Partial<CoreState> = {}) {
   const actions = makeActions()
-  const state = makeState({ status: makeStatus({ devices: [device] }), selected: { kind: 'device', id: 'aa:bb' }, ...over })
-  render(<SettingsPanel state={state} actions={actions} />)
-  return { actions }
+  const state = (o: Partial<CoreState>) =>
+    makeState({ status: makeStatus({ devices: [device] }), selected: { kind: 'device', id: 'aa:bb' }, ...o })
+  const view = render(<SettingsPanel state={state(over)} actions={actions} />)
+  const rerender = (o: Partial<CoreState>) => view.rerender(<SettingsPanel state={state(o)} actions={actions} />)
+  return { actions, rerender }
 }
 
 const music = () => screen.getByRole('status', { name: 'Музыка' })
@@ -51,6 +53,23 @@ describe('музыка на колонке в панели', () => {
     setup(v5, { streams: { 'aa:bb': { ...playing, state: 'idle', error: 'Колонка не начала играть' } } })
     expect(music()).toHaveTextContent('Колонка не начала играть')
     expect(screen.queryByRole('button', { name: 'Стоп' })).toBeNull()
+  })
+
+  it('громкость музыки видна, меняется с событием и шлётся ползунком', () => {
+    const { actions, rerender } = setup(v5, { streams: { 'aa:bb': playing } })
+    const slider = () => screen.getByRole('slider', { name: 'Громкость музыки' })
+    expect(slider()).toHaveValue('60')
+    rerender({ streams: { 'aa:bb': { ...playing, volume: 0.4 } } }) // «Кузя, тише» — событие stream
+    expect(slider()).toHaveValue('40')
+    fireEvent.change(slider(), { target: { value: '25' } })
+    fireEvent.pointerUp(slider())
+    expect(actions.setStreamVolume).toHaveBeenCalledWith('aa:bb', 25)
+    expect(screen.getByRole('slider', { name: 'Громкость' })).toHaveValue('50') // общая — своя
+  })
+
+  it('не играет — без громкости музыки', () => {
+    setup(v5, { streams: { 'aa:bb': { ...playing, state: 'idle' } } })
+    expect(screen.queryByRole('slider', { name: 'Громкость музыки' })).toBeNull()
   })
 
   it('старая прошивка — подсказка', () => {
