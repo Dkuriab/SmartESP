@@ -16,6 +16,8 @@ clang++ -std=c++17 -Wall -Werror -I firmware/SmartEsp/src -I "$JSON_DIR" \
   firmware/SmartEsp/src/echo_calibrator/Correlator.cpp \
   firmware/SmartEsp/src/session/Session.cpp firmware/SmartEsp/src/voice_frontend/SpeechTracker.cpp \
   firmware/SmartEsp/src/stream_player/Ducker.cpp \
+  firmware/SmartEsp/src/wifi_link/LinkPlan.cpp firmware/SmartEsp/src/wifi_link/SetupForm.cpp \
+  firmware/SmartEsp/src/core_finder/CoreChoice.cpp firmware/SmartEsp/src/core_finder/SearchTimer.cpp \
   firmware/SmartEsp/src/wake_word/WakeFeatures.cpp firmware/SmartEsp/src/wake_word/microfrontend/*.cc \
   -o "$OUT"
 "$OUT"
