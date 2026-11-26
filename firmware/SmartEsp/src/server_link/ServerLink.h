@@ -18,9 +18,12 @@
 
 class ServerLink {
  public:
-  // Запускает задачу связи с ws://host:port/path. Подключается, когда есть Wi-Fi.
-  // Пустой host — связи не будет (isConnected() всегда false).
-  bool begin(const char* host, uint16_t port, const char* path, const char* fwVersion);
+  // Очереди и задача связи. Подключается, когда есть Wi-Fi и адрес ядра (setServer).
+  bool begin(const char* fwVersion);
+
+  // Адрес ядра ws://host:port/path (от core_finder). Новый адрес — связь переподключается к нему,
+  // тот же — ничего не меняется. Не блокирует; вызывать из loop().
+  void setServer(const char* host, uint16_t port, const char* path);
 
   bool isConnected() const;
 
@@ -65,6 +68,7 @@ class ServerLink {
   void onBinary(const uint8_t* data, size_t length);
   void storeAudio(const void* data, size_t bytes);
   bool gateOpen();
+  bool applyServer();
 
   WebSocketsClient socket_;
   const char* fwVersion_ = "";
@@ -72,6 +76,14 @@ class ServerLink {
 
   ReplyGate gate_;  // доступ — под gateLock_ (loop() и задача связи)
   portMUX_TYPE gateLock_ = portMUX_INITIALIZER_UNLOCKED;
+
+  // Адрес ядра: пишет setServer (loop()), забирает задача связи; доступ — под serverLock_.
+  char serverHost_[16] = {};
+  char serverPath_[32] = {};
+  uint16_t serverPort_ = 0;
+  bool serverChanged_ = false;
+  portMUX_TYPE serverLock_ = portMUX_INITIALIZER_UNLOCKED;
+  bool hasServer_ = false;  // только задача связи: socket_ настроен на адрес
 
   char soundHashes_[5][65] = {};  // по сигналу (порядок Tone); доступ — под soundLock_
   portMUX_TYPE soundLock_ = portMUX_INITIALIZER_UNLOCKED;

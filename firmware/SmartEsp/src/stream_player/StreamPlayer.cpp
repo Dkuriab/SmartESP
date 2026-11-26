@@ -36,6 +36,13 @@ bool StreamPlayer::begin(const StreamPlayerConfig& config) {
   return xTaskCreatePinnedToCore(taskEntry, "stream", 6144, this, 3, nullptr, 1) == pdPASS;
 }
 
+void StreamPlayer::setServer(const char* host, uint16_t port) {
+  taskENTER_CRITICAL(&serverLock_);
+  strncpy(host_, host ? host : "", sizeof(host_) - 1);
+  port_ = port;
+  taskEXIT_CRITICAL(&serverLock_);
+}
+
 void StreamPlayer::start(const StreamRequest& request) {
   Command command{true, request};
   if (!commands_ || xQueueSend(commands_, &command, 0) != pdTRUE) {
@@ -198,10 +205,15 @@ void StreamPlayer::open(const StreamRequest& request) {
     post(StreamState::Failed, StreamError::Rate);
     return;
   }
+  char host[sizeof(host_)];
+  taskENTER_CRITICAL(&serverLock_);
+  memcpy(host, host_, sizeof(host));
+  const uint16_t port = port_;
+  taskEXIT_CRITICAL(&serverLock_);
   http_.useHTTP10(true);  // без chunked: поток кончается закрытием соединения
   http_.setReuse(false);
   http_.setTimeout(HTTP_TIMEOUT_MS);
-  if (!http_.begin(client_, config_.host, config_.port, request.path) || http_.GET() != HTTP_CODE_OK) {
+  if (host[0] == '\0' || !http_.begin(client_, host, port, request.path) || http_.GET() != HTTP_CODE_OK) {
     http_.end();
     phase_ = Failed;
     post(StreamState::Failed, StreamError::Download);

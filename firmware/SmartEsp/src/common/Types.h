@@ -64,7 +64,7 @@ enum class UpdateError : uint8_t {
   Storage,   // нет файловой системы для модели
 };
 
-// Что обновить (команда update): файл с ядра по пути path на SERVER_HOST:SERVER_PORT.
+// Что обновить (команда update): файл с ядра по пути path (адрес ядра — от core_finder).
 struct UpdateRequest {
   UpdateKind kind;
   uint32_t size;      // байт
@@ -113,13 +113,30 @@ enum class StreamError : uint8_t {
   Rate,      // частота не 16000
 };
 
-// Что играть (команда stream_start): PCM s16le моно по HTTP с SERVER_HOST:SERVER_PORT.
+// Что играть (команда stream_start): PCM s16le моно по HTTP с ядра (адрес — от core_finder).
 struct StreamRequest {
   uint32_t id;      // номер потока (выдаёт ядро)
   uint32_t rate;    // частота PCM, Гц
   float volume;     // громкость музыки 0..1 (относительно общей)
   bool live;        // живой поток: на время разговора глушится, но читается дальше
   char path[96];    // «/device/stream/<токен>»
+};
+
+// ---------- сеть: net_settings, wifi_link, core_finder (прошивка 0.8.0) ----------
+
+// Сеть Wi-Fi: SSID 1..32 байта, пароль пустой (открытая сеть), 8..63 знака или 64 hex.
+// Пустой ssid — сети нет.
+struct WifiCredentials {
+  char ssid[33];
+  char password[65];
+};
+
+// Найденное ядро (core_finder → server_link, updater, stream_player).
+struct CoreAddress {
+  char id[33];     // постоянный id ядра (TXT id; пусто — ядро его не сообщило)
+  char host[16];   // IPv4 строкой, «192.168.1.10»
+  uint16_t port;
+  char path[32];   // путь WebSocket колонки (TXT path, обычно «/device»)
 };
 
 // ---------- калибровка эха (echo_calibrator, прошивка 0.7.0) ----------

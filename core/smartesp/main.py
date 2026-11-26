@@ -29,7 +29,8 @@ from smartesp.config import (
     SttConfig,
     data_dir,
 )
-from smartesp.contracts import Executor, SpeechToText, Stage, TextToSpeech
+from smartesp.contracts import Executor, Registrar, SpeechToText, Stage, TextToSpeech
+from smartesp.discovery import ZeroconfRegistrar
 from smartesp.executors import (
     CloudExecutor,
     LmStudioExecutor,
@@ -97,6 +98,7 @@ STAGE_KINDS: dict[str, Callable[[StageConfig], Stage]] = {
 }
 KINDS = Kinds(STT_KINDS, TTS_KINDS, EXECUTOR_KINDS, STAGE_KINDS)
 OLLAMA = Ollama(list_models, loaded_models, with_lmstudio(with_cloud(model_capabilities)), unload_model)
+REGISTRAR: Callable[[], Registrar] = ZeroconfRegistrar  # объявление ядра в сети (Bonjour)
 
 
 def _setup_logging(logs: Path, *, quiet_console: bool = False) -> LogBuffer:
@@ -163,6 +165,7 @@ def _write_openapi(path: Path) -> None:
         token="",
         ui_dir=UI_DIR,
         logs=LogBuffer(),
+        registrar=REGISTRAR,
     )
     path.write_text(json.dumps(parts.app.openapi(), ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -174,7 +177,16 @@ async def _serve(store: ConfigFile, config: Config, home: Path, parent_watch: bo
     """
     token = load_or_create_token(home)
     parts = assemble(
-        store, config, home, KINDS, OLLAMA, version=_version(), token=token, ui_dir=UI_DIR, logs=logs
+        store,
+        config,
+        home,
+        KINDS,
+        OLLAMA,
+        version=_version(),
+        token=token,
+        ui_dir=UI_DIR,
+        logs=logs,
+        registrar=REGISTRAR,
     )
     host, port = config.server.host, config.server.port
     # log_config=None: uvicorn пишет через корневой журнал (консоль + core.log)

@@ -4,6 +4,7 @@ from .ask import Answer, AskUnavailable, AudioUndecodable, Question
 from .audio import SAMPLE_RATE, Utterance
 from .control import ChangeResult, ConfigStore, CorePort, Section, VoicePort
 from .device import Delivery, DeviceInfo, DevicePort, UpdateProgress
+from .discovery import DEVICE_PATH, SERVICE_TYPE, Registrar, ServiceRecord
 from .echo import ECHO_CAP, MAX_ECHO_DELAY_MS, EchoCalibration, EchoPort, EchoRefusedError, EchoState
 from .events import CoreEvent, EventFeed, EventSink, Subscription
 from .executor import (
@@ -104,6 +105,10 @@ from .tts import TextToSpeech, VoiceInfo, VoiceNotDownloadedError
 from .updates import UpdatePort, UpdateRefusedError, UpdateWhat
 
 __all__ = [
+    "DEVICE_PATH",
+    "SERVICE_TYPE",
+    "Registrar",
+    "ServiceRecord",
     "ECHO_CAP",
     "MAX_ECHO_DELAY_MS",
     "EchoCalibration",

@@ -17,17 +17,15 @@
 #include "freertos/queue.h"
 #include "../common/Types.h"
 
-struct UpdaterConfig {
-  const char* host;  // сервер ядра (тот же, что у server_link)
-  uint16_t port;
-};
-
 class Updater {
  public:
   // Монтирует LittleFS (раздел «spiffs»; пустой — форматирует, один раз до ~10 с) и читает
   // сохранённые звуки в PSRAM (их отдаст pollSound). false — нет файловой системы: модель и
   // звуки не сохранить, прошивку обновлять можно.
-  bool begin(const UpdaterConfig& config);
+  bool begin();
+
+  // Адрес ядра (тот же, что у server_link; от core_finder). Не блокирует; вызывать из loop().
+  void setServer(const char* host, uint16_t port);
 
   // Сохранённая обновлением модель слова (данные — в PSRAM). false — её нет или она испорчена.
   bool loadModel(StoredModel& out);
@@ -57,7 +55,9 @@ class Updater {
   bool finish(UpdateError& error);
   void report(UpdateState state, UpdateError error, bool force);
 
-  UpdaterConfig config_{};
+  char host_[16] = {};  // адрес ядра; доступ — под serverLock_ (loop() и задача скачивания)
+  uint16_t port_ = 0;
+  portMUX_TYPE serverLock_ = portMUX_INITIALIZER_UNLOCKED;
   bool storage_ = false;
   QueueHandle_t events_ = nullptr;  // задача скачивания → loop()
   QueueHandle_t sounds_ = nullptr;  // готовые звуки (StoredSound) → loop()

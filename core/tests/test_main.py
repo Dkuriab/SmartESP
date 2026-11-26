@@ -22,6 +22,7 @@ from core_harness import NO_OLLAMA, put_voice
 
 import smartesp.main as smartesp_main
 from fakes.fake_executor import FakeOllama
+from fakes.fake_registrar import FakeRegistrars
 from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
 from fakes.no_connectors import NO_CONNECTORS_YAML
@@ -114,6 +115,7 @@ def fake_core(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(TTS_KINDS, "silero", lambda path, voice: FakeTTS())
     monkeypatch.setitem(EXECUTOR_KINDS, "ollama", lambda c, _: FakeOllama(["Да."], c.model))
     monkeypatch.setattr("smartesp.main.OLLAMA", NO_OLLAMA)
+    monkeypatch.setattr("smartesp.main.REGISTRAR", FakeRegistrars())  # без настоящей сети
     (home / "config.yaml").write_text(NO_CONNECTORS_SERVER, encoding="utf-8")
     put_voice(home)
 
@@ -247,6 +249,7 @@ CORE_ON_FAKES = """
 import sys
 from core_harness import NO_OLLAMA
 from fakes.fake_executor import FakeOllama
+from fakes.fake_registrar import FakeRegistrars
 from fakes.fake_stt import FakeSTT
 from fakes.fake_tts import FakeTTS
 import smartesp.main as m
@@ -254,6 +257,7 @@ m.STT_KINDS["mlx_whisper"] = lambda c: FakeSTT("")
 m.TTS_KINDS["silero"] = lambda path, voice: FakeTTS()
 m.EXECUTOR_KINDS["ollama"] = lambda c, _: FakeOllama(["Да."], c.model)
 m.OLLAMA = NO_OLLAMA
+m.REGISTRAR = FakeRegistrars()
 m.main(sys.argv[1:])
 """
 

@@ -2,28 +2,31 @@
 // вызовы begin()/loop() и передача данных между модулями.
 // Правила — CLAUDE.md, устройство — docs/superpowers/specs/2026-11-15-firmware-design.md.
 
-#include "secrets.h"
 #include "src/common/Types.h"
 #include "src/audio_out/AudioOut.h"
 #include "src/audio_in/AudioIn.h"
 #include "src/voice_frontend/VoiceFrontend.h"
 #include "src/wake_word/WakeWord.h"
 #include "src/wake_word/ModelData.h"
+#include "src/net_settings/NetSettings.h"
 #include "src/wifi_link/WifiLink.h"
+#include "src/core_finder/CoreFinder.h"
 #include "src/server_link/ServerLink.h"
 #include "src/session/Session.h"
 #include "src/updater/Updater.h"
 #include "src/stream_player/StreamPlayer.h"
 #include "src/echo_calibrator/EchoCalibrator.h"
 
-constexpr const char* FW_VERSION = "0.7.0";
+constexpr const char* FW_VERSION = "0.8.0";
 constexpr size_t AUDIO_BLOCK = 512;  // 32 мс
 
 AudioOut audioOut;
 AudioIn audioIn;
 VoiceFrontend voiceFrontend;
 WakeWord wakeWord;
+NetSettings netSettings;
 WifiLink wifiLink;
+CoreFinder coreFinder;
 ServerLink serverLink;
 Session session;
 Updater updater;
@@ -33,6 +36,28 @@ EchoCalibrator echoCalibrator;
 int16_t micBlock[AUDIO_BLOCK];
 int16_t refBlock[AUDIO_BLOCK];
 int16_t audioBlock[AUDIO_BLOCK];
+
+WifiCredentials wifiNetwork;  // сеть: сохранённая → wifi_link; подключившаяся → net_settings
+char coreId[33];              // id своего ядра: net_settings ↔ core_finder
+
+// Сеть, к которой колонка подключилась, → флеш; найденное ядро → модули связи с ядром;
+// ядро, с которым установилась связь, → флеш (в следующий раз — оно).
+void passNetwork() {
+  while (wifiLink.pollJoined(wifiNetwork)) {
+    netSettings.saveWifi(wifiNetwork);
+  }
+  coreFinder.setWifiConnected(wifiLink.isConnected());
+  coreFinder.setServerConnected(serverLink.isConnected());
+  CoreAddress core;
+  while (coreFinder.pollFound(core)) {
+    serverLink.setServer(core.host, core.port, core.path);
+    updater.setServer(core.host, core.port);
+    streamPlayer.setServer(core.host, core.port);
+  }
+  while (coreFinder.pollRemember(coreId, sizeof(coreId))) {
+    netSettings.saveCoreId(coreId);
+  }
+}
 
 // Свои звуки сигналов (сохранённые и присланные ядром) → динамик и hello.
 void passSounds() {
@@ -58,7 +83,7 @@ void setup() {
                 [](int16_t* dst, size_t samples) { return audioOut.readReference(dst, samples); });
   voiceFrontend.begin({.vadSilenceMs = 500});
   // Модель слова: присланная обновлением (если есть и запускается), иначе — встроенная.
-  updater.begin({.host = SERVER_HOST, .port = SERVER_PORT});
+  updater.begin();
   StoredModel stored{};
   const bool fromUpdate =
       updater.loadModel(stored) && wakeWord.begin({.model = stored.data,
@@ -75,14 +100,20 @@ void setup() {
                     .window = WAKE_MODEL_WINDOW});
   }
   passSounds();  // до первого hello: в нём хэши сохранённых звуков
-  wifiLink.begin(WIFI_SSID, WIFI_PASSWORD);
-  serverLink.begin(SERVER_HOST, SERVER_PORT, "/device", FW_VERSION);
-  streamPlayer.begin({.host = SERVER_HOST, .port = SERVER_PORT});
+  // Сеть и ядро — без зашитых адресов: Wi-Fi из флеша (или с телефона), ядро — поиском mDNS.
+  netSettings.begin();
+  netSettings.loadWifi(wifiNetwork);
+  netSettings.loadCoreId(coreId, sizeof(coreId));
+  wifiLink.begin({}, wifiNetwork);
+  coreFinder.begin({.hostname = wifiLink.hostname(), .preferredId = coreId});
+  serverLink.begin(FW_VERSION);
+  streamPlayer.begin({});
   session.begin({});
 }
 
 void loop() {
-  wifiLink.loop();  // server_link обслуживает сеть в своей задаче
+  wifiLink.loop();  // server_link обслуживает сеть в своей задаче, core_finder ищет ядро в своей
+  passNetwork();
 
   session.setConnected(serverLink.isConnected());
   // Сначала «играет ли», потом счётчик: так итоговое played полное (см. AudioOut.h).
