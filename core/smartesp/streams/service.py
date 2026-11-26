@@ -29,6 +29,7 @@ from smartesp.contracts import (
 
 from . import texts
 from .capture import Probe
+from .pace import PaceLog
 from .pick import check_items, pick_for_control, pick_for_play
 from .queue import SpeakerQueue
 from .runner import Runner
@@ -71,6 +72,7 @@ class Streams:
         self._queues: dict[str, SpeakerQueue] = {}
         self._volumes: dict[str, float] = {}  # громкость колонки переживает смену очереди
         self._closed = False
+        self._pace = PaceLog(clock)  # провалы живого потока — в журнал
         self._runner = Runner(
             link,
             self._queues.get,
@@ -169,6 +171,8 @@ class Streams:
         if report.stream == 0 or report.stream != queue.stream:
             return  # прежний поток
         queue.reported, queue.played = True, report.played
+        if report.state == "playing":
+            self._pace.observe(device_id, report.stream, queue.rate, live=queue.live, played=report.played)
         if report.state == "playing" and report.played > 0:
             queue.failures = 0
         elif report.state == "stopped" and queue.stopped is not None:
