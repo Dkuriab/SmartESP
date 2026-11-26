@@ -32,7 +32,6 @@ LIVE_POLL_S = 0.1  # как часто проверять, актуален ли
 TIMEOUT_PHRASE = "Не получилось ответить вовремя, спроси попозже."  # цель не ответила в срок
 LATER_PHRASE = "{name} долго думает. Скажу, когда будет готово."  # ответ цели объявим потом
 SILENT_PHRASE = "{name} сейчас не отвечает."  # цель ничего не сказала
-CANNED_PHRASE = "Минутку, сейчас узнаю."  # вызов передачи без фразы: говорим за диспетчера
 ENTRY_ID = "entry"  # id входного исполнителя, который своего id не знает
 
 
@@ -91,11 +90,7 @@ async def collect(
     """
     part, target_start = first, 0
     while part is not None:
-        if part.handoff is not None:
-            canned = _canned_part(turn)
-            if canned is not None:
-                _take(turn, canned)
-                yield canned
+        if part.handoff is not None:  # без фразы перед передачей: ожидание заполняет «думаю»
             target_start = len(turn.answer)
         _take(turn, part)
         yield part
@@ -121,14 +116,6 @@ async def collect(
 def _spoken(turn: Turn) -> bool:
     """True, если в ходе уже сказано что-то, что можно озвучить (метка стиля и «…» не считаются)."""
     return bool(clean_for_speech(strip_style_tag("".join(turn.answer))[1]))
-
-
-def _canned_part(turn: Turn) -> ReplyPart | None:
-    """Фраза за диспетчера, если он вызвал передачу молча; только для первой передачи хода."""
-    if turn.delegations or _spoken(turn):
-        return None
-    _log.info("Колонка %s: вызов без фразы — говорим «Минутку…»", turn.device_name)
-    return ReplyPart(CANNED_PHRASE)
 
 
 def _take(turn: Turn, part: ReplyPart) -> None:
