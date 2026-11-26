@@ -6,7 +6,7 @@ import type { ExecutorActions } from './executorActions'
 import { createExecutorActions } from './executorActions'
 import type { FileActions } from './fileActions'
 import { createFileActions } from './fileActions'
-import type { CloudModel, Config, Notice, Selection } from './model'
+import type { CloudModel, Config, LmStudioList, Notice, Selection } from './model'
 import type { PeopleActions } from './peopleActions'
 import { createPeopleActions } from './peopleActions'
 import type { Dispatch } from './request'
@@ -57,6 +57,10 @@ export type CoreActions = ExecutorActions &
   loadCloudModels(): Promise<CloudModel[]>
   /** Ключ облачного сервиса (пусто — убрать). */
   setCloudKey(key: string): Promise<void>
+  /** Модели LM Studio; ошибка (сервер не запущен) — текстом в error, без уведомления. */
+  loadLmStudioModels(): Promise<LmStudioList>
+  /** Адрес и/или ключ сервера LM Studio (смена адреса без ключа сбрасывает ключ в ядре). */
+  setLmStudio(patch: { base_url?: string; api_key?: string }, description: string): Promise<void>
   setToken(token: string): void
   /** Выбор на схеме или в списке (null — снять). */
   select(selected: Selection | null): void
@@ -138,6 +142,11 @@ export function createActions(deps: ActionDeps): CoreActions {
     return outcome.ok ? outcome.data : []
   }
 
+  async function loadLmStudioModels(): Promise<LmStudioList> {
+    const outcome = await send(dispatch, () => client.GET('/api/v1/lmstudio/models'))
+    return outcome.ok ? { models: outcome.data, error: '' } : { models: [], error: outcome.text }
+  }
+
   const sent = deps.sentExecutors ?? createSentExecutors(now)
   return {
     ...createExecutorActions({ dispatch, getConfig, sent }, sendPatch),
@@ -154,6 +163,8 @@ export function createActions(deps: ActionDeps): CoreActions {
     loadAccess,
     loadCloudModels,
     setCloudKey: (key) => patch({ cloud: { api_key: key } }, key ? 'Ключ облачного сервиса' : 'Ключ облачного сервиса убран'),
+    loadLmStudioModels,
+    setLmStudio: (lmstudio, description) => patch({ lmstudio }, description),
     async downloadVoice(kind, voice) {
       dispatch({ type: 'downloadRequested', kind, voice })
       await sendNotify(dispatch, () => client.POST('/api/v1/voices/download', { body: { kind, voice } }))

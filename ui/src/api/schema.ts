@@ -124,6 +124,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/lmstudio/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Lmstudio Models */
+        get: operations["get_lmstudio_models_api_v1_lmstudio_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/voices": {
         parameters: {
             query?: never;
@@ -1303,6 +1320,20 @@ export interface components {
             account: string;
         };
         /**
+         * LmStudioModelOut
+         * @description Модель LM Studio (неизвестное — null).
+         */
+        LmStudioModelOut: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Loaded */
+            loaded: boolean | null;
+            /** Tools */
+            tools: boolean | null;
+        };
+        /**
          * ModelOut
          * @description Модель Ollama.
          */
@@ -2200,6 +2231,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CloudModelOut"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorOut"];
+                };
+            };
+        };
+    };
+    get_lmstudio_models_api_v1_lmstudio_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LmStudioModelOut"][];
                 };
             };
             /** @description Unauthorized */

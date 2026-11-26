@@ -12,7 +12,7 @@ export type Executor = Record<string, unknown>
 /** Правка исполнителя: только заданные поля (undefined не затирает). */
 export type ExecutorPatch = {
   name?: string
-  /** ollama — модель на Mac; cloud — облачный сервис (раздел cloud настроек). */
+  /** ollama — модель Ollama; lmstudio — LM Studio (раздел lmstudio); cloud — облачный сервис (раздел cloud). */
   kind?: string
   model?: string
   description?: string

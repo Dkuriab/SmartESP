@@ -11,6 +11,10 @@ export type Voice = Schemas['VoiceOut']
 export type Model = Schemas['ModelOut']
 /** Модель облачного сервиса (цены — $ за 1 млн токенов). */
 export type CloudModel = Schemas['CloudModelOut']
+/** Модель LM Studio: загружена ли и умеет ли инструменты родно (null — неизвестно). */
+export type LmStudioModel = Schemas['LmStudioModelOut']
+/** Список моделей LM Studio и ошибка запроса ('' — нет ошибки). */
+export type LmStudioList = { models: LmStudioModel[]; error: string }
 export type Turn = Schemas['TurnOut']
 export type Device = Schemas['DeviceOut']
 export type Connector = Schemas['ConnectorOut']
