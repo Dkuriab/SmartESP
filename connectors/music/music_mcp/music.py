@@ -11,7 +11,6 @@ from music_mcp.core import CoreApi, CoreError, Stream, resolve_station
 from music_mcp.library import Library, LibraryError, normalize
 
 CAPTURE_PREFIX = "capture:"  # источник ядра «звук Mac с устройства ввода»
-VOLUME_STEP = 10  # «громче» без числа — на столько процентов
 
 
 class MusicError(Exception):
@@ -58,13 +57,17 @@ class Music:
         device = await self._device(speaker) if speaker else None
         return _describe(await _ask(self._core.control(device, action)))
 
-    async def volume(self, delta: int, percent: int, speaker: str) -> str:
+    async def volume(self, delta: int | None, percent: int | None, speaker: str) -> str:
+        """Сдвиг delta важнее percent (модели шлют «percent: 0» рядом со сдвигом); нет обоих — узнать."""
+        if not delta and percent is not None and percent < 0:
+            raise MusicError("Громкость — от 0 до 100 процентов; «тише на 20» — delta -20.")
         device = await self._device(speaker) if speaker else None
-        if 0 <= percent <= 100:
-            state = await _ask(self._core.volume(device, volume=percent / 100))
+        if delta:
+            state = await _ask(self._core.volume(device, delta=max(min(delta, 100), -100) / 100))
+        elif percent is not None:
+            state = await _ask(self._core.volume(device, volume=min(percent, 100) / 100))
         else:
-            step = delta if delta else VOLUME_STEP
-            state = await _ask(self._core.volume(device, delta=max(min(step, 100), -100) / 100))
+            state = await _ask(self._core.volume(device))
         return f"Громкость музыки на колонке «{state['name']}»: {round(state['volume'] * 100)}%."
 
     async def status(self) -> str:

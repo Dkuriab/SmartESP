@@ -61,8 +61,10 @@ def _add_volume_tools(server: MCPServer, media: MediaService) -> None:
 
     @server.tool(
         name="volume_set",
-        description="Ставит громкость Mac: целое от 0 до 100 процентов. Пример: «громкость 30» — 30."
-        + ONLY_ASKED,
+        description=(
+            "Ставит громкость самого Mac (не колонок Кузи): от 0 до 100 процентов. "
+            "Пример: «громкость Мака 30» — 30." + ONLY_ASKED
+        ),
     )
     async def volume_set(percent: int) -> str:
         return await _answer(media.volume_set(percent))
@@ -70,8 +72,9 @@ def _add_volume_tools(server: MCPServer, media: MediaService) -> None:
     @server.tool(
         name="volume_change",
         description=(
-            "Громче или тише на delta процентов (от -100 до 100). "
-            "Пример: «сделай погромче» — 10, «потише» — -10." + ONLY_ASKED
+            "Громкость самого Mac (его динамиков или наушников) громче или тише на delta процентов "
+            "(от -100 до 100); колонки Кузи и музыку на них не меняет. Пример: «сделай Мак погромче» — "
+            "10, «на Маке потише» — -10." + ONLY_ASKED
         ),
     )
     async def volume_change(delta: int) -> str:
